@@ -19,104 +19,110 @@ import {
 } from "./mockData";
 import { calculateDistance, delay } from "../utils/helpers";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-// import { BesiCompetitor, besiCompetitorData } from "./mockData";
-// import { nanoid } from 'nanoid';
 import { nanoid } from "nanoid/non-secure";
 import { v4 as uuidv4 } from "uuid";
 import { Alert } from "react-native";
 
+import apiClient from './axiosConfig';
+import * as SecureStore from 'expo-secure-store';
+import { AxiosRequestConfig } from 'axios';
+
+// Tipe data
+export type LoginCredentials = {
+  userid: string;
+  password: string; // plain text dulu
+  kodecabang: string;
+};
+
+export type User = {
+  userid: string;
+  kode_user: string;
+  nama_user: string;
+  kodecabang: string;
+};
+
+export type LoginResponse = {
+  success: boolean;
+  message?: string;
+  data?: {
+    token: string;
+    user: User;
+  };
+};
+
+// ================
+// Login API Module
+// ================
+export const loginAPI = {
+  /**
+   * Melakukan login ke backend
+   * @returns {Promise<LoginResponse>}
+   */
+  login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
+    try {
+      const response = await apiClient.post<LoginResponse>('/login', credentials);
+
+      // Jika response dari backend sesuai format
+      if (response.data.success && response.data.data) {
+        const { token, user } = response.data.data;
+
+        // Simpan ke secure storage
+        await SecureStore.setItemAsync('auth_token', token);
+        await SecureStore.setItemAsync('user_data', JSON.stringify(user));
+
+        return {
+          success: true,
+          data: { token, user },
+          message: response.data.message,
+        };
+      } else {
+        // Backend kirim success: false
+        return {
+          success: false,
+          message: response.data.message || 'Login gagal',
+        };
+      }
+    } catch (error: any) {
+      console.error('Login API error:', error);
+
+      // Tangani error Axios
+      if (error.response) {
+        // Error dari backend (4xx, 5xx)
+        const message = error.response.data?.message || 'Terjadi kesalahan pada server';
+        return { success: false, message };
+      } else if (error.request) {
+        // Tidak ada respons (network error)
+        return { success: false, message: 'Tidak ada koneksi ke server' };
+      } else {
+        // Error lain
+        return { success: false, message: error.message || 'Error tidak dikenal' };
+      }
+    }
+  },
+
+  /**
+   * Logout: hapus token & user dari secure storage
+   */
+  logout: async (): Promise<void> => {
+    await SecureStore.deleteItemAsync('auth_token');
+    await SecureStore.deleteItemAsync('user_data');
+  },
+
+  /**
+   * Cek apakah user sudah login (untuk auto-login saat app dibuka)
+   */
+  getStoredAuth: async (): Promise<{ token: string | null; user: User | null }> => {
+    const token = await SecureStore.getItemAsync('auth_token');
+    const userData = await SecureStore.getItemAsync('user_data');
+    const user = userData ? JSON.parse(userData) : null;
+    return { token, user };
+  },
+};
+
+
+// BATAS DARI SINI KE BAWAH ADALAH MOCK API
+// Gunakan apiClient dari axiosConfig.ts untuk API nyata  
 const STORAGE_KEY = "competitor_besi_queue";
-
-// helper offline queue
-// async function addToOfflineQueue(entry: BesiCompetitor) {
-//   try {
-//     const queue = await AsyncStorage.getItem(STORAGE_KEY);
-//     const parsed = queue ? JSON.parse(queue) : [];
-//     parsed.push(entry);
-//     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-//   } catch (err) {
-//     console.error("Failed to save to offline queue", err);
-//   }
-// }
-
-// export const competitorBesiAPI = {
-//   getAll: (rksId?: string): BesiCompetitor[] => {
-//     if (rksId) {
-//       return besiCompetitorData.filter((item) => item.rksId === rksId);
-//     }
-//     return besiCompetitorData;
-//   },
-
-//   getById: (id: string): BesiCompetitor | undefined => {
-//     return besiCompetitorData.find((item) => item.id === id);
-//   },
-
-//   addEntry: async (
-//     entry: Omit<BesiCompetitor, "id" | "timestamp">
-//   ): Promise<BesiCompetitor> => {
-//     try {
-//       // Alert.alert("newEntry", "masuk pa eko");
-//       await delay(2000);
-//       // 🔹 simulasi: kalau online langsung push ke data utama
-//       const newEntry: BesiCompetitor = {
-//         ...entry,
-//         id: nanoid(), //uuidv4(),
-//         timestamp: new Date().toISOString(),
-//       };
-//       // Alert.alert("newEntry", JSON.stringify(newEntry));
-//       besiCompetitorData.push(newEntry);
-//       return newEntry;
-//     } catch (err: any) {
-//       console.log("err", err);
-
-//       // 🔹 fallback offline → simpan ke AsyncStorage
-//       const queue = await AsyncStorage.getItem(STORAGE_KEY);
-//       const parsed: BesiCompetitor[] = queue ? JSON.parse(queue) : [];
-//       parsed.push({
-//         ...entry,
-//         id: nanoid(), //uuidv4(),
-//         timestamp: new Date().toISOString(),
-//       });
-//       // Alert.alert("newEntry", JSON.stringify(parsed));
-//       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-//       return parsed[parsed.length - 1];
-//     }
-//   },
-
-//   updateEntry: (id: string, updates: Partial<BesiCompetitor>): BesiCompetitor | null => {
-//     const index = besiCompetitorData.findIndex((item) => item.id === id);
-//     if (index === -1) return null;
-//     besiCompetitorData[index] = { ...besiCompetitorData[index], ...updates };
-//     return besiCompetitorData[index];
-//   },
-
-//   deleteEntry: (id: string): boolean => {
-//     const index = besiCompetitorData.findIndex((item) => item.id === id);
-//     if (index === -1) return false;
-//     besiCompetitorData.splice(index, 1);
-//     return true;
-//   },
-
-//   // 🔹 sync offline data
-//   syncOfflineQueue: async () => {
-//     try {
-//       const queue = await AsyncStorage.getItem(STORAGE_KEY);
-//       if (!queue) return;
-
-//       const parsed: BesiCompetitor[] = JSON.parse(queue);
-//       parsed.forEach((entry) => {
-//         besiCompetitorData.push({
-//           ...entry,
-//           id: nanoid(), //uuidv4(), // generate ulang biar unik
-//         });
-//       });
-
-//       await AsyncStorage.removeItem(STORAGE_KEY);
-//     } catch (err) {
-//       console.error("Failed to sync offline data", err);
-//     }
-//   },
-// };
 
 export const competitorBesiAPI = {
   getAll: async (rksId?: string) => {
@@ -469,39 +475,6 @@ export const salesOrderAPI = {
     return { success: true, order };
   },
   
-
-  // async createOrder(orderData: Omit<SalesOrder, 'id' | 'orderNumber' | 'status' | 'createdBy'>) {
-  //   await delay(2000);
-  //   // In real app: POST /api/sales-orders
-    
-  //   const newOrder: SalesOrder = {
-  //     ...orderData,
-  //     id: Date.now().toString(),
-  //     orderNumber: `SO-${String(mockSalesOrders.length + 1).padStart(4, '0')}`,
-  //     status: 'draft',
-  //     createdBy: '1'
-  //   };
-    
-  //   console.log('Order created:', newOrder);
-  //   return { success: true, order: newOrder };
-  // },
-
-  // async updateOrder(id: string, orderData: Partial<SalesOrder>) {
-  //   await delay(1500);
-  //   // In real app: PUT /api/sales-orders/${id}
-    
-  //   console.log('Order updated:', id, orderData);
-  //   return { success: true };
-  // },
-
-  // async submitForApproval(id: string) {
-  //   await delay(1000);
-  //   // In real app: POST /api/sales-orders/${id}/submit
-    
-  //   console.log('Order submitted for approval:', id);
-  //   return { success: true };
-  // },
-
   createOrder: async (orderData: Omit<SalesOrder, 'id' | 'orderNumber' | 'status' | 'createdBy'>) => {
     await delay(2000);
     const newOrder: SalesOrder = {
@@ -566,14 +539,6 @@ export const salesOrderAPI = {
     console.log('Order rejected:', id, 'reason:', reason, 'by:', rejectedBy);
     return { success: true };
   },
-
-  // async deleteOrder(id: string) {
-  //   await delay(500);
-  //   // In real app: DELETE /api/sales-orders/${id}
-    
-  //   console.log('Order deleted:', id);
-  //   return { success: true };
-  // },
 
   deleteOrder: async (id: string) => {
     await delay(500);
@@ -700,13 +665,6 @@ export const collectionAPI = {
     
     return { success: true, invoices };
   },
-
-  // async getPayments(filters?: { dateFrom?: string; dateTo?: string }) {
-  //   await delay(1000);
-  //   // In real app: GET /api/payments with query params
-    
-  //   return { success: true, payments: mockPayments };
-  // },
 
   async getPayments(filters?: { status?: string; customerId?: string }) {
     await delay(1000);

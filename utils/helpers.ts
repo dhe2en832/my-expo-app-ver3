@@ -373,3 +373,39 @@ export const calculateSalesRealization = (orders: SalesOrder[]): { nominal: numb
     { nominal: 0, units: 0 }
   );
 };
+
+// utils/helper.ts
+
+/**
+ * Mengenkripsi password sesuai logika backend (reverse dari decryptPass)
+ * Contoh: encryptPass("12345") → "Kdof#"
+ */
+export function encryptPass(plainPassword: string): string {
+  if (!plainPassword || typeof plainPassword !== 'string') {
+    return '';
+  }
+
+  const len = plainPassword.length;
+
+  // Langkah 1: Tambahkan `len` ke setiap karakter
+  let shifted = '';
+  for (let i = 0; i < len; i++) {
+    const newCharCode = plainPassword.charCodeAt(i) + len;
+    shifted += String.fromCharCode(newCharCode);
+  }
+
+  // Langkah 2: Pisahkan karakter di posisi ganjil (0,2,4...) dan genap (1,3,5...)
+  let odd = ''; // posisi 0, 2, 4, ...
+  let even = ''; // posisi 1, 3, 5, ...
+
+  for (let i = 0; i < len; i++) {
+    if (i % 2 === 0) {
+      odd += shifted[i];
+    } else {
+      even += shifted[i];
+    }
+  }
+
+  // Langkah 3: Gabungkan odd + even
+  return odd + even;
+}
