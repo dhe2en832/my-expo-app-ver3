@@ -1,5 +1,6 @@
-//my-expo-app/app/login.tsx
-import React, { useState } from 'react';
+// my-expo-app/app/login.tsx
+// screens/LoginScreen.tsx
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,119 +11,166 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { User, Lock, Eye, EyeOff } from 'lucide-react-native';
+import { User, Lock, Building, Eye, EyeOff } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
-// import CustomButton from '@/components/CustomButton';
 
 export default function LoginScreen() {
   const [username, setUsername] = useState<string>('');
-  const [password, setPassword] = useState<string>('');
+  const [password, setPassword] = useState<string>(''); // boleh kosong
+  const [kodeCabang, setKodeCabang] = useState<string>('01');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const { login } = useAuth();
+  const passwordRef = useRef<TextInput>(null);
+  const branchRef = useRef<TextInput>(null);
 
   const handleLogin = async () => {
-    if (!username.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please enter username and password');
+    // Hanya userid dan kodecabang yang wajib
+    if (!username.trim() || !kodeCabang.trim()) {
+      Alert.alert('Error', 'Username and Branch Code are required');
       return;
     }
 
     setLoading(true);
     try {
-      await login(username, password);
-      router.replace('/(tabs)');
-    } catch {
-      Alert.alert('Login Failed', 'Invalid username or password');
+      const success = await login(username, password, kodeCabang);
+      if (success) {
+        router.replace('/(tabs)');
+      } else {
+        Alert.alert('Login Failed', 'Invalid credentials or branch code');
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      Alert.alert('Login Failed', 'Unable to connect to server. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleForgotPassword = () => {
-    Alert.alert('Forgot Password', 'Please contact your administrator to reset your password.');
+    Alert.alert('Forgot Password', 'Please contact your administrator.');
   };
 
+  // Gunakan ScrollView dalam KeyboardAvoidingView untuk keamanan
   return (
     <SafeAreaView style={styles.container}>
-      <LinearGradient
-        colors={['#667eea', '#764ba2']}
-        style={styles.gradient}
-      >
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      <LinearGradient colors={['#667eea', '#764ba2']} style={styles.gradient}>
+        <KeyboardAvoidingView
+          // Gunakan 'padding' untuk semua platform → lebih stabil di Android
+          behavior="padding"
           style={styles.keyboardView}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
         >
-          <View style={styles.content}>
-            <View style={styles.header}>
-              <Text style={styles.title}>My Expo</Text>
-              <Text style={styles.subtitle}>Professional Sales Management</Text>
-            </View>
-
-            <View style={styles.form}>
-              <View style={styles.inputContainer}>
-                <User color="#666" size={20} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Username"
-                  placeholderTextColor="#999"
-                  value={username}
-                  onChangeText={setUsername}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.content}>
+              <View style={styles.header}>
+                <Text style={styles.title}>My Expo</Text>
+                <Text style={styles.subtitle}>Professional Sales Management</Text>
               </View>
 
-              <View style={styles.inputContainer}>
-                <Lock color="#666" size={20} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Password"
-                  placeholderTextColor="#999"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                />
+              <View style={styles.form}>
+                {/* Username */}
+                <View style={styles.inputContainer}>
+                  <User color="#666" size={20} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Username"
+                    placeholderTextColor="#999"
+                    value={username}
+                    onChangeText={setUsername}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="next"
+                    onSubmitEditing={() => {
+                      // Fokus ke input berikutnya
+                      passwordRef.current?.focus();
+                    }}
+                  />
+                </View>
+
+                {/* Password (boleh kosong) */}
+                <View style={styles.inputContainer}>
+                  <Lock color="#666" size={20} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Password (optional)"
+                    placeholderTextColor="#999"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    returnKeyType="next"
+                    onSubmitEditing={() => {
+                      branchRef.current?.focus();
+                    }}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowPassword(!showPassword)}
+                    style={styles.eyeIcon}
+                  >
+                    {showPassword ? (
+                      <EyeOff color="#666" size={20} />
+                    ) : (
+                      <Eye color="#666" size={20} />
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                {/* Kode Cabang */}
+                <View style={styles.inputContainer}>
+                  <Building color="#666" size={20} style={styles.inputIcon} />
+                  <TextInput
+                    ref={branchRef}
+                    style={styles.input}
+                    placeholder="Branch Code (e.g. 01)"
+                    placeholderTextColor="#999"
+                    value={kodeCabang}
+                    onChangeText={setKodeCabang}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="done"
+                    onSubmitEditing={handleLogin}
+                  />
+                </View>
+
                 <TouchableOpacity
-                  onPress={() => setShowPassword(!showPassword)}
-                  style={styles.eyeIcon}
+                  style={[styles.loginButton, loading && styles.loginButtonDisabled]}
+                  onPress={handleLogin}
+                  disabled={loading}
                 >
-                  {showPassword ? (
-                    <EyeOff color="#666" size={20} />
-                  ) : (
-                    <Eye color="#666" size={20} />
-                  )}
+                  <Text style={styles.loginButtonText}>
+                    {loading ? 'Signing In...' : 'Sign In'}
+                  </Text>
                 </TouchableOpacity>
+
+                {/* <TouchableOpacity onPress={handleForgotPassword}>
+                  <Text style={styles.forgotPassword}>Forgot Password?</Text>
+                </TouchableOpacity> */}
               </View>
 
-              <TouchableOpacity
-                style={[styles.loginButton, loading && styles.loginButtonDisabled]}
-                onPress={handleLogin}
-                disabled={loading}
-              >
-                <Text style={styles.loginButtonText}>
-                  {loading ? 'Signing In...' : 'Sign In'}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={handleForgotPassword}>
-                <Text style={styles.forgotPassword}>Forgot Password?</Text>
-              </TouchableOpacity>
+              <View style={styles.footer}>
+                <Text style={styles.footerText}>©batasku-faspro</Text>
+                {/* <Text style={styles.footerText}>
+                  Username: administrator | Password: (optional) | Branch: 01
+                </Text> */}
+              </View>
             </View>
-
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>Demo Credentials:</Text>
-              <Text style={styles.footerText}>Username: demo | Password: demo123</Text>
-            </View>
-          </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
     </SafeAreaView>
   );
 }
+
+// Ref untuk fokus input
+const branchRef = React.createRef<TextInput>();
 
 const styles = StyleSheet.create({
   container: {
@@ -134,14 +182,19 @@ const styles = StyleSheet.create({
   keyboardView: {
     flex: 1,
   },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingBottom: 40, // tambahan ruang bawah saat keyboard muncul
+  },
   content: {
     flex: 1,
     justifyContent: 'center',
-    paddingHorizontal: 32,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: 32, // dikurangi dari 48 → lebih ringkas
   },
   title: {
     fontSize: 32,
@@ -154,7 +207,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.8)',
   },
   form: {
-    marginBottom: 32,
+    marginBottom: 24,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -200,6 +253,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     alignItems: 'center',
+    marginTop: 16,
   },
   footerText: {
     color: 'rgba(255, 255, 255, 0.7)',

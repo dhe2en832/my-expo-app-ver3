@@ -1,4 +1,7 @@
 // services.ts
+// Modul API untuk berinteraksi dengan backend
+// Gunakan axios untuk HTTP requests
+// Gunakan SecureStore untuk penyimpanan token aman
 import {
   mockRKS,
   mockCustomers,
@@ -59,9 +62,10 @@ export const loginAPI = {
    * @returns {Promise<LoginResponse>}
    */
   login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
+   console.log('Body request login:', credentials);
     try {
       const response = await apiClient.post<LoginResponse>('/login', credentials);
-
+        console.log('Response login:', response.data);
       // Jika response dari backend sesuai format
       if (response.data.success && response.data.data) {
         const { token, user } = response.data.data;
