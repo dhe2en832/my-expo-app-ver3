@@ -260,14 +260,32 @@ export const truncateText = (text: string, maxLength: number): string => {
   return text.substring(0, maxLength - 3) + '...';
 };
 
-// Get greeting based on time
-export const getGreeting = (): string => {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Selamat Pagi';
-  if (hour < 17) return 'Selamat Siang';
-  return 'Selamat Malam';
+// // Get greeting based on time
+// export const getGreeting = (): string => {
+//   const hour = new Date().getHours();
+//   if (hour < 12) return 'Selamat Pagi';
+//   if (hour < 17) return 'Selamat Siang';
+//   return 'Selamat Malam';
+// };
+// utils/helpers.ts
+
+/**
+ * Ambil kata pertama dari string (nama depan)
+ * Contoh: "Admin created by systems" → "Admin"
+ */
+export const getFirstName = (fullName: string): string => {
+  if (!fullName || typeof fullName !== 'string') return 'User';
+  return fullName.split(' ')[0];
 };
 
+// Fungsi greeting tetap ada (jika sudah ada)
+export const getGreeting = (): string => {
+  const hour = new Date().getHours();
+  if (hour < 11) return 'Selamat Pagi';
+  if (hour < 15) return 'Selamat Siang';
+  if (hour < 18) return 'Selamat Sore';
+  return 'Selamat Malam';
+};
 // Get shift based on time
 export const getCurrentShift = (): 'morning' | 'afternoon' | 'night' => {
   const hour = new Date().getHours();

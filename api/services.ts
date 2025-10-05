@@ -61,8 +61,8 @@ export const loginAPI = {
    * Melakukan login ke backend
    * @returns {Promise<LoginResponse>}
    */
-  login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
-   console.log('Body request login:', credentials);
+    login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
+    console.log('Body request login:', credentials);
     try {
       const response = await apiClient.post<LoginResponse>('/login', credentials);
         console.log('Response login:', response.data);
@@ -107,11 +107,35 @@ export const loginAPI = {
   /**
    * Logout: hapus token & user dari secure storage
    */
-  logout: async (): Promise<void> => {
+  // logout: async (): Promise<void> => {
+  //   await SecureStore.deleteItemAsync('auth_token');
+  //   await SecureStore.deleteItemAsync('user_data');
+  // },
+/**
+ * Logout: kirim request ke backend untuk blacklist token, lalu hapus dari secure storage
+ */
+logout: async (): Promise<void> => {
+  try {
+    // Ambil token saat ini
+    const token = await SecureStore.getItemAsync('auth_token');
+    
+    if (token) {
+      // Kirim request ke endpoint logout
+      await apiClient.post('/login/logout', {}, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+    }
+  } catch (error) {
+    console.warn('Logout API warning (token may be invalid):', error);
+    // Tetap lanjutkan logout di client meski API gagal
+  } finally {
+    // Hapus token & user dari penyimpanan lokal
     await SecureStore.deleteItemAsync('auth_token');
     await SecureStore.deleteItemAsync('user_data');
-  },
-
+  }
+},
   /**
    * Cek apakah user sudah login (untuk auto-login saat app dibuka)
    */

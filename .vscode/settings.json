@@ -1,0 +1,25 @@
+{
+  // Automatically format files on save
+  "editor.formatOnSave": true,
+  // Only format the modified ranges on save (safer for large files)
+  "editor.formatOnSaveMode": "modifications",
+  // Trim trailing whitespace on save
+  "files.trimTrailingWhitespace": true,
+
+  // Default formatter (adjust if you use a different extension)
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+
+  // Ensure common JS/TS filetypes use the same formatter
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  }
+}

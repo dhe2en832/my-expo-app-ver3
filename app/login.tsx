@@ -7,16 +7,17 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
+  // SafeAreaView,
   Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { User, Lock, Building, Eye, EyeOff } from 'lucide-react-native';
-import { router } from 'expo-router';
-import { useAuth } from '@/contexts/AuthContext';
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { User, Lock, Building, Eye, EyeOff } from "lucide-react-native";
+import { router } from "expo-router";
+import { useAuth } from "@/contexts/AuthContext";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function LoginScreen() {
   const [username, setUsername] = useState<string>('');
