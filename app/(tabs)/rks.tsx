@@ -18,7 +18,8 @@ import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { rksAPI, attendanceAPI } from "../../api/services";
-import { mockCustomers, RKS, Customer, AttendanceRecord } from "@/api/mockData";
+// import { mockCustomers, RKS, Customer, AttendanceRecord } from "@/api/mockData";
+import { RKS, Customer, AttendanceRecord } from "@/api/mockData";
 import { useOfflineQueue } from "@/contexts/OfflineContext";
 import { calculateDistance, getCurrentShift } from "@/utils/helpers";
 import { LinearGradient } from "expo-linear-gradient";
@@ -240,40 +241,101 @@ export default function RKSPage() {
   const isAnyCheckedIn = rksList.some((r) => r.checkIn && !r.checkOut);
 
   // REVISI LOGIKA FILTER
+  // const filterByRange = useCallback(
+  //   (list: RKS[]) => {
+  //     const now = new Date();
+
+  //     // 1. Filter Custom Date (Bulan/Tahun) - PRIORITAS UTAMA
+  //     if (customDate) {
+  //       return list.filter((r) => {
+  //         const d = new Date(r.scheduledDate);
+  //         return (
+  //           d.getMonth() === customDate.month &&
+  //           d.getFullYear() === customDate.year
+  //         );
+  //       });
+  //     }
+
+  //     // 2. Filter Tab (today, week, month)
+  //     if (range === "today") {
+  //       const todayStr = now.toISOString().split("T")[0];
+  //       return list.filter((r) => r.scheduledDate === todayStr);
+  //     }
+  //     if (range === "week") {
+  //       const start = new Date(now);
+  //       start.setDate(now.getDate() - now.getDay()); // Sunday as start
+  //       const end = new Date(start);
+  //       end.setDate(start.getDate() + 7);
+  //       return list.filter((r) => {
+  //         const d = new Date(r.scheduledDate);
+  //         return d >= start && d <= end;
+  //       });
+  //     }
+  //     // month (Bulan berjalan)
+  //     return list.filter((r) => {
+  //       const d = new Date(r.scheduledDate);
+  //       return (
+  //         d.getMonth() === now.getMonth() &&
+  //         d.getFullYear() === now.getFullYear()
+  //       );
+  //     });
+  //   },
+  //   [range, customDate]
+  // );
+
   const filterByRange = useCallback(
     (list: RKS[]) => {
       const now = new Date();
 
-      // 1. Filter Custom Date (Bulan/Tahun) - PRIORITAS UTAMA
+      // ✅ Helper: Parse "2025-09-07 09:58:00" → Date dengan aman
+      const safeParseDate = (str: string): Date => {
+        if (!str) return new Date(NaN);
+        if (str.includes(" ")) {
+          const [datePart, timePart] = str.split(" ", 2);
+          return new Date(`${datePart}T${timePart}`);
+        }
+        return new Date(str);
+      };
+
+      // 1. Filter Custom Date (Bulan/Tahun) — PRIORITAS UTAMA
       if (customDate) {
         return list.filter((r) => {
-          const d = new Date(r.scheduledDate);
+          const d = safeParseDate(r.scheduledDate);
           return (
+            !isNaN(d.getTime()) &&
             d.getMonth() === customDate.month &&
             d.getFullYear() === customDate.year
           );
         });
       }
 
-      // 2. Filter Tab (today, week, month)
+      // 2. Filter Tab
       if (range === "today") {
-        const todayStr = now.toISOString().split("T")[0];
-        return list.filter((r) => r.scheduledDate === todayStr);
+        const todayStr = now.toISOString().split("T")[0]; // "2025-10-06"
+        return list.filter((r) => {
+          const d = safeParseDate(r.scheduledDate);
+          return (
+            !isNaN(d.getTime()) && d.toISOString().split("T")[0] === todayStr
+          );
+        });
       }
+
       if (range === "week") {
         const start = new Date(now);
-        start.setDate(now.getDate() - now.getDay()); // Sunday as start
+        start.setDate(now.getDate() - now.getDay()); // Minggu
         const end = new Date(start);
         end.setDate(start.getDate() + 7);
         return list.filter((r) => {
-          const d = new Date(r.scheduledDate);
-          return d >= start && d <= end;
+          const d = safeParseDate(r.scheduledDate);
+          return !isNaN(d.getTime()) && d >= start && d <= end;
         });
       }
-      // month (Bulan berjalan)
+
+      // month
       return list.filter((r) => {
-        const d = new Date(r.scheduledDate);
+        const d = safeParseDate(r.scheduledDate);
         return (
+          !isNaN(d.getTime()) &&
           d.getMonth() === now.getMonth() &&
           d.getFullYear() === now.getFullYear()
         );
@@ -319,132 +381,268 @@ export default function RKSPage() {
     }
   };
 
-  const handleCheckIn = async (rks: RKS) => {
-    try {
-      setCheckingInId(rks.id);
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Izin Lokasi Dibutuhkan",
-          "Aplikasi memerlukan akses lokasi untuk melakukan check-in."
-        );
-        return;
-      }
+  const askToUpdateGeofence = (): Promise<boolean> => {
+  return new Promise((resolve) => {
+    Alert.alert(
+      "Update Lokasi Customer?",
+      "Customer ini belum memiliki lokasi tetap. Apakah Anda ingin menyimpan lokasi saat ini sebagai lokasi utama customer?",
+      [
+        { text: "Tidak", onPress: () => resolve(false), style: "cancel" },
+        { text: "Ya", onPress: () => resolve(true) },
+      ],
+      { cancelable: true }
+    );
+  });
+};
 
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-      const lat = loc.coords.latitude;
-      const lon = loc.coords.longitude;
-      const acc = loc.coords.accuracy ?? 999;
-
-      const customerLoc = rks.customerLocation || rks.coordinates;
-      if (!customerLoc) {
-        Alert.alert(
-          "Lokasi customer tidak tersedia",
-          "Tidak dapat memvalidasi geofence."
-        );
-        return;
-      }
-
-      const dist = calculateDistance(
-        lat,
-        lon,
-        customerLoc.latitude,
-        customerLoc.longitude
-      );
-      const allowed = rks.radius ?? 150;
-
-      if (dist > allowed) {
-        Alert.alert(
-          "Diluar Jarak",
-          `Anda berada ${Math.round(
-            dist
-          )} m dari lokasi customer. Jarak maksimal ${allowed} m.\n\nLanjutkan check-in?`,
-          [
-            { text: "Batal", style: "cancel" },
-
-            {
-              text: "Lanjutkan",
-              onPress: () => proceedWithCheckIn(rks, lat, lon, acc),
-            },
-          ]
-        );
-        return;
-      }
-
-      // Jika dalam radius, lanjutkan langsung
-      await proceedWithCheckIn(rks, lat, lon, acc);
-    } catch (err) {
-      console.error("handleCheckIn error:", err);
-      Alert.alert("Error", "Gagal melakukan check in.");
-    } finally {
-      setCheckingInId(null);
+const handleCheckIn = async (rks: RKS) => {
+  try {
+    setCheckingInId(rks.id);
+    let { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Izin Lokasi Dibutuhkan", "Aplikasi memerlukan akses lokasi untuk melakukan check-in.");
+      return;
     }
-  };
+
+    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+    const lat = loc.coords.latitude;
+    const lon = loc.coords.longitude;
+    const acc = loc.coords.accuracy ?? 999;
+
+    const customerLoc = rks.customerLocation || rks.coordinates;
+    const hasLocation = !!customerLoc;
+
+    let dist = Infinity;
+    let allowed = rks.radius ?? 150;
+
+    if (hasLocation) {
+      dist = calculateDistance(lat, lon, customerLoc.latitude, customerLoc.longitude);
+    }
+
+    const shouldAskGeofence = !hasLocation; // ✅ hanya tanya jika belum punya lokasi
+
+    const proceed = async (force: boolean = false) => {
+      let updateGeofence = false;
+      if (shouldAskGeofence) {
+        updateGeofence = await askToUpdateGeofence();
+      }
+      await proceedWithCheckIn(rks, lat, lon, acc, updateGeofence);
+    };
+
+    if (hasLocation && dist > allowed) {
+      Alert.alert(
+        "Diluar Jarak",
+        `Anda berada ${Math.round(dist)} m dari lokasi customer. Jarak maksimal ${allowed} m.\nLanjutkan check-in?`,
+        [
+          { text: "Batal", style: "cancel" },
+          { text: "Lanjutkan", onPress: () => proceed(true) },
+        ]
+      );
+      return;
+    }
+
+    // Jika dalam radius atau tidak punya lokasi → lanjutkan (dengan konfirmasi geofence jika perlu)
+    await proceed();
+  } catch (err) {
+    console.error("handleCheckIn error:", err);
+    Alert.alert("Error", "Gagal melakukan check in.");
+  } finally {
+    setCheckingInId(null);
+  }
+};
+
+  // const handleCheckIn = async (rks: RKS) => {
+  //   try {
+  //     setCheckingInId(rks.id);
+  //     let { status } = await Location.requestForegroundPermissionsAsync();
+  //     if (status !== "granted") {
+  //       Alert.alert(
+  //         "Izin Lokasi Dibutuhkan",
+  //         "Aplikasi memerlukan akses lokasi untuk melakukan check-in."
+  //       );
+  //       return;
+  //     }
+
+  //     const loc = await Location.getCurrentPositionAsync({
+  //       accuracy: Location.Accuracy.High,
+  //     });
+  //     const lat = loc.coords.latitude;
+  //     const lon = loc.coords.longitude;
+  //     const acc = loc.coords.accuracy ?? 999;
+
+  //     const customerLoc = rks.customerLocation || rks.coordinates;
+  //     if (!customerLoc) {
+  //       Alert.alert(
+  //         "Lokasi customer tidak tersedia",
+  //         "Tidak dapat memvalidasi geofence."
+  //       );
+  //       return;
+  //     }
+
+  //     const dist = calculateDistance(
+  //       lat,
+  //       lon,
+  //       customerLoc.latitude,
+  //       customerLoc.longitude
+  //     );
+  //     const allowed = rks.radius ?? 150;
+
+  //     if (dist > allowed) {
+  //       Alert.alert(
+  //         "Diluar Jarak",
+  //         `Anda berada ${Math.round(
+  //           dist
+  //         )} m dari lokasi customer. Jarak maksimal ${allowed} m.\n\nLanjutkan check-in?`,
+  //         [
+  //           { text: "Batal", style: "cancel" },
+
+  //           {
+  //             text: "Lanjutkan",
+  //             onPress: () => proceedWithCheckIn(rks, lat, lon, acc),
+  //           },
+  //         ]
+  //       );
+  //       return;
+  //     }
+
+  //     // Jika dalam radius, lanjutkan langsung
+  //     await proceedWithCheckIn(rks, lat, lon, acc);
+  //   } catch (err) {
+  //     console.error("handleCheckIn error:", err);
+  //     Alert.alert("Error", "Gagal melakukan check in.");
+  //   } finally {
+  //     setCheckingInId(null);
+  //   }
+  // };
 
   // Fungsi helper untuk melanjutkan proses check-in
-  const proceedWithCheckIn = async (
-    rks: RKS,
-    lat: number,
-    lon: number,
-    acc: number
-  ) => {
-    try {
-      const selfie = await takeSelfieFront();
-      if (!selfie) return;
+  // const proceedWithCheckIn = async (
+  //   rks: RKS,
+  //   lat: number,
+  //   lon: number,
+  //   acc: number
+  // ) => {
+  //   try {
+  //     const selfie = await takeSelfieFront();
+  //     if (!selfie) return;
 
-      const shift = getCurrentShift();
-      const attendanceResp = await attendanceAPI.checkIn({
-        photo: selfie,
-        location: { latitude: lat, longitude: lon, accuracy: acc },
-        address: rks.customerAddress || rks.customerName,
-        shift,
-      });
-      const rksResp = await rksAPI.checkIn(rks.id, {
+  //     const shift = getCurrentShift();
+  //     const attendanceResp = await attendanceAPI.checkIn({
+  //       photo: selfie,
+  //       location: { latitude: lat, longitude: lon, accuracy: acc },
+  //       address: rks.customerAddress || rks.customerName,
+  //       shift,
+  //     });
+  //     const rksResp = await rksAPI.checkIn(rks.id, {
+  //       latitude: lat,
+  //       longitude: lon,
+  //       accuracy: acc,
+  //       photo: selfie,
+  //     });
+  //     if (!rksResp.success) {
+  //       Alert.alert("Error", rksResp.error || "Gagal check in.");
+  //       return;
+  //     }
+
+  //     if (attendanceResp?.success && attendanceResp.record) {
+  //       await appendAttendanceLocal(attendanceResp.record as AttendanceRecord);
+  //     }
+
+  //     // REVISI: Menggunakan RKS yang dikembalikan oleh API
+  //     // BARIS REVISI:
+  //     setRksList((prev) =>
+  //       prev.map((x) => {
+  //         // Memastikan rksResp.rks ada sebelum membandingkan ID
+  //         if (rksResp.rks && x.id === rksResp.rks.id) {
+  //           return rksResp.rks;
+  //         }
+  //         return x;
+  //       })
+  //     );
+  //     addToQueue({
+  //       type: "rks_checkin",
+  //       data: {
+  //         rksId: rks.id,
+  //         latitude: lat,
+  //         longitude: lon,
+  //         accuracy: acc,
+  //         photo: "[local-uri]",
+  //       },
+  //       endpoint: `/api/rks/${rks.id}/checkin`,
+  //     });
+
+  //     Alert.alert("Check In berhasil", "Check In tersimpan.");
+  //   } catch (err) {
+  //     console.error("proceedWithCheckIn error:", err);
+  //     Alert.alert("Error", "Gagal melakukan check in.");
+  //   }
+  // };
+const proceedWithCheckIn = async (
+  rks: RKS,
+  lat: number,
+  lon: number,
+  acc: number,
+  updateGeofence: boolean = false // ✅ tambahkan parameter
+) => {
+  try {
+    const selfie = await takeSelfieFront();
+    console
+    if (!selfie) return;
+    const shift = getCurrentShift();
+
+    const attendanceResp = await attendanceAPI.checkIn({
+      photo: selfie,
+      location: { latitude: lat, longitude: lon, accuracy: acc },
+      address: rks.customerAddress || rks.customerName,
+      shift,
+    });
+
+    // ✅ Kirim flag updateGeofence ke backend
+    const rksResp = await rksAPI.checkIn(rks.id, {
+      latitude: lat,
+      longitude: lon,
+      accuracy: acc,
+      photo: selfie,
+      updateGeofence, // <-- tambahkan ini
+    });
+
+    if (!rksResp.success) {
+      Alert.alert("Error", rksResp.error || "Gagal check in.");
+      return;
+    }
+
+    if (attendanceResp?.success && attendanceResp.record) {
+      await appendAttendanceLocal(attendanceResp.record as AttendanceRecord);
+    }
+
+    setRksList((prev) =>
+      prev.map((x) => {
+        if (rksResp.rks && x.id === rksResp.rks.id) {
+          return rksResp.rks;
+        }
+        return x;
+      })
+    );
+
+    addToQueue({
+      type: "rks_checkin",
+      data: {
+        rksId: rks.id,
         latitude: lat,
         longitude: lon,
         accuracy: acc,
-        photo: selfie,
-      });
-      if (!rksResp.success) {
-        Alert.alert("Error", rksResp.error || "Gagal check in.");
-        return;
-      }
+        photo: "[local-uri]",
+        updateGeofence, // <-- simpan di queue juga
+      },
+      endpoint: `/api/rks/${rks.id}/checkin`,
+    });
 
-      if (attendanceResp?.success && attendanceResp.record) {
-        await appendAttendanceLocal(attendanceResp.record as AttendanceRecord);
-      }
-
-      // REVISI: Menggunakan RKS yang dikembalikan oleh API
-      // BARIS REVISI:
-      setRksList((prev) =>
-        prev.map((x) => {
-          // Memastikan rksResp.rks ada sebelum membandingkan ID
-          if (rksResp.rks && x.id === rksResp.rks.id) {
-            return rksResp.rks;
-          }
-          return x;
-        })
-      );
-      addToQueue({
-        type: "rks_checkin",
-        data: {
-          rksId: rks.id,
-          latitude: lat,
-          longitude: lon,
-          accuracy: acc,
-          photo: "[local-uri]",
-        },
-        endpoint: `/api/rks/${rks.id}/checkin`,
-      });
-
-      Alert.alert("Check In berhasil", "Check In tersimpan.");
-    } catch (err) {
-      console.error("proceedWithCheckIn error:", err);
-      Alert.alert("Error", "Gagal melakukan check in.");
-    }
-  };
+    Alert.alert("Check In berhasil", "Check In tersimpan.");
+  } catch (err) {
+    console.error("proceedWithCheckIn error:", err);
+    Alert.alert("Error", "Gagal melakukan check in.");
+  }
+};
 
   const handleCheckOut = async (rks: RKS) => {
     try {
@@ -617,6 +815,7 @@ export default function RKSPage() {
       const res = await rksAPI.addUnscheduledVisit(user?.kodeSales || "1", {
         // Ganti "1" dengan kodeSales user
         customerId: selectedCustomer.id,
+        customerNo: selectedCustomer.no,
         customerName: selectedCustomer.name,
         customerAddress: selectedCustomer.address,
         latitude: lat,
@@ -673,7 +872,7 @@ export default function RKSPage() {
         name: newCustomer.name,
         address: newCustomer.address,
         phone: newCustomer.phone,
-        type: newCustomer.type,
+        city: ""
       });
       if (res.success && res.rks) {
         // REVISI: Tambahkan customer baru ke awal list
@@ -719,6 +918,13 @@ export default function RKSPage() {
   // 🔑 LOGIKA UTAMA: CEK APAKAH HARI INI
   const today = new Date();
   const todayStr = today.toISOString().split("T")[0];
+  // Di dalam RKSPage component, sebelum return()
+  const getDatePart = useCallback((str: string): string => {
+    if (!str) return "";
+    if (str.includes(" ")) return str.substring(0, 10);
+    if (str.includes("T")) return str.split("T")[0];
+    return str;
+  }, []);
 
   // REVISI LOGIKA TAMPILAN BUTTON
   const renderItem = ({ item }: { item: RKS }) => {
@@ -728,8 +934,8 @@ export default function RKSPage() {
     const canViewActions = !!item.checkIn || item.status === "completed";
 
     // Check-in hanya boleh dilakukan hari ini
-    const isToday = item.scheduledDate === todayStr;
-
+    // const isToday = item.scheduledDate === todayStr;
+    const isToday = getDatePart(item.scheduledDate) === todayStr;
     // Jika sedang Check-In di RKS lain, tombol Check In di-disable
     const isAnotherCheckedIn = rksList.some(
       (r) => r.checkIn && !r.checkOut && r.id !== item.id
@@ -767,12 +973,22 @@ export default function RKSPage() {
         >
           {/* Tanggal + Hari */}
           <Text style={{ color: "#555", fontSize: 13, fontWeight: "600" }}>
+            {/* {new Intl.DateTimeFormat("id-ID", {
+              weekday: "long",
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            }).format(new Date(item.scheduledDate))} */}
             {new Intl.DateTimeFormat("id-ID", {
               weekday: "long",
               day: "numeric",
               month: "short",
               year: "numeric",
-            }).format(new Date(item.scheduledDate))}
+            }).format(
+              item.scheduledDate.includes(" ")
+                ? new Date(item.scheduledDate.replace(" ", "T"))
+                : new Date(item.scheduledDate)
+            )}
           </Text>
           {/* Status Badge */}
           <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
@@ -1256,7 +1472,7 @@ export default function RKSPage() {
           <View style={styles.header}>
             <Text style={styles.title}>Pilih Customer</Text>
           </View>
-          <FlatList
+          {/* <FlatList
             data={mockCustomers}
             keyExtractor={(c) => c.id}
             renderItem={({ item }) => (
@@ -1280,7 +1496,7 @@ export default function RKSPage() {
               paddingVertical: 8,
             }}
             style={{ flex: 1 }}
-          />
+          /> */}
           <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
             <TouchableOpacity
               style={styles.btnPrimary}
