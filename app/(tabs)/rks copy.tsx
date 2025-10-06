@@ -11,8 +11,8 @@ import {
   Alert,
   ActivityIndicator,
   Animated,
-  PanResponder,
-  Platform, // Import Platform untuk DatePicker
+  Easing,
+  PanResponder
 } from "react-native";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
@@ -22,19 +22,15 @@ import { mockCustomers, RKS, Customer, AttendanceRecord } from "@/api/mockData";
 import { useOfflineQueue } from "@/contexts/OfflineContext";
 import { calculateDistance, getCurrentShift } from "@/utils/helpers";
 import { LinearGradient } from "expo-linear-gradient";
-import { MaterialIcons } from "@expo/vector-icons";
+import { MaterialIcons } from '@expo/vector-icons';
 import { TabView, SceneMap, TabBar } from "react-native-tab-view";
 import { useWindowDimensions } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import { router, useFocusEffect, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Calendar } from "lucide-react-native"; // Menggunakan ikon kalender
+import { Plus } from "lucide-react-native";
 import { useAuth } from "../../contexts/AuthContext";
-// import DateTimePicker from "@react-native-community/datetimepicker"; // Jika ingin menggunakan native date picker
-import DateTimePicker from "@react-native-community/datetimepicker";
 
 type RangeKey = "today" | "week" | "month";
-// Custom Date state untuk filter Bulan/Tahun
-type CustomDate = { month: number; year: number };
 
 export default function RKSPage() {
   const router = useRouter();
@@ -52,6 +48,7 @@ export default function RKSPage() {
     phone: "",
     type: "new" as Customer["type"],
   });
+
   const [memoModalVisible, setMemoModalVisible] = useState(false);
   const [selectedRksForMemo, setSelectedRksForMemo] = useState<RKS | null>(
     null
@@ -78,15 +75,10 @@ export default function RKSPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
 
-  // Custom Filter State
-  const [calendarVisible, setCalendarVisible] = useState(false);
-  const [customDate, setCustomDate] = useState<CustomDate | null>(null);
-
   const fabAnim = useState(new Animated.Value(0))[0];
   const tooltipAnim = useState(new Animated.Value(0))[0];
   const pan = useState(new Animated.ValueXY({ x: 0, y: 0 }))[0];
   const { user } = useAuth();
-
   useFocusEffect(
     React.useCallback(() => {
       loadRKS();
@@ -94,9 +86,7 @@ export default function RKSPage() {
   );
 
   useEffect(() => {
-    // Set range sesuai tab, dan HAPUS filter custom
     setRange(tabToRange[index]);
-    setCustomDate(null);
   }, [index]);
 
   const openMemoModal = (rks: RKS) => {
@@ -117,12 +107,9 @@ export default function RKSPage() {
     };
     try {
       const res = await rksAPI.updateRKS(updatedRks);
-
-      // ✅ FIX: Memastikan res.rks ada dan menggunakan variabel lokal updatedItem
       if (res.success && res.rks) {
-        const updatedItem = res.rks;
         setRksList((prev) =>
-          prev.map((x) => (x.id === updatedItem.id ? updatedItem : x))
+          prev.map((x) => (x.id === res.rks.id ? res.rks : x))
         );
       }
     } catch (err) {
@@ -149,7 +136,6 @@ export default function RKSPage() {
         Animated.spring(fabAnim, {
           toValue: 1,
           useNativeDriver: true,
-
           friction: 5,
         }),
       ]).start();
@@ -189,6 +175,7 @@ export default function RKSPage() {
     ],
     opacity: fabAnim,
   };
+
   const newCustomerStyle = {
     transform: [
       { scale: fabAnim },
@@ -201,6 +188,7 @@ export default function RKSPage() {
     ],
     opacity: fabAnim,
   };
+
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onPanResponderGrant: () => {
@@ -235,27 +223,28 @@ export default function RKSPage() {
     } finally {
       setLoading(false);
     }
+    // try {
+    //   const kode_sales = await AsyncStorage.getItem("kode_sales");
+    //   const res = await rksAPI.getRKS(kode_sales || "");
+    //   // const res = await rksAPI.getRKS("1");
+    //   if (res.success) {
+    //     setRksList(res.rks);
+    //   } else {
+    //     setRksList([]);
+    //   }
+    // } catch (err) {
+    //   console.error("Error load RKS:", err);
+    //   setRksList([]);
+    // } finally {
+    //   setLoading(false);
+    // }
   };
 
   const isAnyCheckedIn = rksList.some((r) => r.checkIn && !r.checkOut);
 
-  // REVISI LOGIKA FILTER
   const filterByRange = useCallback(
     (list: RKS[]) => {
       const now = new Date();
-
-      // 1. Filter Custom Date (Bulan/Tahun) - PRIORITAS UTAMA
-      if (customDate) {
-        return list.filter((r) => {
-          const d = new Date(r.scheduledDate);
-          return (
-            d.getMonth() === customDate.month &&
-            d.getFullYear() === customDate.year
-          );
-        });
-      }
-
-      // 2. Filter Tab (today, week, month)
       if (range === "today") {
         const todayStr = now.toISOString().split("T")[0];
         return list.filter((r) => r.scheduledDate === todayStr);
@@ -270,7 +259,7 @@ export default function RKSPage() {
           return d >= start && d <= end;
         });
       }
-      // month (Bulan berjalan)
+      // month
       return list.filter((r) => {
         const d = new Date(r.scheduledDate);
         return (
@@ -279,7 +268,7 @@ export default function RKSPage() {
         );
       });
     },
-    [range, customDate]
+    [range]
   );
 
   const takeSelfieFront = async (): Promise<string | null> => {
@@ -322,6 +311,7 @@ export default function RKSPage() {
   const handleCheckIn = async (rks: RKS) => {
     try {
       setCheckingInId(rks.id);
+
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         Alert.alert(
@@ -363,7 +353,6 @@ export default function RKSPage() {
           )} m dari lokasi customer. Jarak maksimal ${allowed} m.\n\nLanjutkan check-in?`,
           [
             { text: "Batal", style: "cancel" },
-
             {
               text: "Lanjutkan",
               onPress: () => proceedWithCheckIn(rks, lat, lon, acc),
@@ -401,12 +390,14 @@ export default function RKSPage() {
         address: rks.customerAddress || rks.customerName,
         shift,
       });
+
       const rksResp = await rksAPI.checkIn(rks.id, {
         latitude: lat,
         longitude: lon,
         accuracy: acc,
         photo: selfie,
       });
+
       if (!rksResp.success) {
         Alert.alert("Error", rksResp.error || "Gagal check in.");
         return;
@@ -416,17 +407,6 @@ export default function RKSPage() {
         await appendAttendanceLocal(attendanceResp.record as AttendanceRecord);
       }
 
-      // REVISI: Menggunakan RKS yang dikembalikan oleh API
-      // BARIS REVISI:
-      setRksList((prev) =>
-        prev.map((x) => {
-          // Memastikan rksResp.rks ada sebelum membandingkan ID
-          if (rksResp.rks && x.id === rksResp.rks.id) {
-            return rksResp.rks;
-          }
-          return x;
-        })
-      );
       addToQueue({
         type: "rks_checkin",
         data: {
@@ -476,36 +456,38 @@ export default function RKSPage() {
       const durationMin = Math.round(
         (now.getTime() - checkInTime.getTime()) / 60000
       );
-
-      // Panggil API checkOut, biarkan backend mengupdate
-      const rksResp = await rksAPI.checkOut(rks.id, {
-        latitude: lat,
-        longitude: lon,
-        accuracy: acc,
-      });
-
-      if (!rksResp.success) {
-        Alert.alert("Error", rksResp.error || "Gagal check out.");
-        return;
-      }
-
-      if (rksResp.rks) {
-        const updatedItem = rksResp.rks;
+      const updateData: Partial<RKS> = {
+        checkOut: {
+          timestamp: new Date().toISOString(),
+          latitude: lat,
+          longitude: lon,
+          accuracy: acc,
+        },
+        duration: durationMin,
+        status: "completed",
+      };
+      const updatedRks = { ...rks, ...updateData };
+      const updateResp = (await rksAPI.updateRRSafe)
+        ? await rksAPI.updateRRSafe(updatedRks)
+        : await rksAPI.updateRKS(updatedRks);
+      if (updateResp?.success && updateResp.rks) {
         setRksList((prev) =>
-          prev.map((x) => (x.id === updatedItem.id ? updatedItem : x))
+          prev.map((x) => (x.id === rks.id ? updateResp.rks : x))
+        );
+      } else {
+        setRksList((prev) =>
+          prev.map((x) =>
+            x.id === rks.id
+              ? ({
+                  ...x,
+                  checkOut: updateData.checkOut,
+                  duration: durationMin,
+                  status: "completed",
+                } as RKS)
+              : x
+          )
         );
       }
-      // Update state dengan data dari response API
-      // BARIS REVISI:
-      // setRksList((prev) =>
-      //   prev.map((x) => {
-      //     // Memastikan rksResp.rks ada sebelum membandingkan ID
-      //     if (rksResp.rks && x.id === rks.id) {
-      //       return rksResp.rks;
-      //     }
-      //     return x;
-      //   })
-      // );
       const photoForCheckout =
         (rks.checkIn && (rks.checkIn.photo as any)) || "[no-photo]";
       const attendanceResp = await attendanceAPI.checkOut({
@@ -523,7 +505,7 @@ export default function RKSPage() {
       });
       Alert.alert(
         "Check Out berhasil",
-        `Durasi kunjungan: ${rksResp.rks?.duration || durationMin} menit`
+        `Durasi kunjungan: ${durationMin} menit`
       );
     } catch (err) {
       console.error("handleCheckOut error:", err);
@@ -533,6 +515,59 @@ export default function RKSPage() {
       setIsLoading(false);
     }
   };
+
+  // const handleUnscheduledVisit = async () => {
+  //   if (!selectedCustomer) {
+  //     Alert.alert("Pilih customer dulu");
+  //     return;
+  //   }
+  //   try {
+  //     setUnscheduledLoading(true);
+  //     let { status } = await Location.requestForegroundPermissionsAsync();
+  //     if (status !== 'granted') {
+  //       Alert.alert("Izin Lokasi Dibutuhkan", "Aplikasi memerlukan akses lokasi.");
+  //       return;
+  //     }
+  //     const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+  //     const lat = loc.coords.latitude;
+  //     const lon = loc.coords.longitude;
+  //     const acc = loc.coords.accuracy ?? 999;
+  //     const selfie = await takeSelfieFront();
+  //     if (!selfie) return;
+  //     const res = await rksAPI.addUnscheduledVisit("1", {
+  //       customerId: selectedCustomer.id,
+  //       customerName: selectedCustomer.name,
+  //       customerAddress: selectedCustomer.address,
+  //       latitude: lat,
+  //       longitude: lon,
+  //       accuracy: acc,
+  //       photo: selfie,
+  //     });
+  //     if (res.success) {
+  //       setRksList((prev) => [res.rks, ...prev]);
+  //       setModalType(null);
+  //       setSelectedCustomer(null);
+  //       const ares = await attendanceAPI.checkIn({
+  //         photo: selfie,
+  //         location: { latitude: lat, longitude: lon, accuracy: acc },
+  //         address: selectedCustomer.address,
+  //         shift: getCurrentShift(),
+  //       });
+  //       if (ares?.success && ares.record) await appendAttendanceLocal(ares.record as AttendanceRecord);
+  //       addToQueue({
+  //         type: "rks_additional",
+  //         data: { rksId: res.rks.id, photo: "[local-uri]" },
+  //         endpoint: `/api/rks/${res.rks.id}/additional`,
+  //       });
+  //       Alert.alert("Sukses", "Kunjungan tambahan dibuat dan check-in tercatat.");
+  //     }
+  //   } catch (err) {
+  //     console.error("handleUnscheduledVisit error:", err);
+  //     Alert.alert("Error", "Gagal membuat kunjungan tambahan.");
+  //   } finally {
+  //     setUnscheduledLoading(false);
+  //   }
+  // };
 
   const handleUnscheduledVisit = async () => {
     if (!selectedCustomer) {
@@ -578,7 +613,6 @@ export default function RKSPage() {
             `Anda berada ${Math.round(
               dist
             )} m dari lokasi customer. Jarak maksimal ${allowed} m.\n\nLanjutkan check-in?`,
-
             [
               { text: "Batal", style: "cancel" },
               {
@@ -607,15 +641,13 @@ export default function RKSPage() {
     lon: number,
     acc: number
   ) => {
-    if (!selectedCustomer) return;
-    // safety check
+    if (!selectedCustomer) return; // safety check
 
     try {
       const selfie = await takeSelfieFront();
       if (!selfie) return;
 
-      const res = await rksAPI.addUnscheduledVisit(user?.kodeSales || "1", {
-        // Ganti "1" dengan kodeSales user
+      const res = await rksAPI.addUnscheduledVisit("1", {
         customerId: selectedCustomer.id,
         customerName: selectedCustomer.name,
         customerAddress: selectedCustomer.address,
@@ -624,19 +656,21 @@ export default function RKSPage() {
         accuracy: acc,
         photo: selfie,
       });
+
       if (res.success && res.rks) {
         if (res.rks !== undefined) {
-          // REVISI: Tambahkan kunjungan baru ke awal list
           setRksList((prev) => [res.rks as RKS, ...prev]);
         }
         setModalType(null);
         setSelectedCustomer(null);
+
         const ares = await attendanceAPI.checkIn({
           photo: selfie,
           location: { latitude: lat, longitude: lon, accuracy: acc },
           address: selectedCustomer.address,
           shift: getCurrentShift(),
         });
+
         if (ares?.success && ares.record) {
           await appendAttendanceLocal(ares.record as AttendanceRecord);
         }
@@ -646,6 +680,7 @@ export default function RKSPage() {
           data: { rksId: res.rks.id, photo: "[local-uri]" },
           endpoint: `/api/rks/${res.rks.id}/additional`,
         });
+
         Alert.alert(
           "Sukses",
           "Kunjungan tambahan dibuat dan check-in tercatat."
@@ -668,15 +703,13 @@ export default function RKSPage() {
       return;
     }
     try {
-      const res = await rksAPI.addNewCustomerVisit(user?.kodeSales || "1", {
-        // Ganti "1" dengan kodeSales user
+      const res = await rksAPI.addNewCustomerVisit("1", {
         name: newCustomer.name,
         address: newCustomer.address,
         phone: newCustomer.phone,
         type: newCustomer.type,
       });
-      if (res.success && res.rks) {
-        // REVISI: Tambahkan customer baru ke awal list
+      if (res.success) {
         setRksList((prev) => [res.rks as RKS, ...prev]);
         setModalType(null);
         setNewCustomer({ name: "", address: "", phone: "", type: "new" });
@@ -692,9 +725,9 @@ export default function RKSPage() {
   };
 
   const handleCreateOrder = () => {
-    // TODO: Arahkan ke halaman SO dengan parameter customer ID
     router.push("/sales-order");
   };
+
   const handleTagihan = (customerId: string, customerName: string) => {
     router.push({
       pathname: "/collection",
@@ -717,68 +750,25 @@ export default function RKSPage() {
   };
 
   // 🔑 LOGIKA UTAMA: CEK APAKAH HARI INI
-  const today = new Date();
-  const todayStr = today.toISOString().split("T")[0];
+  const todayStr = new Date().toISOString().split("T")[0];
 
-  // REVISI LOGIKA TAMPILAN BUTTON
   const renderItem = ({ item }: { item: RKS }) => {
-    const canCheckIn = !item.checkIn && item.status !== "new-customer";
+    const canCheckIn = !item.checkIn;
     const canCheckOut = !!item.checkIn && !item.checkOut;
-    // REVISI: Action lain (SO, Catatan, dll) tampil jika SUDAH CheckIn ATAU sudah Completed
-    const canViewActions = !!item.checkIn || item.status === "completed";
-
-    // Check-in hanya boleh dilakukan hari ini
+    const isAnyCheckedIn = rksList.some((r) => r.checkIn && !r.checkOut);
     const isToday = item.scheduledDate === todayStr;
-
-    // Jika sedang Check-In di RKS lain, tombol Check In di-disable
-    const isAnotherCheckedIn = rksList.some(
-      (r) => r.checkIn && !r.checkOut && r.id !== item.id
-    );
-
-    // Status RKS
-    let statusText = "";
-    let statusColor = "";
-
-    if (item.status === "completed") {
-      statusText = "Selesai";
-      statusColor = "#4CAF50";
-    } else if (item.status === "incomplete") {
-      statusText = "Berlangsung";
-      statusColor = "#ff9800";
-    } else if (item.status === "new-customer") {
-      statusText = "Cust. Baru (Blm In)";
-      statusColor = "#3f51b5";
-    } else if (item.status === "additional") {
-      statusText = "Tambahan (In)";
-      statusColor = "#00bcd4";
-    } else {
-      statusText = "Terjadwal";
-      statusColor = "#666";
-    }
 
     return (
       <View style={styles.card}>
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          {/* Tanggal + Hari */}
-          <Text style={{ color: "#555", fontSize: 13, fontWeight: "600" }}>
-            {new Intl.DateTimeFormat("id-ID", {
-              weekday: "long",
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            }).format(new Date(item.scheduledDate))}
-          </Text>
-          {/* Status Badge */}
-          <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-            <Text style={styles.badgeText}>{statusText}</Text>
-          </View>
-        </View>
+        {/* Tanggal + Hari */}
+        <Text style={{ color: "#555", fontSize: 13, fontWeight: "600" }}>
+          {new Intl.DateTimeFormat("id-ID", {
+            weekday: "long",
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          }).format(new Date(item.scheduledDate))}
+        </Text>
 
         {/* ID Customer */}
         <Text style={{ color: "#888", fontSize: 12, marginTop: 4 }}>
@@ -789,24 +779,16 @@ export default function RKSPage() {
         <Text style={styles.title}>{item.customerName}</Text>
 
         {/* Alamat */}
-
         <Text style={{ color: "#666", marginTop: 6 }}>
           {item.customerAddress}
         </Text>
 
-        {/* Durasi */}
-        {item.duration != null && (
-          <Text
-            style={{
-              color: "#666",
-              marginTop: 4,
-              fontSize: 13,
-              fontWeight: "600",
-            }}
-          >
-            Durasi: {item.duration} menit
+        {/* Waktu (opsional) */}
+        {item.scheduledTime ? (
+          <Text style={{ color: "#666", marginTop: 4, fontSize: 13 }}>
+            {item.scheduledTime}
           </Text>
-        )}
+        ) : null}
 
         {/* Tombol Aksi */}
         <View
@@ -817,112 +799,94 @@ export default function RKSPage() {
             flexWrap: "wrap",
           }}
         >
-          {/* 1. Tombol Check In */}
-          {canCheckIn &&
-            isToday && ( // Check In hanya untuk scheduled/new-customer hari ini
-              <TouchableOpacity
-                style={[
-                  styles.primaryButton,
-                  (checkingInId !== null || isAnotherCheckedIn) && {
-                    opacity: 0.5,
-                  },
-                ]}
-                onPress={() => handleCheckIn(item)}
-                disabled={checkingInId !== null || isAnotherCheckedIn}
-              >
-                <LinearGradient
-                  colors={["#4CAF50", "#45a049"]}
-                  style={styles.primaryButtonGradient}
-                >
-                  {checkingInId === item.id ? (
-                    <View
-                      style={{ flexDirection: "row", alignItems: "center" }}
-                    >
-                      <ActivityIndicator size="small" color="#fff" />
-                      <Text
-                        style={[styles.primaryButtonText, { marginLeft: 8 }]}
-                      >
-                        Sedang proses...
-                      </Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.primaryButtonText}>Check In</Text>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
-
-          {/* 2. Tombol Check Out */}
-          {canCheckOut && (
+          {canCheckIn && (
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: "#f44336" }]}
-              onPress={() => handleCheckOut(item)}
+              style={[
+                styles.primaryButton,
+                (!isToday ||
+                  checkingInId !== null ||
+                  (isAnyCheckedIn && !canCheckOut)) && { opacity: 0.5 },
+              ]}
+              onPress={() => handleCheckIn(item)}
+              disabled={
+                !isToday ||
+                checkingInId !== null ||
+                (isAnyCheckedIn && !canCheckOut)
+              }
             >
-              <MaterialIcons name="logout" size={20} color="#fff" />
-              <Text style={[styles.actionButtonText, { marginLeft: 4 }]}>
-                Check Out
-              </Text>
+              <LinearGradient
+                colors={["#4CAF50", "#45a049"]}
+                style={styles.primaryButtonGradient}
+              >
+                {checkingInId === item.id ? (
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={[styles.primaryButtonText, { marginLeft: 8 }]}>
+                      Sedang proses...
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.primaryButtonText}>Check In</Text>
+                )}
+              </LinearGradient>
             </TouchableOpacity>
           )}
 
-          {/* 3. Tombol Aksi Lanjutan (SO, Catatan, Besi, Tagihan) */}
-          {canViewActions && (
+          {canCheckOut && (
             <>
               <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: "#ff9800" }]}
+                style={[styles.primaryButton, { backgroundColor: "#f44336" }]}
+                onPress={() => handleCheckOut(item)}
+              >
+                <MaterialIcons name="logout" size={20} color="#fff" />
+                <Text style={[styles.primaryButtonText, { marginLeft: 4 }]}>
+                  Check Out
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, { backgroundColor: "#ff9800" }]}
                 onPress={handleCreateOrder}
               >
                 <MaterialIcons name="shopping-cart" size={20} color="#fff" />
-
-                <Text style={[styles.actionButtonText, { marginLeft: 4 }]}>
+                <Text style={[styles.primaryButtonText, { marginLeft: 4 }]}>
                   SO
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: "#607d8b" }]}
+                style={[styles.primaryButton, { backgroundColor: "#607d8b" }]}
                 onPress={() => openMemoModal(item)}
               >
                 <MaterialIcons name="note" size={20} color="#fff" />
-                <Text style={[styles.actionButtonText, { marginLeft: 4 }]}>
+                <Text style={[styles.primaryButtonText, { marginLeft: 4 }]}>
                   Catatan
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: "#3f51b5" }]}
+                style={[styles.primaryButton, { backgroundColor: "#3f51b5" }]}
                 onPress={() => handleOpenBesiKompetitor(item)}
               >
                 <MaterialIcons name="build" size={20} color="#fff" />
-
-                <Text style={[styles.actionButtonText, { marginLeft: 4 }]}>
+                <Text style={[styles.primaryButtonText, { marginLeft: 4 }]}>
                   Besi
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: "#009688" }]}
+                style={[styles.primaryButton, { backgroundColor: "#009688" }]}
                 onPress={() =>
                   handleTagihan(item.customerId, item.customerName)
                 }
               >
                 <MaterialIcons name="receipt" size={20} color="#fff" />
-
-                <Text style={[styles.actionButtonText, { marginLeft: 4 }]}>
+                <Text style={[styles.primaryButtonText, { marginLeft: 4 }]}>
                   Tagihan
                 </Text>
               </TouchableOpacity>
             </>
           )}
 
-          {/* 4. Tanda Selesai */}
-          {item.status === "completed" && (
+          {!canCheckIn && !canCheckOut && (
             <View style={[styles.disabledButton]}>
               <Text style={{ color: "#444" }}>Selesai</Text>
-            </View>
-          )}
-
-          {/* Tanda Tidak Boleh Check In Hari Ini (RKS Lampau) */}
-          {canCheckIn && !isToday && (
-            <View style={[styles.disabledButton]}>
-              <Text style={{ color: "#444" }}>RKS Lampau</Text>
             </View>
           )}
         </View>
@@ -940,14 +904,9 @@ export default function RKSPage() {
       );
     }
     if (filtered.length === 0) {
-      // Menampilkan pesan berbeda jika menggunakan filter custom
-      const emptyMessage = customDate
-        ? `Tidak ada RKS pada ${customDate.year}/${customDate.month + 1}.`
-        : "Tidak ada RKS pada rentang ini.";
-
       return (
         <View style={{ padding: 20 }}>
-          <Text style={{ color: "#999" }}>{emptyMessage}</Text>
+          <Text style={{ color: "#999" }}>Tidak ada RKS pada rentang ini.</Text>
         </View>
       );
     }
@@ -968,196 +927,37 @@ export default function RKSPage() {
   });
 
   const renderTabBar = (props: any) => (
-    <View>
-      <TabBar
-        {...props}
-        indicatorStyle={{ backgroundColor: "#667eea", height: 3 }}
-        style={styles.tabBar}
-        labelStyle={styles.tabLabel}
-        activeColor="#667eea"
-        inactiveColor="#666"
-        pressColor="#f0f0f0"
-        renderLabel={({
-          route,
-          focused,
-        }: {
-          route: { key: string; title: string };
-          focused: boolean;
-        }) => (
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text
-              style={[styles.tabLabel, { color: focused ? "#667eea" : "#666" }]}
-            >
-              {route.title}
-            </Text>
-
-            {route.key === "today" && (
-              <View style={styles.smallBadge}>
-                <Text style={styles.badgeText}>Hari ini</Text>
-              </View>
-            )}
-          </View>
-        )}
-      />
-      {/* Tombol Filter Kustom (Bulan/Tahun) di bawah TabBar */}
-      <TouchableOpacity
-        style={styles.customFilterButton}
-        onPress={() => setCalendarVisible(true)}
-      >
-        <Calendar size={18} color={customDate ? "#fff" : "#667eea"} />
-        <Text
-          style={[styles.customFilterText, customDate && { color: "#fff" }]}
-        >
-          {customDate
-            ? `Filter: ${customDate.month + 1}/${customDate.year}`
-            : "Filter Bulan/Tahun"}
-        </Text>
-      </TouchableOpacity>
-    </View>
+    <TabBar
+      {...props}
+      indicatorStyle={{ backgroundColor: "#667eea", height: 3 }}
+      style={styles.tabBar}
+      labelStyle={styles.tabLabel}
+      activeColor="#667eea"
+      inactiveColor="#666"
+      pressColor="#f0f0f0"
+      renderLabel={({
+        route,
+        focused,
+      }: {
+        route: { key: string; title: string };
+        focused: boolean;
+      }) => (
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Text
+            style={[styles.tabLabel, { color: focused ? "#667eea" : "#666" }]}
+          >
+            {route.title}
+          </Text>
+          {route.key === "today" && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>Hari ini</Text>
+            </View>
+          )}
+        </View>
+      )}
+    />
   );
 
-  // KOMPONEN: Modal Pemilih Bulan/Tahun
-  const CalendarModal = () => {
-    // Gunakan state hanya untuk bulan & tahun, bukan tanggal lengkap
-    const [tempMonth, setTempMonth] = useState(
-      customDate?.month ?? today.getMonth()
-    );
-    const [tempYear, setTempYear] = useState(
-      customDate?.year ?? today.getFullYear()
-    );
-
-    const handleSave = () => {
-      setCustomDate({
-        month: tempMonth,
-        year: tempYear,
-      });
-      setCalendarVisible(false);
-      setIndex(2); // Pindah ke tab "Bulan ini"
-    };
-
-    const handleClear = () => {
-      setCustomDate(null);
-      setCalendarVisible(false);
-      setIndex(0);
-    };
-
-    // Daftar bulan
-    const months = [
-      "Januari",
-      "Februari",
-      "Maret",
-      "April",
-      "Mei",
-      "Juni",
-      "Juli",
-      "Agustus",
-      "September",
-      "Oktober",
-      "November",
-      "Desember",
-    ];
-
-    // Daftar tahun (misal 2020–2030)
-    const years = Array.from(
-      { length: 11 },
-      (_, i) => today.getFullYear() - 5 + i
-    );
-
-    return (
-      <Modal visible={calendarVisible} animationType="fade" transparent={true}>
-        <View style={styles.centeredView}>
-          <View
-            style={{
-              backgroundColor: "white",
-              borderRadius: 10,
-              padding: 20,
-              width: "90%",
-            }}
-          >
-            <Text style={styles.modalTitle}>Pilih Bulan & Tahun</Text>
-
-            {/* Picker Bulan */}
-            <View style={{ marginVertical: 10 }}>
-              <Text style={{ marginBottom: 6, fontWeight: "600" }}>Bulan:</Text>
-              <View style={styles.pickerContainer}>
-                {months.map((month, idx) => (
-                  <TouchableOpacity
-                    key={idx}
-                    style={[
-                      styles.pickerItem,
-                      tempMonth === idx && styles.pickerItemSelected,
-                    ]}
-                    onPress={() => setTempMonth(idx)}
-                  >
-                    <Text
-                      style={[
-                        styles.pickerItemText,
-                        tempMonth === idx && styles.pickerItemTextSelected,
-                      ]}
-                    >
-                      {month}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            {/* Picker Tahun */}
-            <View style={{ marginVertical: 10 }}>
-              <Text style={{ marginBottom: 6, fontWeight: "600" }}>Tahun:</Text>
-              <View style={styles.pickerContainer}>
-                {years.map((year) => (
-                  <TouchableOpacity
-                    key={year}
-                    style={[
-                      styles.pickerItem,
-                      tempYear === year && styles.pickerItemSelected,
-                    ]}
-                    onPress={() => setTempYear(year)}
-                  >
-                    <Text
-                      style={[
-                        styles.pickerItemText,
-                        tempYear === year && styles.pickerItemTextSelected,
-                      ]}
-                    >
-                      {year}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                marginTop: 20,
-              }}
-            >
-              <TouchableOpacity
-                style={[
-                  styles.btnSecondary,
-                  { flex: 0, paddingHorizontal: 12 },
-                ]}
-                onPress={handleClear}
-              >
-                <Text style={{ color: "#333" }}>Hapus Filter</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btnPrimary, { flex: 0, paddingHorizontal: 12 }]}
-                onPress={handleSave}
-              >
-                <Text style={styles.btnPrimaryText}>Terapkan</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    );
-  };
-
-  // RETURN UTAMA
   return (
     <View style={styles.container}>
       <TabView
@@ -1168,13 +968,10 @@ export default function RKSPage() {
         renderTabBar={renderTabBar}
       />
 
-      <CalendarModal />
-
       {/* Draggable FAB */}
       <Animated.View
         style={[
           styles.fabContainer,
-
           { transform: [{ translateX: pan.x }, { translateY: pan.y }] },
         ]}
         {...panResponder.panHandlers}
@@ -1244,7 +1041,6 @@ export default function RKSPage() {
             <View style={styles.loadingOverlay}>
               <View style={styles.loadingBox}>
                 <ActivityIndicator size="large" color="#667eea" />
-
                 <Text
                   style={{ marginTop: 12, color: "#333", fontWeight: "600" }}
                 >
@@ -1270,7 +1066,6 @@ export default function RKSPage() {
                 <Text style={{ fontWeight: "600" }}>
                   No Customer : {item.id}
                 </Text>
-
                 <Text style={{ fontWeight: "600" }}>{item.name}</Text>
                 <Text style={{ color: "#666" }}>{item.address}</Text>
               </TouchableOpacity>
@@ -1412,42 +1207,15 @@ export default function RKSPage() {
 }
 
 const styles = StyleSheet.create({
-  pickerContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    maxHeight: 120,
-    borderWidth: 1,
-    borderColor: "#eee",
-    borderRadius: 8,
-    padding: 4,
-  },
-  pickerItem: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    margin: 2,
-    borderRadius: 6,
-    backgroundColor: "#f5f7fb",
-  },
-  pickerItemSelected: {
-    backgroundColor: "#667eea",
-  },
-  pickerItemText: {
-    fontSize: 14,
-    color: "#333",
-  },
-  pickerItemTextSelected: {
-    color: "#fff",
-    fontWeight: "600",
-  },
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: "white",
+    backgroundColor: 'white',
     borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
+    borderBottomColor: '#e0e0e0',
   },
   fabContainer: {
     position: "absolute",
@@ -1460,7 +1228,6 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 30,
     backgroundColor: "#667eea",
-
     justifyContent: "center",
     alignItems: "center",
     elevation: 5,
@@ -1484,7 +1251,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     backgroundColor: "#333",
     paddingHorizontal: 8,
-
     paddingVertical: 4,
     borderRadius: 6,
     top: 10,
@@ -1495,169 +1261,68 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   tabLabel: {
-    fontWeight: "600",
+    fontWeight: '600',
     fontSize: 16,
   },
   tabBar: {
-    backgroundColor: "white",
-    // Hapus border bawah karena sudah ada di container
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
   },
-  statusBadge: {
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginLeft: 6,
-    justifyContent: "center",
-    alignItems: "center",
+  badgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold',
+    includeFontPadding: false,
   },
-  smallBadge: {
-    backgroundColor: "#f44336",
+  badge: {
+    backgroundColor: '#f44336',
     borderRadius: 10,
     paddingHorizontal: 6,
     paddingVertical: 2,
     marginLeft: 6,
     minWidth: 18,
     height: 18,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  badgeText: {
-    color: "white",
-    fontSize: 10,
-    fontWeight: "bold",
-    includeFontPadding: false,
-  },
-  customFilterButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
-    backgroundColor: "#f0f4ff", // Warna latar belakang untuk filter kustom
-  },
-  customFilterText: {
-    marginLeft: 8,
-    color: "#667eea",
-    fontWeight: "600",
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.3)",
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
     zIndex: 9999,
   },
   loadingBox: {
-    backgroundColor: "white",
+    backgroundColor: 'white',
     padding: 24,
     borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 5,
   },
-  centeredView: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.4)",
-  },
   container: { flex: 1, backgroundColor: "#f5f7fb" },
-  headerRow: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-    backgroundColor: "white",
-  },
+  headerRow: { padding: 16, borderBottomWidth: 1, borderBottomColor: "#eee", backgroundColor: "white" },
   headerTitle: { fontSize: 18, fontWeight: "700" },
-  card: {
-    backgroundColor: "#fff",
-    marginVertical: 8,
-    padding: 14,
-    borderRadius: 10,
-    marginHorizontal: 4,
-    elevation: 2,
-  },
+  card: { backgroundColor: "#fff", marginVertical: 8, padding: 14, borderRadius: 10, marginHorizontal: 4, elevation: 2 },
   title: { fontSize: 16, fontWeight: "700" },
-  buttonRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    padding: 12,
-    backgroundColor: "white",
-  },
-  btnPrimary: {
-    backgroundColor: "#667eea",
-    padding: 12,
-    borderRadius: 10,
-    flex: 1,
-    alignItems: "center",
-    marginLeft: 8,
-  },
+  buttonRow: { flexDirection: "row", justifyContent: "space-between", padding: 12, backgroundColor: "white" },
+  btnPrimary: { backgroundColor: "#667eea", padding: 12, borderRadius: 10, flex: 1, alignItems: "center", marginLeft: 8 },
   btnPrimaryText: { color: "white", fontWeight: "700" },
-  btnSecondary: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    padding: 12,
-    borderRadius: 10,
-    flex: 1,
-    alignItems: "center",
-    marginRight: 8,
-  },
+  btnSecondary: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#ddd", padding: 12, borderRadius: 10, flex: 1, alignItems: "center", marginRight: 8 },
   btnSecondaryText: { color: "#333", fontWeight: "700" },
   primaryButton: { flex: 1, borderRadius: 8, overflow: "hidden" },
-  primaryButtonGradient: {
-    padding: 10,
-    alignItems: "center",
-    borderRadius: 8,
-    flexDirection: "row",
-    justifyContent: "center",
-  },
+  primaryButtonGradient: { padding: 10, alignItems: "center", borderRadius: 8 },
   primaryButtonText: { color: "white", fontWeight: "700" },
-  actionButton: {
-    padding: 8,
-    borderRadius: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: 80,
-    marginBottom: 8,
-  },
-  actionButtonText: {
-    color: "white",
-    fontWeight: "700",
-    fontSize: 12,
-  },
   dangerButton: { flex: 1, borderRadius: 8, overflow: "hidden" },
-  disabledButton: {
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: "#f5f5f5",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
+  disabledButton: { padding: 10, borderRadius: 8, backgroundColor: "#f5f5f5", alignItems: "center", justifyContent: "center" },
   modalContainer: { flex: 1, padding: 16, backgroundColor: "#f7f9fc" },
   modalTitle: { fontSize: 18, fontWeight: "700", marginBottom: 12 },
-  input: {
-    backgroundColor: "white",
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#eee",
-    marginBottom: 12,
-  },
-  customerItem: {
-    padding: 12,
-    backgroundColor: "white",
-    borderRadius: 8,
-    marginBottom: 8,
-    borderColor: "#eee",
-    borderWidth: 1,
-  },
+  input: { backgroundColor: "white", padding: 12, borderRadius: 8, borderWidth: 1, borderColor: "#eee", marginBottom: 12 },
+  customerItem: { padding: 12, backgroundColor: "white", borderRadius: 8, marginBottom: 8, borderColor: "#eee", borderWidth: 1 },
   selectedCustomer: { backgroundColor: "#e8f5ff", borderColor: "#66a3ff" },
 });

@@ -42,6 +42,7 @@ export type User = {
   kode_user: string;
   nama_user: string;
   kodecabang: string;
+  kode_sales: string;
 };
 
 export type LoginResponse = {
@@ -179,7 +180,7 @@ export const rksAPI = {
         success: boolean;
         message?: string;
         data: RKS[];
-      }>("/api/rks-mobile", { params });
+      }>("/rks-mobile", { params });
 
       if (response.data.success) {
         // ✅ Ambil dari `data`, kirim sebagai `rks` ke UI
@@ -211,7 +212,7 @@ export const rksAPI = {
         success: boolean;
         message?: string;
         data: RKS;
-      }>(`/api/rks-mobile/${rksId}/checkin`, data);
+      }>(`/rks-mobile/${rksId}/checkin`, data);
 
       if (response.data.success) {
         return { success: true, rks: response.data.data };
@@ -236,7 +237,7 @@ export const rksAPI = {
         success: boolean;
         message?: string;
         data: RKS;
-      }>(`/api/rks-mobile/${rksId}/checkout`, data);
+      }>(`/rks-mobile/${rksId}/checkout`, data);
 
       if (response.data.success) {
         return { success: true, rks: response.data.data };
@@ -280,7 +281,7 @@ export const rksAPI = {
         success: boolean;
         message?: string;
         data: RKS;
-      }>("/api/rks-mobile/additional", payload);
+      }>("/rks-mobile/additional", payload);
 
       if (response.data.success) {
         return { success: true, rks: response.data.data };
@@ -318,7 +319,7 @@ export const rksAPI = {
         success: boolean;
         message?: string;
         data: RKS;
-      }>("/api/rks-mobile/new-customer", payload);
+      }>("/rks-mobile/new-customer", payload);
 
       if (response.data.success) {
         return { success: true, rks: response.data.data };
@@ -341,7 +342,7 @@ export const rksAPI = {
         success: boolean;
         message?: string;
         data: RKS;
-      }>(`/api/rks-mobile/${rks.id}`, payload);
+      }>(`/rks-mobile/${rks.id}`, payload);
 
       if (response.data.success) {
         return { success: true, rks: response.data.data };
