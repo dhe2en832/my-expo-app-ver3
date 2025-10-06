@@ -18,17 +18,17 @@ import {
   mockBesiCompetitor,
   BesiCompetitor,
   mockTargets,
- 
 } from "./mockData";
 import { calculateDistance, delay } from "../utils/helpers";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { nanoid } from "nanoid/non-secure";
 import { v4 as uuidv4 } from "uuid";
 import { Alert } from "react-native";
+import { normalizeSuccess, normalizeError } from "../utils/normalizeResponse";
 
-import apiClient from './axiosConfig';
-import * as SecureStore from 'expo-secure-store';
-import { AxiosRequestConfig } from 'axios';
+import apiClient from "./axiosConfig";
+import * as SecureStore from "expo-secure-store";
+import { AxiosRequestConfig } from "axios";
 
 // Tipe data
 export type LoginCredentials = {
@@ -61,18 +61,21 @@ export const loginAPI = {
    * Melakukan login ke backend
    * @returns {Promise<LoginResponse>}
    */
-    login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
-    console.log('Body request login:', credentials);
+  login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
+    console.log("Body request login:", credentials);
     try {
-      const response = await apiClient.post<LoginResponse>('/login', credentials);
-        console.log('Response login:', response.data);
+      const response = await apiClient.post<LoginResponse>(
+        "/login",
+        credentials
+      );
+      console.log("Response login:", response.data);
       // Jika response dari backend sesuai format
       if (response.data.success && response.data.data) {
         const { token, user } = response.data.data;
 
         // Simpan ke secure storage
-        await SecureStore.setItemAsync('auth_token', token);
-        await SecureStore.setItemAsync('user_data', JSON.stringify(user));
+        await SecureStore.setItemAsync("auth_token", token);
+        await SecureStore.setItemAsync("user_data", JSON.stringify(user));
 
         return {
           success: true,
@@ -83,23 +86,27 @@ export const loginAPI = {
         // Backend kirim success: false
         return {
           success: false,
-          message: response.data.message || 'Login gagal',
+          message: response.data.message || "Login gagal",
         };
       }
     } catch (error: any) {
-      console.error('Login API error:', error);
+      console.error("Login API error:", error);
 
       // Tangani error Axios
       if (error.response) {
         // Error dari backend (4xx, 5xx)
-        const message = error.response.data?.message || 'Terjadi kesalahan pada server';
+        const message =
+          error.response.data?.message || "Terjadi kesalahan pada server";
         return { success: false, message };
       } else if (error.request) {
         // Tidak ada respons (network error)
-        return { success: false, message: 'Tidak ada koneksi ke server' };
+        return { success: false, message: "Tidak ada koneksi ke server" };
       } else {
         // Error lain
-        return { success: false, message: error.message || 'Error tidak dikenal' };
+        return {
+          success: false,
+          message: error.message || "Error tidak dikenal",
+        };
       }
     }
   },
@@ -111,45 +118,358 @@ export const loginAPI = {
   //   await SecureStore.deleteItemAsync('auth_token');
   //   await SecureStore.deleteItemAsync('user_data');
   // },
-/**
- * Logout: kirim request ke backend untuk blacklist token, lalu hapus dari secure storage
- */
-logout: async (): Promise<void> => {
-  try {
-    // Ambil token saat ini
-    const token = await SecureStore.getItemAsync('auth_token');
-    
-    if (token) {
-      // Kirim request ke endpoint logout
-      await apiClient.post('/login/logout', {}, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+  /**
+   * Logout: kirim request ke backend untuk blacklist token, lalu hapus dari secure storage
+   */
+  logout: async (): Promise<void> => {
+    try {
+      // Ambil token saat ini
+      const token = await SecureStore.getItemAsync("auth_token");
+
+      if (token) {
+        // Kirim request ke endpoint logout
+        await apiClient.post(
+          "/login/logout",
+          {},
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+      }
+    } catch (error) {
+      console.warn("Logout API warning (token may be invalid):", error);
+      // Tetap lanjutkan logout di client meski API gagal
+    } finally {
+      // Hapus token & user dari penyimpanan lokal
+      await SecureStore.deleteItemAsync("auth_token");
+      await SecureStore.deleteItemAsync("user_data");
     }
-  } catch (error) {
-    console.warn('Logout API warning (token may be invalid):', error);
-    // Tetap lanjutkan logout di client meski API gagal
-  } finally {
-    // Hapus token & user dari penyimpanan lokal
-    await SecureStore.deleteItemAsync('auth_token');
-    await SecureStore.deleteItemAsync('user_data');
-  }
-},
+  },
   /**
    * Cek apakah user sudah login (untuk auto-login saat app dibuka)
    */
-  getStoredAuth: async (): Promise<{ token: string | null; user: User | null }> => {
-    const token = await SecureStore.getItemAsync('auth_token');
-    const userData = await SecureStore.getItemAsync('user_data');
+  getStoredAuth: async (): Promise<{
+    token: string | null;
+    user: User | null;
+  }> => {
+    const token = await SecureStore.getItemAsync("auth_token");
+    const userData = await SecureStore.getItemAsync("user_data");
     const user = userData ? JSON.parse(userData) : null;
     return { token, user };
   },
 };
 
+// ================
+// RKS Mobile API Module
+// ================
+
+// services.ts — bagian rksAPI & attendanceAPI
+// services.ts
+
+export const rksAPI = {
+  async getRKS(userId: string, date?: string) {
+    try {
+      const params = {
+        kode_sales: userId,
+        ...(date ? { scheduled_date: date } : {}),
+      };
+      const response = await apiClient.get<{
+        success: boolean;
+        message?: string;
+        data: RKS[];
+      }>("/api/rks-mobile", { params });
+
+      if (response.data.success) {
+        // ✅ Ambil dari `data`, kirim sebagai `rks` ke UI
+        return { success: true, rks: response.data.data };
+      } else {
+        return {
+          success: false,
+          rks: [],
+          error: response.data.message || "Gagal memuat RKS",
+        };
+      }
+    } catch (error: any) {
+      console.error("getRKS error:", error);
+      return { success: false, rks: [], error: "Network error" };
+    }
+  },
+
+  async checkIn(
+    rksId: string,
+    data: {
+      latitude: number;
+      longitude: number;
+      accuracy: number;
+      photo: string;
+    }
+  ) {
+    try {
+      const response = await apiClient.post<{
+        success: boolean;
+        message?: string;
+        data: RKS;
+      }>(`/api/rks-mobile/${rksId}/checkin`, data);
+
+      if (response.data.success) {
+        return { success: true, rks: response.data.data };
+      } else {
+        return {
+          success: false,
+          error: response.data.message || "Check-in gagal",
+        };
+      }
+    } catch (error: any) {
+      console.error("checkIn error:", error);
+      return { success: false, error: "Gagal check-in" };
+    }
+  },
+
+  async checkOut(
+    rksId: string,
+    data: { latitude: number; longitude: number; accuracy: number }
+  ) {
+    try {
+      const response = await apiClient.post<{
+        success: boolean;
+        message?: string;
+        data: RKS;
+      }>(`/api/rks-mobile/${rksId}/checkout`, data);
+
+      if (response.data.success) {
+        return { success: true, rks: response.data.data };
+      } else {
+        return {
+          success: false,
+          error: response.data.message || "Check-out gagal",
+        };
+      }
+    } catch (error: any) {
+      console.error("checkOut error:", error);
+      return { success: false, error: "Gagal check-out" };
+    }
+  },
+
+  async addUnscheduledVisit(
+    userId: string,
+    data: {
+      customerId: string;
+      customerName: string;
+      customerAddress: string;
+      latitude: number;
+      longitude: number;
+      accuracy: number;
+      photo: string;
+    }
+  ) {
+    try {
+      const payload = {
+        kode_sales: userId,
+        kode_cust: data.customerId,
+        customerName: data.customerName,
+        customerAddress: data.customerAddress,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        accuracy: data.accuracy,
+        photo: data.photo,
+      };
+
+      const response = await apiClient.post<{
+        success: boolean;
+        message?: string;
+        data: RKS;
+      }>("/api/rks-mobile/additional", payload);
+
+      if (response.data.success) {
+        return { success: true, rks: response.data.data };
+      } else {
+        return {
+          success: false,
+          error: response.data.message || "Gagal membuat kunjungan tambahan",
+        };
+      }
+    } catch (error: any) {
+      console.error("addUnscheduledVisit error:", error);
+      return { success: false, error: "Gagal membuat kunjungan tambahan" };
+    }
+  },
+
+  async addNewCustomerVisit(
+    userId: string,
+    data: {
+      name: string;
+      address: string;
+      phone: string;
+      type: "regular" | "vip" | "new";
+    }
+  ) {
+    try {
+      const payload = {
+        kode_sales: userId,
+        name: data.name,
+        address: data.address,
+        phone: data.phone,
+        type: data.type,
+      };
+
+      const response = await apiClient.post<{
+        success: boolean;
+        message?: string;
+        data: RKS;
+      }>("/api/rks-mobile/new-customer", payload);
+
+      if (response.data.success) {
+        return { success: true, rks: response.data.data };
+      } else {
+        return {
+          success: false,
+          error: response.data.message || "Gagal membuat customer baru",
+        };
+      }
+    } catch (error: any) {
+      console.error("addNewCustomerVisit error:", error);
+      return { success: false, error: "Gagal membuat customer baru" };
+    }
+  },
+
+  async updateRKS(rks: RKS) {
+    try {
+      const payload = { notes: rks.activities?.notes || "" };
+      const response = await apiClient.put<{
+        success: boolean;
+        message?: string;
+        data: RKS;
+      }>(`/api/rks-mobile/${rks.id}`, payload);
+
+      if (response.data.success) {
+        return { success: true, rks: response.data.data };
+      } else {
+        return {
+          success: false,
+          error: response.data.message || "Gagal memperbarui catatan",
+        };
+      }
+    } catch (error: any) {
+      console.error("updateRKS error:", error);
+      return { success: false, error: "Gagal memperbarui catatan" };
+    }
+  },
+
+  async updateRRSafe(rks: RKS) {
+    return this.updateRKS(rks);
+  },
+};
+
+export const attendanceAPI = {
+  async checkIn(data: {
+    photo: string;
+    location: { latitude: number; longitude: number; accuracy: number };
+    address: string;
+    shift: "morning" | "afternoon" | "night";
+  }) {
+    try {
+      const userData = await SecureStore.getItemAsync("user_data");
+      const user = userData ? JSON.parse(userData) : null;
+      const kode_sales = user?.kode_user || "unknown";
+
+      const payload = {
+        kode_sales,
+        type: "check-in" as const,
+        timestamp: new Date().toISOString(),
+        latitude: data.location.latitude,
+        longitude: data.location.longitude,
+        accuracy: data.location.accuracy,
+        photo: data.photo,
+        address: data.address,
+        shift: data.shift,
+        mobile_id: uuidv4(),
+      };
+
+      const response = await apiClient.post<{
+        success: boolean;
+        message?: string;
+        data: AttendanceRecord;
+      }>("/api/attendance/checkin", payload);
+
+      if (response.data.success) {
+        return { success: true, record: response.data.data };
+      } else {
+        return {
+          success: false,
+          error: response.data.message || "Absensi check-in gagal",
+        };
+      }
+    } catch (error: any) {
+      console.error("attendance checkIn error:", error);
+      return { success: false, error: "Gagal absen check-in" };
+    }
+  },
+
+  async checkOut(data: {
+    photo: string;
+    location: { latitude: number; longitude: number; accuracy: number };
+    address: string;
+  }) {
+    try {
+      const userData = await SecureStore.getItemAsync("user_data");
+      const user = userData ? JSON.parse(userData) : null;
+      const kode_sales = user?.kode_user || "unknown";
+
+      const payload = {
+        kode_sales,
+        type: "check-out" as const,
+        timestamp: new Date().toISOString(),
+        latitude: data.location.latitude,
+        longitude: data.location.longitude,
+        accuracy: data.location.accuracy,
+        photo: data.photo,
+        address: data.address,
+        mobile_id: uuidv4(),
+      };
+
+      const response = await apiClient.post<{
+        success: boolean;
+        message?: string;
+        data: AttendanceRecord;
+      }>("/api/attendance/checkout", payload);
+
+      if (response.data.success) {
+        return { success: true, record: response.data.data };
+      } else {
+        return {
+          success: false,
+          error: response.data.message || "Absensi check-out gagal",
+        };
+      }
+    } catch (error: any) {
+      console.error("attendance checkOut error:", error);
+      return { success: false, error: "Gagal absen check-out" };
+    }
+  },
+
+  async getTodayRecords(userId: string) {
+    try {
+      const response = await apiClient.get<{
+        success: boolean;
+        message?: string;
+        data: AttendanceRecord[];
+      }>(`/api/attendance/today?kode_sales=${userId}`);
+
+      return {
+        success: response.data.success,
+        records: response.data.data || [],
+      };
+    } catch (error) {
+      console.warn("getTodayRecords failed");
+      return { success: true, records: [] };
+    }
+  },
+};
 
 // BATAS DARI SINI KE BAWAH ADALAH MOCK API
-// Gunakan apiClient dari axiosConfig.ts untuk API nyata  
+// Gunakan apiClient dari axiosConfig.ts untuk API nyata
 const STORAGE_KEY = "competitor_besi_queue";
 
 export const competitorBesiAPI = {
@@ -200,7 +520,7 @@ export const competitorBesiAPI = {
   },
 };
 
-export const rksAPI = {
+export const rksAPIMocked = {
   async getRKS(userId: string, date?: string) {
     await delay(300);
     let list = mockRKS.filter((r) => r.userId === userId);
@@ -210,7 +530,12 @@ export const rksAPI = {
 
   async checkIn(
     rksId: string,
-    data: { latitude: number; longitude: number; accuracy: number; photo: string }
+    data: {
+      latitude: number;
+      longitude: number;
+      accuracy: number;
+      photo: string;
+    }
   ) {
     await delay(400);
     const rks = mockRKS.find((r) => r.id === rksId);
@@ -331,7 +656,7 @@ export const rksAPI = {
       type: data.type,
       coordinates: data.coordinates,
       photo: data.photo,
-    };  
+    };
     mockCustomers.push(newCustomer);
 
     const newRks: RKS = {
@@ -375,7 +700,7 @@ export const rksAPI = {
 };
 
 // Attendance API
-export const attendanceAPI = {
+export const attendanceAPIMocked = {
   async checkIn(data: {
     photo: string;
     location: { latitude: number; longitude: number; accuracy: number };
@@ -477,153 +802,166 @@ export const attendanceAPI = {
 
 // Sales Order API
 export const salesOrderAPI = {
-  async getOrders(filters?: { status?: string; customerId?: string; dateFrom?: string; dateTo?: string }) {
+  async getOrders(filters?: {
+    status?: string;
+    customerId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }) {
     await delay(1000);
     // In real app: GET /api/sales-orders with query params
-    
+
     let orders = [...mockSalesOrders];
-    
+
     if (filters?.status) {
-      orders = orders.filter(order => order.status === filters.status);
+      orders = orders.filter((order) => order.status === filters.status);
     }
     if (filters?.customerId) {
-      orders = orders.filter(order => order.customerId === filters.customerId);
+      orders = orders.filter(
+        (order) => order.customerId === filters.customerId
+      );
     }
-    
+
     return { success: true, orders };
   },
 
   async getOrder(id: string) {
     await delay(500);
     // In real app: GET /api/sales-orders/${id}
-    
-    const order = mockSalesOrders.find(o => o.id === id);
-    if (!order) throw new Error('Order not found');
-    
+
+    const order = mockSalesOrders.find((o) => o.id === id);
+    if (!order) throw new Error("Order not found");
+
     return { success: true, order };
   },
-  
-  createOrder: async (orderData: Omit<SalesOrder, 'id' | 'orderNumber' | 'status' | 'createdBy'>) => {
+
+  createOrder: async (
+    orderData: Omit<SalesOrder, "id" | "orderNumber" | "status" | "createdBy">
+  ) => {
     await delay(2000);
     const newOrder: SalesOrder = {
       ...orderData,
       id: Date.now().toString(),
-      orderNumber: `SO-${String(mockSalesOrders.length + 1).padStart(4, '0')}`,
-      status: 'draft',
-      createdBy: '1'
+      orderNumber: `SO-${String(mockSalesOrders.length + 1).padStart(4, "0")}`,
+      status: "draft",
+      createdBy: "1",
     };
-    
+
     // Tambahkan ke mock data
     mockSalesOrders.push(newOrder);
-    
-    console.log('Order created:', newOrder);
+
+    console.log("Order created:", newOrder);
     return { success: true, order: newOrder };
   },
 
   updateOrder: async (id: string, orderData: Partial<SalesOrder>) => {
     await delay(1500);
-    
+
     // Cari dan update order
-    const index = mockSalesOrders.findIndex(order => order.id === id);
+    const index = mockSalesOrders.findIndex((order) => order.id === id);
     if (index !== -1) {
       mockSalesOrders[index] = {
         ...mockSalesOrders[index],
-        ...orderData
+        ...orderData,
       };
     }
-    
-    console.log('Order updated:', id, orderData);
+
+    console.log("Order updated:", id, orderData);
     return { success: true };
-  },    
-  
+  },
+
   submitForApproval: async (id: string) => {
     await delay(1000);
-    
+
     // Update status
-    const index = mockSalesOrders.findIndex(order => order.id === id);
+    const index = mockSalesOrders.findIndex((order) => order.id === id);
     if (index !== -1) {
       mockSalesOrders[index] = {
         ...mockSalesOrders[index],
-        status: 'submitted'
+        status: "submitted",
       };
     }
-    
-    console.log('Order submitted for approval:', id);
+
+    console.log("Order submitted for approval:", id);
     return { success: true };
   },
 
   async approveOrder(id: string, approvedBy: string) {
     await delay(1000);
     // In real app: POST /api/sales-orders/${id}/approve
-    
-    console.log('Order approved:', id, 'by:', approvedBy);
+
+    console.log("Order approved:", id, "by:", approvedBy);
     return { success: true };
   },
 
   async rejectOrder(id: string, reason: string, rejectedBy: string) {
     await delay(1000);
     // In real app: POST /api/sales-orders/${id}/reject
-    
-    console.log('Order rejected:', id, 'reason:', reason, 'by:', rejectedBy);
+
+    console.log("Order rejected:", id, "reason:", reason, "by:", rejectedBy);
     return { success: true };
   },
 
   deleteOrder: async (id: string) => {
     await delay(500);
-    
+
     // Hapus order
-    const index = mockSalesOrders.findIndex(order => order.id === id);
+    const index = mockSalesOrders.findIndex((order) => order.id === id);
     if (index !== -1) {
       mockSalesOrders.splice(index, 1);
     }
-    
-    console.log('Order deleted:', id);
+
+    console.log("Order deleted:", id);
     return { success: true };
-  },    
+  },
 
   async exportToCSV(filters?: any) {
     await delay(2000);
     // In real app: GET /api/sales-orders/export with query params
-    
-    const csvData = mockSalesOrders.map(order => ({
-      'Order Number': order.orderNumber,
-      'Customer': order.customerName,
-      'Date': order.date,
-      'Total': order.total,
-      'Status': order.status
+
+    const csvData = mockSalesOrders.map((order) => ({
+      "Order Number": order.orderNumber,
+      Customer: order.customerName,
+      Date: order.date,
+      Total: order.total,
+      Status: order.status,
     }));
-    
-    console.log('CSV export generated:', csvData);
+
+    console.log("CSV export generated:", csvData);
     return { success: true, csvData };
-  }
+  },
 };
 
 export const customerAPI = {
   async getCustomers(filters?: { territory?: string; type?: string }) {
     await delay(1000);
     // In real app: GET /api/customers with query params
-    
+
     let customers = [...mockCustomers];
-    
+
     if (filters?.territory) {
-      customers = customers.filter(customer => customer.territory === filters.territory);
+      customers = customers.filter(
+        (customer) => customer.territory === filters.territory
+      );
     }
     if (filters?.type) {
-      customers = customers.filter(customer => customer.type === filters.type);
+      customers = customers.filter(
+        (customer) => customer.type === filters.type
+      );
     }
-    
+
     return { success: true, customers };
   },
 
   async getCustomer(id: string) {
     await delay(500);
     // In real app: GET /api/customers/${id}
-    
-    const customer = mockCustomers.find(c => c.id === id);
-    if (!customer) throw new Error('Customer not found');
-    
+
+    const customer = mockCustomers.find((c) => c.id === id);
+    if (!customer) throw new Error("Customer not found");
+
     return { success: true, customer };
-  }
+  },
 };
 
 // Product API
@@ -631,96 +969,105 @@ export const productAPI = {
   async getProducts(filters?: { category?: string; search?: string }) {
     await delay(1000);
     // In real app: GET /api/products with query params
-    
+
     let products = [...mockProducts];
-    
+
     if (filters?.category) {
-      products = products.filter(product => product.category === filters.category);
+      products = products.filter(
+        (product) => product.category === filters.category
+      );
     }
     if (filters?.search) {
       const search = filters.search.toLowerCase();
-      products = products.filter(product => 
-        product.name.toLowerCase().includes(search) ||
-        product.code.toLowerCase().includes(search)
+      products = products.filter(
+        (product) =>
+          product.name.toLowerCase().includes(search) ||
+          product.code.toLowerCase().includes(search)
       );
     }
-    
+
     return { success: true, products };
   },
 
   async getProduct(id: string) {
     await delay(500);
     // In real app: GET /api/products/${id}
-    
-    const product = mockProducts.find(p => p.id === id);
-    if (!product) throw new Error('Product not found');
-    
+
+    const product = mockProducts.find((p) => p.id === id);
+    if (!product) throw new Error("Product not found");
+
     return { success: true, product };
   },
 
   async getSpecialPrice(customerId: string, productId: string) {
     await delay(500);
     // In real app: GET /api/products/${productId}/price?customerId=${customerId}
-    
-    const product = mockProducts.find(p => p.id === productId);
-    if (!product) throw new Error('Product not found');
-    
+
+    const product = mockProducts.find((p) => p.id === productId);
+    if (!product) throw new Error("Product not found");
+
     // Mock special pricing logic
-    const customer = mockCustomers.find(c => c.id === customerId);
+    const customer = mockCustomers.find((c) => c.id === customerId);
     let price = product.basePrice;
-    
-    if (customer?.type === 'vip') {
+
+    if (customer?.type === "vip") {
       price = price * 0.95; // 5% discount for VIP
     }
-    
+
     return { success: true, price, discount: product.basePrice - price };
-  }
+  },
 };
 
 export const collectionAPI = {
   async getInvoices(filters?: { status?: string; customerId?: string }) {
     await delay(1000);
     // In real app: GET /api/invoices with query params
-    
+
     let invoices = [...mockInvoices];
-    
+
     if (filters?.status) {
-      invoices = invoices.filter(invoice => invoice.status === filters.status);
+      invoices = invoices.filter(
+        (invoice) => invoice.status === filters.status
+      );
     }
     if (filters?.customerId) {
-      invoices = invoices.filter(invoice => invoice.customerId === filters.customerId);
+      invoices = invoices.filter(
+        (invoice) => invoice.customerId === filters.customerId
+      );
     }
-    
+
     return { success: true, invoices };
   },
 
   async getPayments(filters?: { status?: string; customerId?: string }) {
     await delay(1000);
-    
+
     let payments = [...mockPayments]; // ← INI HANYA mockPayments
-    
+
     if (filters?.status) {
-      payments = payments.filter(p => p.status === filters.status);
+      payments = payments.filter((p) => p.status === filters.status);
     }
     if (filters?.customerId) {
-      payments = payments.filter(p => p.customerId === filters.customerId);
+      payments = payments.filter((p) => p.customerId === filters.customerId);
     }
-    
+
     return { success: true, payments };
-  },   
+  },
 
   async recordPayment(paymentData: {
     invoiceId: string;
     amount: number;
-    method: Payment['method'];
+    method: Payment["method"];
     receiptPhoto?: string;
     notes?: string;
   }) {
     await delay(2000);
     // In real app: POST /api/payments
-    
-    const invoice = mockInvoices.find(inv => inv.id === paymentData.invoiceId);
-    if (!invoice) throw new Error('Invoice not found');
+
+    const invoice = mockInvoices.find(
+      (inv) => inv.id === paymentData.invoiceId
+    );
+    if (!invoice) throw new Error("Invoice not found");
 
     const payment: Payment = {
       id: Date.now().toString(),
@@ -728,10 +1075,10 @@ export const collectionAPI = {
       customerName: invoice.customerName,
       amount: paymentData.amount,
       method: paymentData.method,
-      date: new Date().toISOString().split('T')[0],
+      date: new Date().toISOString().split("T")[0],
       receiptPhoto: paymentData.receiptPhoto,
       notes: paymentData.notes,
-      reference: `REF-${Date.now()}`
+      reference: `REF-${Date.now()}`,
     };
 
     // ✅ SIMPAN KE MOCK DATA
@@ -740,16 +1087,16 @@ export const collectionAPI = {
     // ✅ UPDATE INVOICE PAID AMOUNT
     invoice.paidAmount += paymentData.amount;
 
-      // Update status invoice
+    // Update status invoice
     if (invoice.paidAmount >= invoice.amount) {
-      invoice.status = 'paid';
+      invoice.status = "paid";
     } else if (invoice.paidAmount > 0) {
-      invoice.status = 'partial';
+      invoice.status = "partial";
     }
 
-    console.log('Payment recorded:', payment);
+    console.log("Payment recorded:", payment);
     return { success: true, payment };
-  }
+  },
 };
 
 // Target API

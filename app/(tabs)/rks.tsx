@@ -251,89 +251,31 @@ export default function RKSPage() {
     }
   };
 
-  // const handleCheckIn = async (rks: RKS) => {
-  //   try {
-  //     setCheckingInId(rks.id);
-  //     let { status } = await Location.requestForegroundPermissionsAsync();
-  //     if (status !== 'granted') {
-  //       Alert.alert("Izin Lokasi Dibutuhkan", "Aplikasi memerlukan akses lokasi untuk melakukan check-in.");
-  //       return;
-  //     }
-  //     const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-  //     const lat = loc.coords.latitude;
-  //     const lon = loc.coords.longitude;
-  //     const acc = loc.coords.accuracy ?? 999;
-  //     const customerLoc = rks.customerLocation || rks.coordinates;
-  //     if (!customerLoc) {
-  //       Alert.alert("Lokasi customer tidak tersedia", "Tidak dapat memvalidasi geofence.");
-  //       return;
-  //     }
-  //     const dist = calculateDistance(lat, lon, customerLoc.latitude, customerLoc.longitude);
-  //     const allowed = rks.radius ?? 150;
-  //     if (dist > allowed) {
-  //       Alert.alert("Diluar Jarak", `Anda berada ${Math.round(dist)} m dari lokasi customer. Jarak maksimal ${allowed} m.`);
-  //       return;
-  //     }
-  //     const selfie = await takeSelfieFront();
-  //     if (!selfie) return;
-  //     const shift = getCurrentShift();
-  //     const attendanceResp = await attendanceAPI.checkIn({
-  //       photo: selfie,
-  //       location: { latitude: lat, longitude: lon, accuracy: acc },
-  //       address: rks.customerAddress || rks.customerName,
-  //       shift,
-  //     });
-  //     const rksResp = await rksAPI.checkIn(rks.id, {
-  //       latitude: lat,
-  //       longitude: lon,
-  //       accuracy: acc,
-  //       photo: selfie,
-  //     });
-  //     if (!rksResp.success) {
-  //       Alert.alert("Error", rksResp.error || "Gagal check in.");
-  //       return;
-  //     }
-  //     if (attendanceResp?.success && attendanceResp.record) {
-  //       await appendAttendanceLocal(attendanceResp.record as AttendanceRecord);
-  //     }
-  //     addToQueue({
-  //       type: "rks_checkin",
-  //       data: { rksId: rks.id, latitude: lat, longitude: lon, accuracy: acc, photo: "[local-uri]" },
-  //       endpoint: `/api/rks/${rks.id}/checkin`,
-  //     });
-  //     Alert.alert("Check In berhasil", "Check In tersimpan.");
-  //   } catch (err) {
-  //     console.error("handleCheckIn error:", err);
-  //     Alert.alert("Error", "Gagal melakukan check in.");
-  //   } finally {
-  //     setCheckingInId(null);
-  //   }
-  // };
 
   const handleCheckIn = async (rks: RKS) => {
     try {
       setCheckingInId(rks.id);
-  
+
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert("Izin Lokasi Dibutuhkan", "Aplikasi memerlukan akses lokasi untuk melakukan check-in.");
         return;
       }
-  
+
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       const lat = loc.coords.latitude;
       const lon = loc.coords.longitude;
       const acc = loc.coords.accuracy ?? 999;
-  
+
       const customerLoc = rks.customerLocation || rks.coordinates;
       if (!customerLoc) {
         Alert.alert("Lokasi customer tidak tersedia", "Tidak dapat memvalidasi geofence.");
         return;
       }
-  
+
       const dist = calculateDistance(lat, lon, customerLoc.latitude, customerLoc.longitude);
       const allowed = rks.radius ?? 150;
-  
+
       if (dist > allowed) {
         Alert.alert(
           "Diluar Jarak",
@@ -348,7 +290,7 @@ export default function RKSPage() {
         );
         return;
       }
-  
+
       // Jika dalam radius, lanjutkan langsung
       await proceedWithCheckIn(rks, lat, lon, acc);
     } catch (err) {
@@ -358,13 +300,13 @@ export default function RKSPage() {
       setCheckingInId(null);
     }
   };
-  
+
   // Fungsi helper untuk melanjutkan proses check-in
   const proceedWithCheckIn = async (rks: RKS, lat: number, lon: number, acc: number) => {
     try {
       const selfie = await takeSelfieFront();
       if (!selfie) return;
-  
+
       const shift = getCurrentShift();
       const attendanceResp = await attendanceAPI.checkIn({
         photo: selfie,
@@ -372,29 +314,29 @@ export default function RKSPage() {
         address: rks.customerAddress || rks.customerName,
         shift,
       });
-  
+
       const rksResp = await rksAPI.checkIn(rks.id, {
         latitude: lat,
         longitude: lon,
         accuracy: acc,
         photo: selfie,
       });
-  
+
       if (!rksResp.success) {
         Alert.alert("Error", rksResp.error || "Gagal check in.");
         return;
       }
-  
+
       if (attendanceResp?.success && attendanceResp.record) {
         await appendAttendanceLocal(attendanceResp.record as AttendanceRecord);
       }
-  
+
       addToQueue({
         type: "rks_checkin",
         data: { rksId: rks.id, latitude: lat, longitude: lon, accuracy: acc, photo: "[local-uri]" },
         endpoint: `/api/rks/${rks.id}/checkin`,
       });
-  
+
       Alert.alert("Check In berhasil", "Check In tersimpan.");
     } catch (err) {
       console.error("proceedWithCheckIn error:", err);
@@ -529,21 +471,21 @@ export default function RKSPage() {
       Alert.alert("Pilih customer dulu");
       return;
     }
-  
+
     try {
       setUnscheduledLoading(true);
-  
+
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert("Izin Lokasi Dibutuhkan", "Aplikasi memerlukan akses lokasi.");
         return;
       }
-  
+
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       const lat = loc.coords.latitude;
       const lon = loc.coords.longitude;
       const acc = loc.coords.accuracy ?? 999;
-  
+
       // Validasi jarak ke lokasi customer
       if (selectedCustomer.coordinates?.latitude != null && selectedCustomer.coordinates?.longitude != null) {
         const dist = calculateDistance(
@@ -553,7 +495,7 @@ export default function RKSPage() {
           selectedCustomer.coordinates.longitude
         );
         const allowed = 150; // radius default untuk kunjungan tidak terjadwal
-  
+
         if (dist > allowed) {
           Alert.alert(
             "Diluar Jarak",
@@ -569,7 +511,7 @@ export default function RKSPage() {
           return;
         }
       }
-  
+
       // Jika dalam radius (atau tidak ada koordinat customer), lanjutkan langsung
       await proceedWithUnscheduledVisit(lat, lon, acc);
     } catch (err) {
@@ -579,15 +521,15 @@ export default function RKSPage() {
       setUnscheduledLoading(false);
     }
   };
-  
+
   // Fungsi helper untuk melanjutkan proses kunjungan tidak terjadwal
   const proceedWithUnscheduledVisit = async (lat: number, lon: number, acc: number) => {
     if (!selectedCustomer) return; // safety check
-  
+
     try {
       const selfie = await takeSelfieFront();
       if (!selfie) return;
-  
+
       const res = await rksAPI.addUnscheduledVisit("1", {
         customerId: selectedCustomer.id,
         customerName: selectedCustomer.name,
@@ -597,29 +539,31 @@ export default function RKSPage() {
         accuracy: acc,
         photo: selfie,
       });
-  
+
       if (res.success && res.rks) {
-        setRksList((prev) => [res.rks, ...prev]);
+        if (res.rks !== undefined) {
+          setRksList((prev) => [res.rks as RKS, ...prev]);
+        }
         setModalType(null);
         setSelectedCustomer(null);
-  
+
         const ares = await attendanceAPI.checkIn({
           photo: selfie,
           location: { latitude: lat, longitude: lon, accuracy: acc },
           address: selectedCustomer.address,
           shift: getCurrentShift(),
         });
-  
+
         if (ares?.success && ares.record) {
           await appendAttendanceLocal(ares.record as AttendanceRecord);
         }
-  
+
         addToQueue({
           type: "rks_additional",
           data: { rksId: res.rks.id, photo: "[local-uri]" },
           endpoint: `/api/rks/${res.rks.id}/additional`,
         });
-  
+
         Alert.alert("Sukses", "Kunjungan tambahan dibuat dan check-in tercatat.");
       } else {
         // Gunakan type guard atau akses aman ke 'error'
@@ -645,7 +589,7 @@ export default function RKSPage() {
         type: newCustomer.type,
       });
       if (res.success) {
-        setRksList((prev) => [res.rks, ...prev]);
+        setRksList((prev) => [res.rks as RKS, ...prev]);
         setModalType(null);
         setNewCustomer({ name: "", address: "", phone: "", type: "new" });
         Alert.alert("Sukses", "Customer baru dibuat. Silakan lakukan Check In di daftar RKS.");
@@ -874,7 +818,7 @@ export default function RKSPage() {
             </View>
           )}
         </View>
-      </View>      
+      </View>
     );
   };
 
