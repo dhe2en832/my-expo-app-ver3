@@ -162,252 +162,6 @@ export const loginAPI = {
   },
 };
 
-// ================
-// RKS Mobile API Module
-// ================
-
-// services.ts — bagian rksAPI & attendanceAPI
-// services.ts
-
-// export const rksAPI = {
-//   async getRKS(userId: string, date?: string) {
-//     try {
-//       const params = {
-//         kode_sales: userId,
-//         ...(date ? { scheduled_date: date } : {}),
-//       };
-//       const response = await apiClient.get<{
-//         success: boolean;
-//         message?: string;
-//         data: RKS[];
-//       }>("/rks-mobile", { params });
-
-//       if (response.data.success) {
-//         // ✅ Ambil dari `data`, kirim sebagai `rks` ke UI
-//         return { success: true, rks: response.data.data };
-//       } else {
-//         return {
-//           success: false,
-//           rks: [],
-//           error: response.data.message || "Gagal memuat RKS",
-//         };
-//       }
-//     } catch (error: any) {
-//       console.error("getRKS error:", error);
-//       return { success: false, rks: [], error: "Network error" };
-//     }
-//   },
-
-//   async checkIn(
-//     rksId: string,
-//     data: {
-//       latitude: number;
-//       longitude: number;
-//       accuracy: number;
-//       photo: string;
-//       updateGeofence?: boolean;
-//     }
-//   ) {
-//     try {
-//       const response = await apiClient.post<{
-//         success: boolean;
-//         message?: string;
-//         data: RKS;
-//       }>(`/rks-mobile/${rksId}/checkin`, data);
-
-//       if (response.data.success) {
-//         return { success: true, rks: response.data.data };
-//       } else {
-//         return {
-//           success: false,
-//           error: response.data.message || "Check-in gagal",
-//         };
-//       }
-//     } catch (error: any) {
-//       console.error("checkIn error:", error);
-//       return { success: false, error: "Gagal check-in" };
-//     }
-//   },
-
-//   async checkOut(
-//     rksId: string,
-//     data: { latitude: number; longitude: number; accuracy: number }
-//   ) {
-//     try {
-//       const response = await apiClient.post<{
-//         success: boolean;
-//         message?: string;
-//         data: RKS;
-//       }>(`/rks-mobile/${rksId}/checkout`, data);
-
-//       if (response.data.success) {
-//         return { success: true, rks: response.data.data };
-//       } else {
-//         return {
-//           success: false,
-//           error: response.data.message || "Check-out gagal",
-//         };
-//       }
-//     } catch (error: any) {
-//       console.error("checkOut error:", error);
-//       return { success: false, error: "Gagal check-out" };
-//     }
-//   },
-
-//   async addUnscheduledVisit(
-//     userId: string,
-//     data: {
-//       customerId: string;
-//       customerNo: string;
-//       customerName: string;
-//       customerAddress: string;
-//       latitude: number;
-//       longitude: number;
-//       accuracy: number;
-//       photo: string;
-//     }
-//   ) {
-//     try {
-//       const payload = {
-//         kode_sales: userId,
-//         kode_cust: data.customerId,
-//         no_cust: data.customerNo,
-//         customerName: data.customerName,
-//         customerAddress: data.customerAddress,
-//         latitude: data.latitude,
-//         longitude: data.longitude,
-//         accuracy: data.accuracy,
-//         photo: data.photo,
-//       };
-
-//       const response = await apiClient.post<{
-//         success: boolean;
-//         message?: string;
-//         data: RKS;
-//       }>("/rks-mobile/additional", payload);
-
-//       if (response.data.success) {
-//         return { success: true, rks: response.data.data };
-//       } else {
-//         return {
-//           success: false,
-//           error: response.data.message || "Gagal membuat kunjungan tambahan",
-//         };
-//       }
-//     } catch (error: any) {
-//       console.error("addUnscheduledVisit error:", error);
-//       return { success: false, error: "Gagal membuat kunjungan tambahan" };
-//     }
-//   },
-
-//   async addNewCustomerVisit(
-//     userId: string,
-//     data: {
-//       name: string;
-//       address: string;
-//       city: string; // ✅ tambahkan city
-//       phone: string;
-//       latitude?: number; // ✅ optional koordinat
-//       longitude?: number; // ✅ optional koordinat
-//     }
-//   ) {
-//     try {
-//       const payload = {
-//         kode_sales: userId,
-//         name: data.name,
-//         address: data.address,
-//         city: data.city, // ✅ wajib untuk backend
-//         phone: data.phone,
-//         latitude: data.latitude, // ✅ opsional
-//         longitude: data.longitude, // ✅ opsional
-//       };
-
-//       const response = await apiClient.post<{
-//         success: boolean;
-//         message?: string;
-//         data: RKS;
-//       }>("/rks-mobile/new-customer", payload);
-
-//       if (response.data.success) {
-//         return { success: true, rks: response.data.data };
-//       } else {
-//         return {
-//           success: false,
-//           error: response.data.message || "Gagal membuat customer baru",
-//         };
-//       }
-//     } catch (error: any) {
-//       console.error("addNewCustomerVisit error:", error);
-//       return { success: false, error: "Gagal membuat customer baru" };
-//     }
-//   },
-
-//   // async addNewCustomerVisit(
-//   //   userId: string,
-//   //   data: {
-//   //     name: string;
-//   //     address: string;
-//   //     phone: string;
-//   //     type: "regular" | "vip" | "new";
-//   //   }
-//   // ) {
-//   //   try {
-//   //     const payload = {
-//   //       kode_sales: userId,
-//   //       name: data.name,
-//   //       address: data.address,
-//   //       phone: data.phone,
-//   //       type: data.type,
-//   //     };
-
-//   //     const response = await apiClient.post<{
-//   //       success: boolean;
-//   //       message?: string;
-//   //       data: RKS;
-//   //     }>("/rks-mobile/new-customer", payload);
-
-//   //     if (response.data.success) {
-//   //       return { success: true, rks: response.data.data };
-//   //     } else {
-//   //       return {
-//   //         success: false,
-//   //         error: response.data.message || "Gagal membuat customer baru",
-//   //       };
-//   //     }
-//   //   } catch (error: any) {
-//   //     console.error("addNewCustomerVisit error:", error);
-//   //     return { success: false, error: "Gagal membuat customer baru" };
-//   //   }
-//   // },
-
-//   async updateRKS(rks: RKS) {
-//     try {
-//       const payload = { notes: rks.activities?.notes || "" };
-//       const response = await apiClient.put<{
-//         success: boolean;
-//         message?: string;
-//         data: RKS;
-//       }>(`/rks-mobile/${rks.id}`, payload);
-
-//       if (response.data.success) {
-//         return { success: true, rks: response.data.data };
-//       } else {
-//         return {
-//           success: false,
-//           error: response.data.message || "Gagal memperbarui catatan",
-//         };
-//       }
-//     } catch (error: any) {
-//       console.error("updateRKS error:", error);
-//       return { success: false, error: "Gagal memperbarui catatan" };
-//     }
-//   },
-
-//   async updateRRSafe(rks: RKS) {
-//     return this.updateRKS(rks);
-//   },
-// };
-
 export const rksAPI = {
   async getRKS(userId: string, date?: string) {
     try {
@@ -422,6 +176,7 @@ export const rksAPI = {
       }>("/rks-mobile", { params });
 
       if (response.data.success) {
+        // console.log("getRKS response data:", response.data);
         return { success: true, rks: response.data.data };
       } else {
         return {
@@ -443,6 +198,7 @@ export const rksAPI = {
     salesId: string;
     masterDetailRowId: number;
     kodeRks?: string;
+    detailrowId?: string;
   }) {
     try {
       const [datePart, timePart] = data.scheduledDate.split(" ");
@@ -454,13 +210,18 @@ export const rksAPI = {
         // scheduled_time: timePart,
         master_detail_rowid: data.masterDetailRowId, // Kirim ke backend
         kode_rks: data.kodeRks,
+        master_rowid: data.masterDetailRowId,
+        master_kode_rks: data.kodeRks,
       };
+      console.log("payload", payload);
 
       const response = await apiClient.post<{
         success: boolean;
         message?: string;
         data: RKS;
       }>("/rks-mobile/from-master", payload);
+
+      console.log("createMobileFromMaster response:", response.data);
 
       if (response.data.success) {
         return { success: true, rks: response.data.data };
@@ -473,11 +234,6 @@ export const rksAPI = {
         };
       }
     } catch (error: any) {
-      // console.error(
-      //   "SQL createMobileFromMaster error:",
-      //   error.sqlMessage,
-      //   error.sql
-      // );
       console.error(
         "createMobileFromMaster error:",
         error.response?.data || error.message
@@ -661,6 +417,7 @@ export const rksAPI = {
     return this.updateRKS(rks);
   },
 };
+
 export const attendanceAPI = {
   async checkIn(data: {
     photo: string;
@@ -671,7 +428,7 @@ export const attendanceAPI = {
     try {
       const userData = await SecureStore.getItemAsync("user_data");
       const user = userData ? JSON.parse(userData) : null;
-      const kode_sales = user?.kode_user || "unknown";
+      const kode_sales = user?.kode_sales; //user?.kode_user || "unknown";
 
       const payload = {
         kode_sales,
@@ -701,6 +458,10 @@ export const attendanceAPI = {
         };
       }
     } catch (error: any) {
+      console.error(
+        "createMobileFromMaster error:",
+        error.response?.data || error.message
+      );
       console.error("attendance checkIn error:", error);
       return { success: false, error: "Gagal absen check-in" };
     }
@@ -714,7 +475,7 @@ export const attendanceAPI = {
     try {
       const userData = await SecureStore.getItemAsync("user_data");
       const user = userData ? JSON.parse(userData) : null;
-      const kode_sales = user?.kode_user || "unknown";
+      const kode_sales = user?.kode_user; //user?.kode_user || "unknown";
 
       const payload = {
         kode_sales,

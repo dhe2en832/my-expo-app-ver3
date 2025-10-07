@@ -330,8 +330,12 @@ export default function RKSPage() {
   };
 
   const handleCheckIn = async (rks: RKS) => {
+    console.log("handleCheckIn for RKS:", rks);
+    // throw new Error("handleCheckIn is disabled for testing");
+
     try {
       setCheckingInId(rks.id);
+
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         Alert.alert(
@@ -369,15 +373,15 @@ export default function RKSPage() {
           Alert.alert("Error", "ID master tidak valid.");
           return;
         }
-          const kodeRks = rks.kodeRks; // ✅ ini seharusnya ada jika interface RKS sudah benar
-          const createResp = await rksAPI.createMobileFromMaster({
-            customerId: rks.customerId,
-            scheduledDate: rks.scheduledDate,
-            salesId: rks.salesId,
-            masterDetailRowId: rowid,
-            kodeRks,
-          });
-          console.log("createResp:", createResp);
+        const kodeRks = rks.kodeRks; // ✅ ini seharusnya ada jika interface RKS sudah benar
+        const createResp = await rksAPI.createMobileFromMaster({
+          customerId: rks.customerId,
+          scheduledDate: rks.scheduledDate,
+          salesId: rks.salesId,
+          masterDetailRowId: rowid,
+          kodeRks: rks.kodeRks,
+        });
+        console.log("createResp:", createResp);
         if (!createResp.success || !createResp.rks) {
           Alert.alert("Error", createResp.error || "Gagal memulai kunjungan.");
           return;
@@ -859,7 +863,7 @@ export default function RKSPage() {
                     </Text>
                   </View>
                 ) : (
-                  <Text style={styles.primaryButtonText}>Check In</Text>
+                  <Text style={styles.primaryButtonText}>Check In bro</Text>
                 )}
               </LinearGradient>
             </TouchableOpacity>
