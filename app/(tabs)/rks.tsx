@@ -374,11 +374,13 @@ export default function RKSPage() {
           scheduledDate: rks.scheduledDate,
           salesId: rks.salesId,
           masterDetailRowId: rowid,
+          kodeRks: rks.kodeRks,
         });
         if (!createResp.success || !createResp.rks) {
           Alert.alert("Error", createResp.error || "Gagal memulai kunjungan.");
           return;
         }
+        console.log("hasLocation:", hasLocation);
         // Lanjutkan check-in ke record mobile baru
         await proceedWithCheckIn(
           createResp.rks,

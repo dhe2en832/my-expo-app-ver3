@@ -442,6 +442,7 @@ export const rksAPI = {
     scheduledDate: string;
     salesId: string;
     masterDetailRowId: number;
+    kodeRks?: string;
   }) {
     try {
       const payload = {
@@ -449,6 +450,7 @@ export const rksAPI = {
         kode_cust: data.customerId,
         scheduled_date: data.scheduledDate,
         master_detail_rowid: data.masterDetailRowId, // Kirim ke backend
+        kode_rks: data.kodeRks,
       };
 
       const response = await apiClient.post<{
@@ -462,12 +464,22 @@ export const rksAPI = {
       } else {
         return {
           success: false,
-          error: response.data.message || "Gagal membuat kunjungan dari jadwal",
+          error:
+            response.data.message ||
+            "Else Error. Gagal membuat kunjungan dari jadwal",
         };
       }
     } catch (error: any) {
+      console.error(
+        "SQL createMobileFromMaster error:",
+        error.sqlMessage,
+        error.sql
+      );
       console.error("createMobileFromMaster error:", error);
-      return { success: false, error: "Gagal membuat kunjungan dari jadwal" };
+      return {
+        success: false,
+        error: "Catch Error. Gagal membuat kunjungan dari jadwal",
+      };
     }
   },
 

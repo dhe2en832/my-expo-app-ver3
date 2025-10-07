@@ -221,6 +221,7 @@ export interface RKS {
   customerAddress: string;
   scheduledDate: string; // Format: YYYY-MM-DD
   scheduledTime: string; // Format: HH:mm
+  kodeRks?: string;
   coordinates?: {
     latitude: number;
     longitude: number;
