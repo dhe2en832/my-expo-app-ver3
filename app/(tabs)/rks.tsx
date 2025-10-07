@@ -12,13 +12,11 @@ import {
   ActivityIndicator,
   Animated,
   PanResponder,
-  Platform, // Import Platform untuk DatePicker
 } from "react-native";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { rksAPI, attendanceAPI } from "../../api/services";
-// import { mockCustomers, RKS, Customer, AttendanceRecord } from "@/api/mockData";
 import { RKS, Customer, AttendanceRecord } from "@/api/mockData";
 import { useOfflineQueue } from "@/contexts/OfflineContext";
 import { calculateDistance, getCurrentShift } from "@/utils/helpers";
@@ -28,13 +26,11 @@ import { TabView, SceneMap, TabBar } from "react-native-tab-view";
 import { useWindowDimensions } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Calendar } from "lucide-react-native"; // Menggunakan ikon kalender
+import { Calendar } from "lucide-react-native";
 import { useAuth } from "../../contexts/AuthContext";
-// import DateTimePicker from "@react-native-community/datetimepicker"; // Jika ingin menggunakan native date picker
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 type RangeKey = "today" | "week" | "month";
-// Custom Date state untuk filter Bulan/Tahun
 type CustomDate = { month: number; year: number };
 
 export default function RKSPage() {
@@ -58,9 +54,7 @@ export default function RKSPage() {
     null
   );
   const [memoText, setMemoText] = useState("");
-
   const { addToQueue } = useOfflineQueue();
-
   const layout = useWindowDimensions();
   const [index, setIndex] = useState(0);
   const [routes] = useState([
@@ -78,11 +72,8 @@ export default function RKSPage() {
   const [unscheduledLoading, setUnscheduledLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
-
-  // Custom Filter State
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [customDate, setCustomDate] = useState<CustomDate | null>(null);
-
   const fabAnim = useState(new Animated.Value(0))[0];
   const tooltipAnim = useState(new Animated.Value(0))[0];
   const pan = useState(new Animated.ValueXY({ x: 0, y: 0 }))[0];
@@ -95,7 +86,6 @@ export default function RKSPage() {
   );
 
   useEffect(() => {
-    // Set range sesuai tab, dan HAPUS filter custom
     setRange(tabToRange[index]);
     setCustomDate(null);
   }, [index]);
@@ -118,8 +108,6 @@ export default function RKSPage() {
     };
     try {
       const res = await rksAPI.updateRKS(updatedRks);
-
-      // ✅ FIX: Memastikan res.rks ada dan menggunakan variabel lokal updatedItem
       if (res.success && res.rks) {
         const updatedItem = res.rks;
         setRksList((prev) =>
@@ -150,7 +138,6 @@ export default function RKSPage() {
         Animated.spring(fabAnim, {
           toValue: 1,
           useNativeDriver: true,
-
           friction: 5,
         }),
       ]).start();
@@ -202,6 +189,7 @@ export default function RKSPage() {
     ],
     opacity: fabAnim,
   };
+
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onPanResponderGrant: () => {
@@ -220,12 +208,10 @@ export default function RKSPage() {
       console.warn("User tidak punya kode_sales");
       return;
     }
-
     setLoading(true);
     try {
       const res = await rksAPI.getRKS(user.kodeSales);
       if (res.success) {
-        console.log("RKS loaded:", res.rks);
         setRksList(res.rks);
       } else {
         setRksList([]);
@@ -240,54 +226,9 @@ export default function RKSPage() {
 
   const isAnyCheckedIn = rksList.some((r) => r.checkIn && !r.checkOut);
 
-  // REVISI LOGIKA FILTER
-  // const filterByRange = useCallback(
-  //   (list: RKS[]) => {
-  //     const now = new Date();
-
-  //     // 1. Filter Custom Date (Bulan/Tahun) - PRIORITAS UTAMA
-  //     if (customDate) {
-  //       return list.filter((r) => {
-  //         const d = new Date(r.scheduledDate);
-  //         return (
-  //           d.getMonth() === customDate.month &&
-  //           d.getFullYear() === customDate.year
-  //         );
-  //       });
-  //     }
-
-  //     // 2. Filter Tab (today, week, month)
-  //     if (range === "today") {
-  //       const todayStr = now.toISOString().split("T")[0];
-  //       return list.filter((r) => r.scheduledDate === todayStr);
-  //     }
-  //     if (range === "week") {
-  //       const start = new Date(now);
-  //       start.setDate(now.getDate() - now.getDay()); // Sunday as start
-  //       const end = new Date(start);
-  //       end.setDate(start.getDate() + 7);
-  //       return list.filter((r) => {
-  //         const d = new Date(r.scheduledDate);
-  //         return d >= start && d <= end;
-  //       });
-  //     }
-  //     // month (Bulan berjalan)
-  //     return list.filter((r) => {
-  //       const d = new Date(r.scheduledDate);
-  //       return (
-  //         d.getMonth() === now.getMonth() &&
-  //         d.getFullYear() === now.getFullYear()
-  //       );
-  //     });
-  //   },
-  //   [range, customDate]
-  // );
-
   const filterByRange = useCallback(
     (list: RKS[]) => {
       const now = new Date();
-
-      // ✅ Helper: Parse "2025-09-07 09:58:00" → Date dengan aman
       const safeParseDate = (str: string): Date => {
         if (!str) return new Date(NaN);
         if (str.includes(" ")) {
@@ -296,8 +237,6 @@ export default function RKSPage() {
         }
         return new Date(str);
       };
-
-      // 1. Filter Custom Date (Bulan/Tahun) — PRIORITAS UTAMA
       if (customDate) {
         return list.filter((r) => {
           const d = safeParseDate(r.scheduledDate);
@@ -308,10 +247,8 @@ export default function RKSPage() {
           );
         });
       }
-
-      // 2. Filter Tab
       if (range === "today") {
-        const todayStr = now.toISOString().split("T")[0]; // "2025-10-06"
+        const todayStr = now.toISOString().split("T")[0];
         return list.filter((r) => {
           const d = safeParseDate(r.scheduledDate);
           return (
@@ -319,10 +256,9 @@ export default function RKSPage() {
           );
         });
       }
-
       if (range === "week") {
         const start = new Date(now);
-        start.setDate(now.getDate() - now.getDay()); // Minggu
+        start.setDate(now.getDate() - now.getDay());
         const end = new Date(start);
         end.setDate(start.getDate() + 7);
         return list.filter((r) => {
@@ -330,8 +266,6 @@ export default function RKSPage() {
           return !isNaN(d.getTime()) && d >= start && d <= end;
         });
       }
-
-      // month
       return list.filter((r) => {
         const d = safeParseDate(r.scheduledDate);
         return (
@@ -382,267 +316,202 @@ export default function RKSPage() {
   };
 
   const askToUpdateGeofence = (): Promise<boolean> => {
-  return new Promise((resolve) => {
-    Alert.alert(
-      "Update Lokasi Customer?",
-      "Customer ini belum memiliki lokasi tetap. Apakah Anda ingin menyimpan lokasi saat ini sebagai lokasi utama customer?",
-      [
-        { text: "Tidak", onPress: () => resolve(false), style: "cancel" },
-        { text: "Ya", onPress: () => resolve(true) },
-      ],
-      { cancelable: true }
-    );
-  });
-};
-
-const handleCheckIn = async (rks: RKS) => {
-  try {
-    setCheckingInId(rks.id);
-    let { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Izin Lokasi Dibutuhkan", "Aplikasi memerlukan akses lokasi untuk melakukan check-in.");
-      return;
-    }
-
-    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-    const lat = loc.coords.latitude;
-    const lon = loc.coords.longitude;
-    const acc = loc.coords.accuracy ?? 999;
-
-    const customerLoc = rks.customerLocation || rks.coordinates;
-    const hasLocation = !!customerLoc;
-
-    let dist = Infinity;
-    let allowed = rks.radius ?? 150;
-
-    if (hasLocation) {
-      dist = calculateDistance(lat, lon, customerLoc.latitude, customerLoc.longitude);
-    }
-
-    const shouldAskGeofence = !hasLocation; // ✅ hanya tanya jika belum punya lokasi
-
-    const proceed = async (force: boolean = false) => {
-      let updateGeofence = false;
-      if (shouldAskGeofence) {
-        updateGeofence = await askToUpdateGeofence();
-      }
-      await proceedWithCheckIn(rks, lat, lon, acc, updateGeofence);
-    };
-
-    if (hasLocation && dist > allowed) {
+    return new Promise((resolve) => {
       Alert.alert(
-        "Diluar Jarak",
-        `Anda berada ${Math.round(dist)} m dari lokasi customer. Jarak maksimal ${allowed} m.\nLanjutkan check-in?`,
+        "Update Lokasi Customer?",
+        "Customer ini belum memiliki lokasi tetap. Apakah Anda ingin menyimpan lokasi saat ini sebagai lokasi utama customer?",
         [
-          { text: "Batal", style: "cancel" },
-          { text: "Lanjutkan", onPress: () => proceed(true) },
-        ]
+          { text: "Tidak", onPress: () => resolve(false), style: "cancel" },
+          { text: "Ya", onPress: () => resolve(true) },
+        ],
+        { cancelable: true }
       );
-      return;
-    }
-
-    // Jika dalam radius atau tidak punya lokasi → lanjutkan (dengan konfirmasi geofence jika perlu)
-    await proceed();
-  } catch (err) {
-    console.error("handleCheckIn error:", err);
-    Alert.alert("Error", "Gagal melakukan check in.");
-  } finally {
-    setCheckingInId(null);
-  }
-};
-
-  // const handleCheckIn = async (rks: RKS) => {
-  //   try {
-  //     setCheckingInId(rks.id);
-  //     let { status } = await Location.requestForegroundPermissionsAsync();
-  //     if (status !== "granted") {
-  //       Alert.alert(
-  //         "Izin Lokasi Dibutuhkan",
-  //         "Aplikasi memerlukan akses lokasi untuk melakukan check-in."
-  //       );
-  //       return;
-  //     }
-
-  //     const loc = await Location.getCurrentPositionAsync({
-  //       accuracy: Location.Accuracy.High,
-  //     });
-  //     const lat = loc.coords.latitude;
-  //     const lon = loc.coords.longitude;
-  //     const acc = loc.coords.accuracy ?? 999;
-
-  //     const customerLoc = rks.customerLocation || rks.coordinates;
-  //     if (!customerLoc) {
-  //       Alert.alert(
-  //         "Lokasi customer tidak tersedia",
-  //         "Tidak dapat memvalidasi geofence."
-  //       );
-  //       return;
-  //     }
-
-  //     const dist = calculateDistance(
-  //       lat,
-  //       lon,
-  //       customerLoc.latitude,
-  //       customerLoc.longitude
-  //     );
-  //     const allowed = rks.radius ?? 150;
-
-  //     if (dist > allowed) {
-  //       Alert.alert(
-  //         "Diluar Jarak",
-  //         `Anda berada ${Math.round(
-  //           dist
-  //         )} m dari lokasi customer. Jarak maksimal ${allowed} m.\n\nLanjutkan check-in?`,
-  //         [
-  //           { text: "Batal", style: "cancel" },
-
-  //           {
-  //             text: "Lanjutkan",
-  //             onPress: () => proceedWithCheckIn(rks, lat, lon, acc),
-  //           },
-  //         ]
-  //       );
-  //       return;
-  //     }
-
-  //     // Jika dalam radius, lanjutkan langsung
-  //     await proceedWithCheckIn(rks, lat, lon, acc);
-  //   } catch (err) {
-  //     console.error("handleCheckIn error:", err);
-  //     Alert.alert("Error", "Gagal melakukan check in.");
-  //   } finally {
-  //     setCheckingInId(null);
-  //   }
-  // };
-
-  // Fungsi helper untuk melanjutkan proses check-in
-  // const proceedWithCheckIn = async (
-  //   rks: RKS,
-  //   lat: number,
-  //   lon: number,
-  //   acc: number
-  // ) => {
-  //   try {
-  //     const selfie = await takeSelfieFront();
-  //     if (!selfie) return;
-
-  //     const shift = getCurrentShift();
-  //     const attendanceResp = await attendanceAPI.checkIn({
-  //       photo: selfie,
-  //       location: { latitude: lat, longitude: lon, accuracy: acc },
-  //       address: rks.customerAddress || rks.customerName,
-  //       shift,
-  //     });
-  //     const rksResp = await rksAPI.checkIn(rks.id, {
-  //       latitude: lat,
-  //       longitude: lon,
-  //       accuracy: acc,
-  //       photo: selfie,
-  //     });
-  //     if (!rksResp.success) {
-  //       Alert.alert("Error", rksResp.error || "Gagal check in.");
-  //       return;
-  //     }
-
-  //     if (attendanceResp?.success && attendanceResp.record) {
-  //       await appendAttendanceLocal(attendanceResp.record as AttendanceRecord);
-  //     }
-
-  //     // REVISI: Menggunakan RKS yang dikembalikan oleh API
-  //     // BARIS REVISI:
-  //     setRksList((prev) =>
-  //       prev.map((x) => {
-  //         // Memastikan rksResp.rks ada sebelum membandingkan ID
-  //         if (rksResp.rks && x.id === rksResp.rks.id) {
-  //           return rksResp.rks;
-  //         }
-  //         return x;
-  //       })
-  //     );
-  //     addToQueue({
-  //       type: "rks_checkin",
-  //       data: {
-  //         rksId: rks.id,
-  //         latitude: lat,
-  //         longitude: lon,
-  //         accuracy: acc,
-  //         photo: "[local-uri]",
-  //       },
-  //       endpoint: `/api/rks/${rks.id}/checkin`,
-  //     });
-
-  //     Alert.alert("Check In berhasil", "Check In tersimpan.");
-  //   } catch (err) {
-  //     console.error("proceedWithCheckIn error:", err);
-  //     Alert.alert("Error", "Gagal melakukan check in.");
-  //   }
-  // };
-const proceedWithCheckIn = async (
-  rks: RKS,
-  lat: number,
-  lon: number,
-  acc: number,
-  updateGeofence: boolean = false // ✅ tambahkan parameter
-) => {
-  try {
-    const selfie = await takeSelfieFront();
-    console
-    if (!selfie) return;
-    const shift = getCurrentShift();
-
-    const attendanceResp = await attendanceAPI.checkIn({
-      photo: selfie,
-      location: { latitude: lat, longitude: lon, accuracy: acc },
-      address: rks.customerAddress || rks.customerName,
-      shift,
     });
+  };
 
-    // ✅ Kirim flag updateGeofence ke backend
-    const rksResp = await rksAPI.checkIn(rks.id, {
-      latitude: lat,
-      longitude: lon,
-      accuracy: acc,
-      photo: selfie,
-      updateGeofence, // <-- tambahkan ini
-    });
+  const handleCheckIn = async (rks: RKS) => {
+    try {
+      setCheckingInId(rks.id);
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Izin Lokasi Dibutuhkan",
+          "Aplikasi memerlukan akses lokasi untuk melakukan check-in."
+        );
+        return;
+      }
 
-    if (!rksResp.success) {
-      Alert.alert("Error", rksResp.error || "Gagal check in.");
-      return;
-    }
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      const lat = loc.coords.latitude;
+      const lon = loc.coords.longitude;
+      const acc = loc.coords.accuracy ?? 999;
 
-    if (attendanceResp?.success && attendanceResp.record) {
-      await appendAttendanceLocal(attendanceResp.record as AttendanceRecord);
-    }
+      // Cek apakah customer punya lokasi (geofence)
+      const customerLoc = rks.customerLocation || rks.coordinates;
+      const hasLocation = !!customerLoc;
 
-    setRksList((prev) =>
-      prev.map((x) => {
-        if (rksResp.rks && x.id === rksResp.rks.id) {
-          return rksResp.rks;
+      // Jika TIDAK ADA lokasi → tanya user
+      if (!hasLocation) {
+        const shouldUpdate = await askToUpdateGeofence();
+        if (!shouldUpdate) {
+          // ❌ User pilih "Tidak" → batalkan check-in
+          return;
         }
-        return x;
-      })
-    );
+        // Jika "Ya", lanjut ke proses check-in dengan flag updateGeofence = true
+      }
 
-    addToQueue({
-      type: "rks_checkin",
-      data: {
-        rksId: rks.id,
+      // Jika ini RKS master, buat record mobile dulu
+      if (rks.id.startsWith("master_")) {
+        const rowid = parseInt(rks.id.replace("master_", ""), 10);
+        if (isNaN(rowid)) {
+          Alert.alert("Error", "ID master tidak valid.");
+          return;
+        }
+        const createResp = await rksAPI.createMobileFromMaster({
+          customerId: rks.customerId,
+          scheduledDate: rks.scheduledDate,
+          salesId: rks.salesId,
+          masterDetailRowId: rowid,
+        });
+        if (!createResp.success || !createResp.rks) {
+          Alert.alert("Error", createResp.error || "Gagal memulai kunjungan.");
+          return;
+        }
+        // Lanjutkan check-in ke record mobile baru
+        await proceedWithCheckIn(
+          createResp.rks,
+          lat,
+          lon,
+          acc,
+          createResp.rks.id,
+          !hasLocation // updateGeofence = true jika sebelumnya tidak punya lokasi
+        );
+        return;
+      }
+
+      // Jika ini RKS mobile (bukan master)
+      if (!hasLocation) {
+        // Ini seharusnya tidak terjadi, tapi antisipasi
+        Alert.alert(
+          "Lokasi customer tidak tersedia",
+          "Tidak dapat melanjutkan check-in."
+        );
+        return;
+      }
+
+      const dist = calculateDistance(
+        lat,
+        lon,
+        customerLoc.latitude,
+        customerLoc.longitude
+      );
+      const allowed = rks.radius ?? 150;
+      if (dist > allowed) {
+        Alert.alert(
+          "Diluar Jarak",
+          `Anda berada ${Math.round(
+            dist
+          )} m dari lokasi customer. Jarak maksimal ${allowed} m.\nLanjutkan check-in?`,
+          [
+            { text: "Batal", style: "cancel" },
+            {
+              text: "Lanjutkan",
+              onPress: () =>
+                proceedWithCheckIn(rks, lat, lon, acc, rks.id, false),
+            },
+          ]
+        );
+        return;
+      }
+
+      await proceedWithCheckIn(rks, lat, lon, acc, rks.id, false);
+    } catch (err) {
+      console.error("handleCheckIn error:", err);
+      Alert.alert("Error", "Gagal melakukan check in.");
+    } finally {
+      setCheckingInId(null);
+    }
+  };
+
+  const proceedWithCheckIn = async (
+    originalRks: RKS,
+    lat: number,
+    lon: number,
+    acc: number,
+    targetRksId: string,
+    updateGeofence: boolean
+  ) => {
+    try {
+      const selfie = await takeSelfieFront();
+      if (!selfie) return;
+
+      const shift = getCurrentShift();
+      const attendanceResp = await attendanceAPI.checkIn({
+        photo: selfie,
+        location: { latitude: lat, longitude: lon, accuracy: acc },
+        address: originalRks.customerAddress || originalRks.customerName,
+        shift,
+      });
+
+      const rksResp = await rksAPI.checkIn(targetRksId, {
         latitude: lat,
         longitude: lon,
         accuracy: acc,
-        photo: "[local-uri]",
-        updateGeofence, // <-- simpan di queue juga
-      },
-      endpoint: `/api/rks/${rks.id}/checkin`,
-    });
+        photo: selfie,
+        updateGeofence, // ✅ Kirim flag ke backend
+      });
 
-    Alert.alert("Check In berhasil", "Check In tersimpan.");
-  } catch (err) {
-    console.error("proceedWithCheckIn error:", err);
-    Alert.alert("Error", "Gagal melakukan check in.");
-  }
-};
+      if (!rksResp.success) {
+        Alert.alert("Error", rksResp.error || "Gagal check in.");
+        return;
+      }
+
+      if (attendanceResp?.success && attendanceResp.record) {
+        await appendAttendanceLocal(attendanceResp.record as AttendanceRecord);
+      }
+
+      setRksList((prev) => {
+        let updated = prev.map((x) => {
+          if (x.id === originalRks.id) {
+            if (rksResp.rks && originalRks.id.startsWith("master_")) {
+              return rksResp.rks;
+            }
+            if (rksResp.rks && x.id === rksResp.rks.id) {
+              return rksResp.rks;
+            }
+          }
+          return x;
+        });
+        if (originalRks.id.startsWith("master_") && rksResp.rks) {
+          const exists = updated.some((x) => x.id === rksResp.rks.id);
+          if (!exists) {
+            updated = [rksResp.rks, ...updated];
+          }
+        }
+        return updated;
+      });
+
+      addToQueue({
+        type: "rks_checkin",
+        data: {
+          rksId: targetRksId,
+          latitude: lat,
+          longitude: lon,
+          accuracy: acc,
+          photo: "[local-uri]",
+          updateGeofence,
+        },
+        endpoint: `/api/rks/${targetRksId}/checkin`,
+      });
+
+      Alert.alert("Check In berhasil", "Check In tersimpan.");
+    } catch (err) {
+      console.error("proceedWithCheckIn error:", err);
+      Alert.alert("Error", "Gagal melakukan check in.");
+    }
+  };
 
   const handleCheckOut = async (rks: RKS) => {
     try {
@@ -675,35 +544,21 @@ const proceedWithCheckIn = async (
         (now.getTime() - checkInTime.getTime()) / 60000
       );
 
-      // Panggil API checkOut, biarkan backend mengupdate
       const rksResp = await rksAPI.checkOut(rks.id, {
         latitude: lat,
         longitude: lon,
         accuracy: acc,
       });
-
       if (!rksResp.success) {
         Alert.alert("Error", rksResp.error || "Gagal check out.");
         return;
       }
-
       if (rksResp.rks) {
         const updatedItem = rksResp.rks;
         setRksList((prev) =>
           prev.map((x) => (x.id === updatedItem.id ? updatedItem : x))
         );
       }
-      // Update state dengan data dari response API
-      // BARIS REVISI:
-      // setRksList((prev) =>
-      //   prev.map((x) => {
-      //     // Memastikan rksResp.rks ada sebelum membandingkan ID
-      //     if (rksResp.rks && x.id === rks.id) {
-      //       return rksResp.rks;
-      //     }
-      //     return x;
-      //   })
-      // );
       const photoForCheckout =
         (rks.checkIn && (rks.checkIn.photo as any)) || "[no-photo]";
       const attendanceResp = await attendanceAPI.checkOut({
@@ -737,10 +592,8 @@ const proceedWithCheckIn = async (
       Alert.alert("Pilih customer dulu");
       return;
     }
-
     try {
       setUnscheduledLoading(true);
-
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         Alert.alert(
@@ -749,15 +602,12 @@ const proceedWithCheckIn = async (
         );
         return;
       }
-
       const loc = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.High,
       });
       const lat = loc.coords.latitude;
       const lon = loc.coords.longitude;
       const acc = loc.coords.accuracy ?? 999;
-
-      // Validasi jarak ke lokasi customer
       if (
         selectedCustomer.coordinates?.latitude != null &&
         selectedCustomer.coordinates?.longitude != null
@@ -768,15 +618,13 @@ const proceedWithCheckIn = async (
           selectedCustomer.coordinates.latitude,
           selectedCustomer.coordinates.longitude
         );
-        const allowed = 150; // radius default untuk kunjungan tidak terjadwal
-
+        const allowed = 150;
         if (dist > allowed) {
           Alert.alert(
             "Diluar Jarak",
             `Anda berada ${Math.round(
               dist
-            )} m dari lokasi customer. Jarak maksimal ${allowed} m.\n\nLanjutkan check-in?`,
-
+            )} m dari lokasi customer. Jarak maksimal ${allowed} m.\nLanjutkan check-in?`,
             [
               { text: "Batal", style: "cancel" },
               {
@@ -788,8 +636,6 @@ const proceedWithCheckIn = async (
           return;
         }
       }
-
-      // Jika dalam radius (atau tidak ada koordinat customer), lanjutkan langsung
       await proceedWithUnscheduledVisit(lat, lon, acc);
     } catch (err) {
       console.error("handleUnscheduledVisit error:", err);
@@ -799,21 +645,16 @@ const proceedWithCheckIn = async (
     }
   };
 
-  // Fungsi helper untuk melanjutkan proses kunjungan tidak terjadwal
   const proceedWithUnscheduledVisit = async (
     lat: number,
     lon: number,
     acc: number
   ) => {
     if (!selectedCustomer) return;
-    // safety check
-
     try {
       const selfie = await takeSelfieFront();
       if (!selfie) return;
-
       const res = await rksAPI.addUnscheduledVisit(user?.kodeSales || "1", {
-        // Ganti "1" dengan kodeSales user
         customerId: selectedCustomer.id,
         customerNo: selectedCustomer.no,
         customerName: selectedCustomer.name,
@@ -824,10 +665,7 @@ const proceedWithCheckIn = async (
         photo: selfie,
       });
       if (res.success && res.rks) {
-        if (res.rks !== undefined) {
-          // REVISI: Tambahkan kunjungan baru ke awal list
-          setRksList((prev) => [res.rks as RKS, ...prev]);
-        }
+        setRksList((prev) => [res.rks as RKS, ...prev]);
         setModalType(null);
         setSelectedCustomer(null);
         const ares = await attendanceAPI.checkIn({
@@ -839,7 +677,6 @@ const proceedWithCheckIn = async (
         if (ares?.success && ares.record) {
           await appendAttendanceLocal(ares.record as AttendanceRecord);
         }
-
         addToQueue({
           type: "rks_additional",
           data: { rksId: res.rks.id, photo: "[local-uri]" },
@@ -850,7 +687,6 @@ const proceedWithCheckIn = async (
           "Kunjungan tambahan dibuat dan check-in tercatat."
         );
       } else {
-        // Gunakan type guard atau akses aman ke 'error'
         const errorMessage =
           (res as any).error || "Gagal membuat kunjungan tambahan.";
         Alert.alert("Error", errorMessage);
@@ -868,14 +704,12 @@ const proceedWithCheckIn = async (
     }
     try {
       const res = await rksAPI.addNewCustomerVisit(user?.kodeSales || "1", {
-        // Ganti "1" dengan kodeSales user
         name: newCustomer.name,
         address: newCustomer.address,
         phone: newCustomer.phone,
-        city: ""
+        city: "",
       });
       if (res.success && res.rks) {
-        // REVISI: Tambahkan customer baru ke awal list
         setRksList((prev) => [res.rks as RKS, ...prev]);
         setModalType(null);
         setNewCustomer({ name: "", address: "", phone: "", type: "new" });
@@ -891,7 +725,6 @@ const proceedWithCheckIn = async (
   };
 
   const handleCreateOrder = () => {
-    // TODO: Arahkan ke halaman SO dengan parameter customer ID
     router.push("/sales-order");
   };
   const handleTagihan = (customerId: string, customerName: string) => {
@@ -900,7 +733,6 @@ const proceedWithCheckIn = async (
       params: { customerId, customerName },
     });
   };
-
   const handleOpenBesiKompetitor = (rks: {
     id: string;
     customerName: string;
@@ -911,14 +743,8 @@ const proceedWithCheckIn = async (
     });
   };
 
-  const handleNoo = () => {
-    router.push("/customers");
-  };
-
-  // 🔑 LOGIKA UTAMA: CEK APAKAH HARI INI
   const today = new Date();
   const todayStr = today.toISOString().split("T")[0];
-  // Di dalam RKSPage component, sebelum return()
   const getDatePart = useCallback((str: string): string => {
     if (!str) return "";
     if (str.includes(" ")) return str.substring(0, 10);
@@ -926,25 +752,17 @@ const proceedWithCheckIn = async (
     return str;
   }, []);
 
-  // REVISI LOGIKA TAMPILAN BUTTON
   const renderItem = ({ item }: { item: RKS }) => {
     const canCheckIn = !item.checkIn && item.status !== "new-customer";
     const canCheckOut = !!item.checkIn && !item.checkOut;
-    // REVISI: Action lain (SO, Catatan, dll) tampil jika SUDAH CheckIn ATAU sudah Completed
     const canViewActions = !!item.checkIn || item.status === "completed";
-
-    // Check-in hanya boleh dilakukan hari ini
-    // const isToday = item.scheduledDate === todayStr;
     const isToday = getDatePart(item.scheduledDate) === todayStr;
-    // Jika sedang Check-In di RKS lain, tombol Check In di-disable
     const isAnotherCheckedIn = rksList.some(
       (r) => r.checkIn && !r.checkOut && r.id !== item.id
     );
 
-    // Status RKS
     let statusText = "";
     let statusColor = "";
-
     if (item.status === "completed") {
       statusText = "Selesai";
       statusColor = "#4CAF50";
@@ -971,14 +789,7 @@ const proceedWithCheckIn = async (
             alignItems: "center",
           }}
         >
-          {/* Tanggal + Hari */}
           <Text style={{ color: "#555", fontSize: 13, fontWeight: "600" }}>
-            {/* {new Intl.DateTimeFormat("id-ID", {
-              weekday: "long",
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            }).format(new Date(item.scheduledDate))} */}
             {new Intl.DateTimeFormat("id-ID", {
               weekday: "long",
               day: "numeric",
@@ -990,27 +801,17 @@ const proceedWithCheckIn = async (
                 : new Date(item.scheduledDate)
             )}
           </Text>
-          {/* Status Badge */}
           <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
             <Text style={styles.badgeText}>{statusText}</Text>
           </View>
         </View>
-
-        {/* ID Customer */}
         <Text style={{ color: "#888", fontSize: 12, marginTop: 4 }}>
           No. Cust : {item.customerId}
         </Text>
-
-        {/* Nama Customer */}
         <Text style={styles.title}>{item.customerName}</Text>
-
-        {/* Alamat */}
-
         <Text style={{ color: "#666", marginTop: 6 }}>
           {item.customerAddress}
         </Text>
-
-        {/* Durasi */}
         {item.duration != null && (
           <Text
             style={{
@@ -1023,8 +824,6 @@ const proceedWithCheckIn = async (
             Durasi: {item.duration} menit
           </Text>
         )}
-
-        {/* Tombol Aksi */}
         <View
           style={{
             flexDirection: "row",
@@ -1033,42 +832,34 @@ const proceedWithCheckIn = async (
             flexWrap: "wrap",
           }}
         >
-          {/* 1. Tombol Check In */}
-          {canCheckIn &&
-            isToday && ( // Check In hanya untuk scheduled/new-customer hari ini
-              <TouchableOpacity
-                style={[
-                  styles.primaryButton,
-                  (checkingInId !== null || isAnotherCheckedIn) && {
-                    opacity: 0.5,
-                  },
-                ]}
-                onPress={() => handleCheckIn(item)}
-                disabled={checkingInId !== null || isAnotherCheckedIn}
+          {canCheckIn && isToday && (
+            <TouchableOpacity
+              style={[
+                styles.primaryButton,
+                (checkingInId !== null || isAnotherCheckedIn) && {
+                  opacity: 0.5,
+                },
+              ]}
+              onPress={() => handleCheckIn(item)}
+              disabled={checkingInId !== null || isAnotherCheckedIn}
+            >
+              <LinearGradient
+                colors={["#4CAF50", "#45a049"]}
+                style={styles.primaryButtonGradient}
               >
-                <LinearGradient
-                  colors={["#4CAF50", "#45a049"]}
-                  style={styles.primaryButtonGradient}
-                >
-                  {checkingInId === item.id ? (
-                    <View
-                      style={{ flexDirection: "row", alignItems: "center" }}
-                    >
-                      <ActivityIndicator size="small" color="#fff" />
-                      <Text
-                        style={[styles.primaryButtonText, { marginLeft: 8 }]}
-                      >
-                        Sedang proses...
-                      </Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.primaryButtonText}>Check In</Text>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
-
-          {/* 2. Tombol Check Out */}
+                {checkingInId === item.id ? (
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={[styles.primaryButtonText, { marginLeft: 8 }]}>
+                      Sedang proses...
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.primaryButtonText}>Check In</Text>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
           {canCheckOut && (
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: "#f44336" }]}
@@ -1080,8 +871,6 @@ const proceedWithCheckIn = async (
               </Text>
             </TouchableOpacity>
           )}
-
-          {/* 3. Tombol Aksi Lanjutan (SO, Catatan, Besi, Tagihan) */}
           {canViewActions && (
             <>
               <TouchableOpacity
@@ -1089,7 +878,6 @@ const proceedWithCheckIn = async (
                 onPress={handleCreateOrder}
               >
                 <MaterialIcons name="shopping-cart" size={20} color="#fff" />
-
                 <Text style={[styles.actionButtonText, { marginLeft: 4 }]}>
                   SO
                 </Text>
@@ -1108,7 +896,6 @@ const proceedWithCheckIn = async (
                 onPress={() => handleOpenBesiKompetitor(item)}
               >
                 <MaterialIcons name="build" size={20} color="#fff" />
-
                 <Text style={[styles.actionButtonText, { marginLeft: 4 }]}>
                   Besi
                 </Text>
@@ -1120,22 +907,17 @@ const proceedWithCheckIn = async (
                 }
               >
                 <MaterialIcons name="receipt" size={20} color="#fff" />
-
                 <Text style={[styles.actionButtonText, { marginLeft: 4 }]}>
                   Tagihan
                 </Text>
               </TouchableOpacity>
             </>
           )}
-
-          {/* 4. Tanda Selesai */}
           {item.status === "completed" && (
             <View style={[styles.disabledButton]}>
               <Text style={{ color: "#444" }}>Selesai</Text>
             </View>
           )}
-
-          {/* Tanda Tidak Boleh Check In Hari Ini (RKS Lampau) */}
           {canCheckIn && !isToday && (
             <View style={[styles.disabledButton]}>
               <Text style={{ color: "#444" }}>RKS Lampau</Text>
@@ -1148,19 +930,16 @@ const proceedWithCheckIn = async (
 
   const SceneList = () => {
     const filtered = filterByRange(rksList);
-    if (loading) {
+    if (loading)
       return (
         <View style={{ padding: 20 }}>
           <ActivityIndicator size="large" color="#667eea" />
         </View>
       );
-    }
     if (filtered.length === 0) {
-      // Menampilkan pesan berbeda jika menggunakan filter custom
       const emptyMessage = customDate
         ? `Tidak ada RKS pada ${customDate.year}/${customDate.month + 1}.`
         : "Tidak ada RKS pada rentang ini.";
-
       return (
         <View style={{ padding: 20 }}>
           <Text style={{ color: "#999" }}>{emptyMessage}</Text>
@@ -1199,6 +978,7 @@ const proceedWithCheckIn = async (
         }: {
           route: { key: string; title: string };
           focused: boolean;
+          color: string;
         }) => (
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <Text
@@ -1206,7 +986,6 @@ const proceedWithCheckIn = async (
             >
               {route.title}
             </Text>
-
             {route.key === "today" && (
               <View style={styles.smallBadge}>
                 <Text style={styles.badgeText}>Hari ini</Text>
@@ -1215,7 +994,6 @@ const proceedWithCheckIn = async (
           </View>
         )}
       />
-      {/* Tombol Filter Kustom (Bulan/Tahun) di bawah TabBar */}
       <TouchableOpacity
         style={styles.customFilterButton}
         onPress={() => setCalendarVisible(true)}
@@ -1232,32 +1010,23 @@ const proceedWithCheckIn = async (
     </View>
   );
 
-  // KOMPONEN: Modal Pemilih Bulan/Tahun
   const CalendarModal = () => {
-    // Gunakan state hanya untuk bulan & tahun, bukan tanggal lengkap
     const [tempMonth, setTempMonth] = useState(
       customDate?.month ?? today.getMonth()
     );
     const [tempYear, setTempYear] = useState(
       customDate?.year ?? today.getFullYear()
     );
-
     const handleSave = () => {
-      setCustomDate({
-        month: tempMonth,
-        year: tempYear,
-      });
+      setCustomDate({ month: tempMonth, year: tempYear });
       setCalendarVisible(false);
-      setIndex(2); // Pindah ke tab "Bulan ini"
+      setIndex(2);
     };
-
     const handleClear = () => {
       setCustomDate(null);
       setCalendarVisible(false);
       setIndex(0);
     };
-
-    // Daftar bulan
     const months = [
       "Januari",
       "Februari",
@@ -1272,13 +1041,10 @@ const proceedWithCheckIn = async (
       "November",
       "Desember",
     ];
-
-    // Daftar tahun (misal 2020–2030)
     const years = Array.from(
       { length: 11 },
       (_, i) => today.getFullYear() - 5 + i
     );
-
     return (
       <Modal visible={calendarVisible} animationType="fade" transparent={true}>
         <View style={styles.centeredView}>
@@ -1291,8 +1057,6 @@ const proceedWithCheckIn = async (
             }}
           >
             <Text style={styles.modalTitle}>Pilih Bulan & Tahun</Text>
-
-            {/* Picker Bulan */}
             <View style={{ marginVertical: 10 }}>
               <Text style={{ marginBottom: 6, fontWeight: "600" }}>Bulan:</Text>
               <View style={styles.pickerContainer}>
@@ -1317,8 +1081,6 @@ const proceedWithCheckIn = async (
                 ))}
               </View>
             </View>
-
-            {/* Picker Tahun */}
             <View style={{ marginVertical: 10 }}>
               <Text style={{ marginBottom: 6, fontWeight: "600" }}>Tahun:</Text>
               <View style={styles.pickerContainer}>
@@ -1343,7 +1105,6 @@ const proceedWithCheckIn = async (
                 ))}
               </View>
             </View>
-
             <View
               style={{
                 flexDirection: "row",
@@ -1373,7 +1134,6 @@ const proceedWithCheckIn = async (
     );
   };
 
-  // RETURN UTAMA
   return (
     <View style={styles.container}>
       <TabView
@@ -1383,14 +1143,10 @@ const proceedWithCheckIn = async (
         initialLayout={{ width: layout.width }}
         renderTabBar={renderTabBar}
       />
-
       <CalendarModal />
-
-      {/* Draggable FAB */}
       <Animated.View
         style={[
           styles.fabContainer,
-
           { transform: [{ translateX: pan.x }, { translateY: pan.y }] },
         ]}
         {...panResponder.panHandlers}
@@ -1446,7 +1202,8 @@ const proceedWithCheckIn = async (
         </TouchableOpacity>
       </Animated.View>
 
-      {/* Modal Unscheduled */}
+      {/* Modals (unscheduled, baru, memo) — tetap seperti asli */}
+
       <Modal
         visible={modalType === "unscheduled"}
         animationType="slide"
@@ -1460,7 +1217,6 @@ const proceedWithCheckIn = async (
             <View style={styles.loadingOverlay}>
               <View style={styles.loadingBox}>
                 <ActivityIndicator size="large" color="#667eea" />
-
                 <Text
                   style={{ marginTop: 12, color: "#333", fontWeight: "600" }}
                 >
@@ -1472,31 +1228,6 @@ const proceedWithCheckIn = async (
           <View style={styles.header}>
             <Text style={styles.title}>Pilih Customer</Text>
           </View>
-          {/* <FlatList
-            data={mockCustomers}
-            keyExtractor={(c) => c.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[
-                  styles.customerItem,
-                  selectedCustomer?.id === item.id && styles.selectedCustomer,
-                ]}
-                onPress={() => setSelectedCustomer(item)}
-              >
-                <Text style={{ fontWeight: "600" }}>
-                  No Customer : {item.id}
-                </Text>
-
-                <Text style={{ fontWeight: "600" }}>{item.name}</Text>
-                <Text style={{ color: "#666" }}>{item.address}</Text>
-              </TouchableOpacity>
-            )}
-            contentContainerStyle={{
-              paddingHorizontal: 16,
-              paddingVertical: 8,
-            }}
-            style={{ flex: 1 }}
-          /> */}
           <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
             <TouchableOpacity
               style={styles.btnPrimary}
@@ -1517,7 +1248,6 @@ const proceedWithCheckIn = async (
         </SafeAreaView>
       </Modal>
 
-      {/* Modal New Customer */}
       <Modal
         visible={modalType === "baru"}
         animationType="slide"
@@ -1563,7 +1293,6 @@ const proceedWithCheckIn = async (
         </SafeAreaView>
       </Modal>
 
-      {/* Modal Memo */}
       <Modal
         visible={memoModalVisible}
         animationType="slide"
@@ -1628,6 +1357,7 @@ const proceedWithCheckIn = async (
 }
 
 const styles = StyleSheet.create({
+  // ... (semua style tetap sama seperti file asli Anda)
   pickerContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1644,17 +1374,9 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: "#f5f7fb",
   },
-  pickerItemSelected: {
-    backgroundColor: "#667eea",
-  },
-  pickerItemText: {
-    fontSize: 14,
-    color: "#333",
-  },
-  pickerItemTextSelected: {
-    color: "#fff",
-    fontWeight: "600",
-  },
+  pickerItemSelected: { backgroundColor: "#667eea" },
+  pickerItemText: { fontSize: 14, color: "#333" },
+  pickerItemTextSelected: { color: "#fff", fontWeight: "600" },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1676,16 +1398,11 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 30,
     backgroundColor: "#667eea",
-
     justifyContent: "center",
     alignItems: "center",
     elevation: 5,
   },
-  fabOption: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-  },
+  fabOption: { position: "absolute", bottom: 0, right: 0 },
   fabOptionButton: {
     width: 50,
     height: 50,
@@ -1700,24 +1417,13 @@ const styles = StyleSheet.create({
     position: "absolute",
     backgroundColor: "#333",
     paddingHorizontal: 8,
-
     paddingVertical: 4,
     borderRadius: 6,
     top: 10,
   },
-  tooltipText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  tabLabel: {
-    fontWeight: "600",
-    fontSize: 16,
-  },
-  tabBar: {
-    backgroundColor: "white",
-    // Hapus border bawah karena sudah ada di container
-  },
+  tooltipText: { color: "#fff", fontSize: 12, fontWeight: "600" },
+  tabLabel: { fontWeight: "600", fontSize: 16 },
+  tabBar: { backgroundColor: "white" },
   statusBadge: {
     borderRadius: 10,
     paddingHorizontal: 8,
@@ -1750,13 +1456,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: "#e0e0e0",
-    backgroundColor: "#f0f4ff", // Warna latar belakang untuk filter kustom
+    backgroundColor: "#f0f4ff",
   },
-  customFilterText: {
-    marginLeft: 8,
-    color: "#667eea",
-    fontWeight: "600",
-  },
+  customFilterText: { marginLeft: 8, color: "#667eea", fontWeight: "600" },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.3)",
@@ -1843,11 +1545,7 @@ const styles = StyleSheet.create({
     minWidth: 80,
     marginBottom: 8,
   },
-  actionButtonText: {
-    color: "white",
-    fontWeight: "700",
-    fontSize: 12,
-  },
+  actionButtonText: { color: "white", fontWeight: "700", fontSize: 12 },
   dangerButton: { flex: 1, borderRadius: 8, overflow: "hidden" },
   disabledButton: {
     padding: 10,

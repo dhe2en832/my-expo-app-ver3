@@ -1,4 +1,4 @@
-// services.ts
+// my-expo-app/api/services.ts
 // Modul API untuk berinteraksi dengan backend
 // Gunakan axios untuk HTTP requests
 // Gunakan SecureStore untuk penyimpanan token aman
@@ -169,6 +169,245 @@ export const loginAPI = {
 // services.ts — bagian rksAPI & attendanceAPI
 // services.ts
 
+// export const rksAPI = {
+//   async getRKS(userId: string, date?: string) {
+//     try {
+//       const params = {
+//         kode_sales: userId,
+//         ...(date ? { scheduled_date: date } : {}),
+//       };
+//       const response = await apiClient.get<{
+//         success: boolean;
+//         message?: string;
+//         data: RKS[];
+//       }>("/rks-mobile", { params });
+
+//       if (response.data.success) {
+//         // ✅ Ambil dari `data`, kirim sebagai `rks` ke UI
+//         return { success: true, rks: response.data.data };
+//       } else {
+//         return {
+//           success: false,
+//           rks: [],
+//           error: response.data.message || "Gagal memuat RKS",
+//         };
+//       }
+//     } catch (error: any) {
+//       console.error("getRKS error:", error);
+//       return { success: false, rks: [], error: "Network error" };
+//     }
+//   },
+
+//   async checkIn(
+//     rksId: string,
+//     data: {
+//       latitude: number;
+//       longitude: number;
+//       accuracy: number;
+//       photo: string;
+//       updateGeofence?: boolean;
+//     }
+//   ) {
+//     try {
+//       const response = await apiClient.post<{
+//         success: boolean;
+//         message?: string;
+//         data: RKS;
+//       }>(`/rks-mobile/${rksId}/checkin`, data);
+
+//       if (response.data.success) {
+//         return { success: true, rks: response.data.data };
+//       } else {
+//         return {
+//           success: false,
+//           error: response.data.message || "Check-in gagal",
+//         };
+//       }
+//     } catch (error: any) {
+//       console.error("checkIn error:", error);
+//       return { success: false, error: "Gagal check-in" };
+//     }
+//   },
+
+//   async checkOut(
+//     rksId: string,
+//     data: { latitude: number; longitude: number; accuracy: number }
+//   ) {
+//     try {
+//       const response = await apiClient.post<{
+//         success: boolean;
+//         message?: string;
+//         data: RKS;
+//       }>(`/rks-mobile/${rksId}/checkout`, data);
+
+//       if (response.data.success) {
+//         return { success: true, rks: response.data.data };
+//       } else {
+//         return {
+//           success: false,
+//           error: response.data.message || "Check-out gagal",
+//         };
+//       }
+//     } catch (error: any) {
+//       console.error("checkOut error:", error);
+//       return { success: false, error: "Gagal check-out" };
+//     }
+//   },
+
+//   async addUnscheduledVisit(
+//     userId: string,
+//     data: {
+//       customerId: string;
+//       customerNo: string;
+//       customerName: string;
+//       customerAddress: string;
+//       latitude: number;
+//       longitude: number;
+//       accuracy: number;
+//       photo: string;
+//     }
+//   ) {
+//     try {
+//       const payload = {
+//         kode_sales: userId,
+//         kode_cust: data.customerId,
+//         no_cust: data.customerNo,
+//         customerName: data.customerName,
+//         customerAddress: data.customerAddress,
+//         latitude: data.latitude,
+//         longitude: data.longitude,
+//         accuracy: data.accuracy,
+//         photo: data.photo,
+//       };
+
+//       const response = await apiClient.post<{
+//         success: boolean;
+//         message?: string;
+//         data: RKS;
+//       }>("/rks-mobile/additional", payload);
+
+//       if (response.data.success) {
+//         return { success: true, rks: response.data.data };
+//       } else {
+//         return {
+//           success: false,
+//           error: response.data.message || "Gagal membuat kunjungan tambahan",
+//         };
+//       }
+//     } catch (error: any) {
+//       console.error("addUnscheduledVisit error:", error);
+//       return { success: false, error: "Gagal membuat kunjungan tambahan" };
+//     }
+//   },
+
+//   async addNewCustomerVisit(
+//     userId: string,
+//     data: {
+//       name: string;
+//       address: string;
+//       city: string; // ✅ tambahkan city
+//       phone: string;
+//       latitude?: number; // ✅ optional koordinat
+//       longitude?: number; // ✅ optional koordinat
+//     }
+//   ) {
+//     try {
+//       const payload = {
+//         kode_sales: userId,
+//         name: data.name,
+//         address: data.address,
+//         city: data.city, // ✅ wajib untuk backend
+//         phone: data.phone,
+//         latitude: data.latitude, // ✅ opsional
+//         longitude: data.longitude, // ✅ opsional
+//       };
+
+//       const response = await apiClient.post<{
+//         success: boolean;
+//         message?: string;
+//         data: RKS;
+//       }>("/rks-mobile/new-customer", payload);
+
+//       if (response.data.success) {
+//         return { success: true, rks: response.data.data };
+//       } else {
+//         return {
+//           success: false,
+//           error: response.data.message || "Gagal membuat customer baru",
+//         };
+//       }
+//     } catch (error: any) {
+//       console.error("addNewCustomerVisit error:", error);
+//       return { success: false, error: "Gagal membuat customer baru" };
+//     }
+//   },
+
+//   // async addNewCustomerVisit(
+//   //   userId: string,
+//   //   data: {
+//   //     name: string;
+//   //     address: string;
+//   //     phone: string;
+//   //     type: "regular" | "vip" | "new";
+//   //   }
+//   // ) {
+//   //   try {
+//   //     const payload = {
+//   //       kode_sales: userId,
+//   //       name: data.name,
+//   //       address: data.address,
+//   //       phone: data.phone,
+//   //       type: data.type,
+//   //     };
+
+//   //     const response = await apiClient.post<{
+//   //       success: boolean;
+//   //       message?: string;
+//   //       data: RKS;
+//   //     }>("/rks-mobile/new-customer", payload);
+
+//   //     if (response.data.success) {
+//   //       return { success: true, rks: response.data.data };
+//   //     } else {
+//   //       return {
+//   //         success: false,
+//   //         error: response.data.message || "Gagal membuat customer baru",
+//   //       };
+//   //     }
+//   //   } catch (error: any) {
+//   //     console.error("addNewCustomerVisit error:", error);
+//   //     return { success: false, error: "Gagal membuat customer baru" };
+//   //   }
+//   // },
+
+//   async updateRKS(rks: RKS) {
+//     try {
+//       const payload = { notes: rks.activities?.notes || "" };
+//       const response = await apiClient.put<{
+//         success: boolean;
+//         message?: string;
+//         data: RKS;
+//       }>(`/rks-mobile/${rks.id}`, payload);
+
+//       if (response.data.success) {
+//         return { success: true, rks: response.data.data };
+//       } else {
+//         return {
+//           success: false,
+//           error: response.data.message || "Gagal memperbarui catatan",
+//         };
+//       }
+//     } catch (error: any) {
+//       console.error("updateRKS error:", error);
+//       return { success: false, error: "Gagal memperbarui catatan" };
+//     }
+//   },
+
+//   async updateRRSafe(rks: RKS) {
+//     return this.updateRKS(rks);
+//   },
+// };
+
 export const rksAPI = {
   async getRKS(userId: string, date?: string) {
     try {
@@ -183,7 +422,6 @@ export const rksAPI = {
       }>("/rks-mobile", { params });
 
       if (response.data.success) {
-        // ✅ Ambil dari `data`, kirim sebagai `rks` ke UI
         return { success: true, rks: response.data.data };
       } else {
         return {
@@ -195,6 +433,41 @@ export const rksAPI = {
     } catch (error: any) {
       console.error("getRKS error:", error);
       return { success: false, rks: [], error: "Network error" };
+    }
+  },
+
+  // ✅ BARU: Buat RKS mobile dari master
+  async createMobileFromMaster(data: {
+    customerId: string;
+    scheduledDate: string;
+    salesId: string;
+    masterDetailRowId: number;
+  }) {
+    try {
+      const payload = {
+        kode_sales: data.salesId,
+        kode_cust: data.customerId,
+        scheduled_date: data.scheduledDate,
+        master_detail_rowid: data.masterDetailRowId, // Kirim ke backend
+      };
+
+      const response = await apiClient.post<{
+        success: boolean;
+        message?: string;
+        data: RKS;
+      }>("/rks-mobile/from-master", payload);
+
+      if (response.data.success) {
+        return { success: true, rks: response.data.data };
+      } else {
+        return {
+          success: false,
+          error: response.data.message || "Gagal membuat kunjungan dari jadwal",
+        };
+      }
+    } catch (error: any) {
+      console.error("createMobileFromMaster error:", error);
+      return { success: false, error: "Gagal membuat kunjungan dari jadwal" };
     }
   },
 
@@ -305,10 +578,10 @@ export const rksAPI = {
     data: {
       name: string;
       address: string;
-      city: string; // ✅ tambahkan city
+      city: string;
       phone: string;
-      latitude?: number; // ✅ optional koordinat
-      longitude?: number; // ✅ optional koordinat
+      latitude?: number;
+      longitude?: number;
     }
   ) {
     try {
@@ -316,10 +589,10 @@ export const rksAPI = {
         kode_sales: userId,
         name: data.name,
         address: data.address,
-        city: data.city, // ✅ wajib untuk backend
+        city: data.city,
         phone: data.phone,
-        latitude: data.latitude, // ✅ opsional
-        longitude: data.longitude, // ✅ opsional
+        latitude: data.latitude,
+        longitude: data.longitude,
       };
 
       const response = await apiClient.post<{
@@ -341,44 +614,6 @@ export const rksAPI = {
       return { success: false, error: "Gagal membuat customer baru" };
     }
   },
-
-  // async addNewCustomerVisit(
-  //   userId: string,
-  //   data: {
-  //     name: string;
-  //     address: string;
-  //     phone: string;
-  //     type: "regular" | "vip" | "new";
-  //   }
-  // ) {
-  //   try {
-  //     const payload = {
-  //       kode_sales: userId,
-  //       name: data.name,
-  //       address: data.address,
-  //       phone: data.phone,
-  //       type: data.type,
-  //     };
-
-  //     const response = await apiClient.post<{
-  //       success: boolean;
-  //       message?: string;
-  //       data: RKS;
-  //     }>("/rks-mobile/new-customer", payload);
-
-  //     if (response.data.success) {
-  //       return { success: true, rks: response.data.data };
-  //     } else {
-  //       return {
-  //         success: false,
-  //         error: response.data.message || "Gagal membuat customer baru",
-  //       };
-  //     }
-  //   } catch (error: any) {
-  //     console.error("addNewCustomerVisit error:", error);
-  //     return { success: false, error: "Gagal membuat customer baru" };
-  //   }
-  // },
 
   async updateRKS(rks: RKS) {
     try {
@@ -407,7 +642,6 @@ export const rksAPI = {
     return this.updateRKS(rks);
   },
 };
-
 export const attendanceAPI = {
   async checkIn(data: {
     photo: string;
@@ -1182,4 +1416,3 @@ export const attendanceAPI = {
 //     return { success: true, target: mockTargets[index] };
 //   },
 // };
-
