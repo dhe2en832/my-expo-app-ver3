@@ -445,10 +445,13 @@ export const rksAPI = {
     kodeRks?: string;
   }) {
     try {
+      const [datePart, timePart] = data.scheduledDate.split(" ");
       const payload = {
         kode_sales: data.salesId,
         kode_cust: data.customerId,
         scheduled_date: data.scheduledDate,
+        // scheduled_date: datePart,
+        // scheduled_time: timePart,
         master_detail_rowid: data.masterDetailRowId, // Kirim ke backend
         kode_rks: data.kodeRks,
       };
@@ -470,10 +473,14 @@ export const rksAPI = {
         };
       }
     } catch (error: any) {
+      // console.error(
+      //   "SQL createMobileFromMaster error:",
+      //   error.sqlMessage,
+      //   error.sql
+      // );
       console.error(
-        "SQL createMobileFromMaster error:",
-        error.sqlMessage,
-        error.sql
+        "createMobileFromMaster error:",
+        error.response?.data || error.message
       );
       console.error("createMobileFromMaster error:", error);
       return {
