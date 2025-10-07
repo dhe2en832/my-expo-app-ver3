@@ -683,7 +683,7 @@ export const attendanceAPI = {
         photo: data.photo,
         address: data.address,
         shift: data.shift,
-        mobile_id: uuidv4(),
+        mobile_id: nanoid(), //uuidv4(),
       };
 
       const response = await apiClient.post<{
@@ -725,7 +725,7 @@ export const attendanceAPI = {
         accuracy: data.location.accuracy,
         photo: data.photo,
         address: data.address,
-        mobile_id: uuidv4(),
+        mobile_id: nanoid(), //uuidv4(),
       };
 
       const response = await apiClient.post<{
