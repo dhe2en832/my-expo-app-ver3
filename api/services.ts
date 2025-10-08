@@ -303,7 +303,7 @@ export const rksAPI = {
   },
 
   async addUnscheduledVisit(
-    userId: string,
+    salesId: string,
     data: {
       customerId: string;
       customerNo: string;
@@ -317,7 +317,7 @@ export const rksAPI = {
   ) {
     try {
       const payload = {
-        kode_sales: userId,
+        kode_sales: salesId,
         kode_cust: data.customerId,
         no_cust: data.customerNo,
         customerName: data.customerName,
@@ -349,7 +349,7 @@ export const rksAPI = {
   },
 
   async addNewCustomerVisit(
-    userId: string,
+    salesId: string,
     data: {
       name: string;
       address: string;
@@ -361,7 +361,7 @@ export const rksAPI = {
   ) {
     try {
       const payload = {
-        kode_sales: userId,
+        kode_sales: salesId,
         name: data.name,
         address: data.address,
         city: data.city,
@@ -418,17 +418,134 @@ export const rksAPI = {
   },
 };
 
+// export const attendanceAPI = {
+//   async checkIn(data: {
+//     photo: string;
+//     location: { latitude: number; longitude: number; accuracy: number };
+//     address: string;
+//     shift: "morning" | "afternoon" | "night";
+//     is_within_geofence?: boolean;
+//   }) {
+//     try {
+//       const userData = await SecureStore.getItemAsync("user_data");
+//       const user = userData ? JSON.parse(userData) : null;
+//       const kode_sales = user?.kode_sales; //user?.kode_user || "unknown";
+
+//       const payload = {
+//         kode_sales,
+//         type: "check-in" as const,
+//         timestamp: new Date().toISOString(),
+//         latitude: data.location.latitude,
+//         longitude: data.location.longitude,
+//         accuracy: data.location.accuracy,
+//         photo: data.photo,
+//         address: data.address,
+//         shift: data.shift,
+//         mobile_id: nanoid(), //uuidv4(),
+//       };
+
+//       const response = await apiClient.post<{
+//         success: boolean;
+//         message?: string;
+//         data: AttendanceRecord;
+//       }>("/api/attendance/checkin", payload);
+
+//       if (response.data.success) {
+//         return { success: true, record: response.data.data };
+//       } else {
+//         return {
+//           success: false,
+//           error: response.data.message || "Absensi check-in gagal",
+//         };
+//       }
+//     } catch (error: any) {
+//       console.error(
+//         "createMobileFromMaster error:",
+//         error.response?.data || error.message
+//       );
+//       console.error("attendance checkIn error:", error);
+//       return { success: false, error: "Gagal absen check-in" };
+//     }
+//   },
+
+//   async checkOut(data: {
+//     photo: string;
+//     location: { latitude: number; longitude: number; accuracy: number };
+//     address: string;
+//   }) {
+//     try {
+//       const userData = await SecureStore.getItemAsync("user_data");
+//       const user = userData ? JSON.parse(userData) : null;
+//       const kode_sales = user?.kode_user; //user?.kode_user || "unknown";
+
+//       const payload = {
+//         kode_sales,
+//         type: "check-out" as const,
+//         timestamp: new Date().toISOString(),
+//         latitude: data.location.latitude,
+//         longitude: data.location.longitude,
+//         accuracy: data.location.accuracy,
+//         photo: data.photo,
+//         address: data.address,
+//         mobile_id: nanoid(), //uuidv4(),
+//       };
+
+//       const response = await apiClient.post<{
+//         success: boolean;
+//         message?: string;
+//         data: AttendanceRecord;
+//       }>("/api/attendance/checkout", payload);
+
+//       if (response.data.success) {
+//         return { success: true, record: response.data.data };
+//       } else {
+//         return {
+//           success: false,
+//           error: response.data.message || "Absensi check-out gagal",
+//         };
+//       }
+//     } catch (error: any) {
+//       console.error("attendance checkOut error:", error);
+//       return { success: false, error: "Gagal absen check-out" };
+//     }
+//   },
+
+//   async getTodayRecords(userId: string) {
+//     try {
+//       const response = await apiClient.get<{
+//         success: boolean;
+//         message?: string;
+//         data: AttendanceRecord[];
+//       }>(`/api/attendance/today?kode_sales=${userId}`);
+
+//       return {
+//         success: response.data.success,
+//         records: response.data.data || [],
+//       };
+//     } catch (error) {
+//       console.warn("getTodayRecords failed");
+//       return { success: true, records: [] };
+//     }
+//   },
+// };
+
+// Perbaikan attendanceAPI.checkIn di services.ts
+
 export const attendanceAPI = {
   async checkIn(data: {
     photo: string;
     location: { latitude: number; longitude: number; accuracy: number };
     address: string;
     shift: "morning" | "afternoon" | "night";
+    is_within_geofence?: boolean; // ✅ Ditambahkan sebagai optional
   }) {
     try {
       const userData = await SecureStore.getItemAsync("user_data");
       const user = userData ? JSON.parse(userData) : null;
-      const kode_sales = user?.kode_sales; //user?.kode_user || "unknown";
+      const kode_sales = user?.kode_sales || user?.kode_user || "unknown";
+
+      // ✅ Generate mobile_id unik
+      const mobile_id = nanoid();
 
       const payload = {
         kode_sales,
@@ -440,30 +557,41 @@ export const attendanceAPI = {
         photo: data.photo,
         address: data.address,
         shift: data.shift,
-        mobile_id: nanoid(), //uuidv4(),
+        is_within_geofence: data.is_within_geofence ?? false, // ✅ Default false jika tidak ada
+        mobile_id, // ✅ Wajib ada
       };
+
+      console.log("📤 Attendance checkIn payload:", {
+        ...payload,
+        photo: payload.photo ? `[${payload.photo.length} chars]` : null,
+      });
 
       const response = await apiClient.post<{
         success: boolean;
         message?: string;
         data: AttendanceRecord;
-      }>("/api/attendance/checkin", payload);
+      }>("/attendance/checkin", payload);
 
       if (response.data.success) {
+        console.log("✅ Attendance checkIn berhasil:", response.data.data);
         return { success: true, record: response.data.data };
       } else {
+        console.warn("⚠️ Attendance checkIn gagal:", response.data.message);
         return {
           success: false,
           error: response.data.message || "Absensi check-in gagal",
         };
       }
     } catch (error: any) {
-      console.error(
-        "createMobileFromMaster error:",
-        error.response?.data || error.message
-      );
-      console.error("attendance checkIn error:", error);
-      return { success: false, error: "Gagal absen check-in" };
+      console.error("❌ Attendance checkIn error:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+      return {
+        success: false,
+        error: error.response?.data?.message || "Gagal absen check-in",
+      };
     }
   },
 
@@ -471,11 +599,14 @@ export const attendanceAPI = {
     photo: string;
     location: { latitude: number; longitude: number; accuracy: number };
     address: string;
+    is_within_geofence?: boolean; // ✅ Ditambahkan
   }) {
     try {
       const userData = await SecureStore.getItemAsync("user_data");
       const user = userData ? JSON.parse(userData) : null;
-      const kode_sales = user?.kode_user; //user?.kode_user || "unknown";
+      const kode_sales = user?.kode_sales || user?.kode_user || "unknown";
+
+      const mobile_id = nanoid();
 
       const payload = {
         kode_sales,
@@ -486,47 +617,63 @@ export const attendanceAPI = {
         accuracy: data.location.accuracy,
         photo: data.photo,
         address: data.address,
-        mobile_id: nanoid(), //uuidv4(),
+        is_within_geofence: data.is_within_geofence ?? false, // ✅ Default false
+        mobile_id,
       };
+
+      console.log("📤 Attendance checkOut payload:", {
+        ...payload,
+        photo: payload.photo ? `[${payload.photo.length} chars]` : null,
+      });
 
       const response = await apiClient.post<{
         success: boolean;
         message?: string;
         data: AttendanceRecord;
-      }>("/api/attendance/checkout", payload);
+      }>("/attendance/checkout", payload);
 
       if (response.data.success) {
+        console.log("✅ Attendance checkOut berhasil:", response.data.data);
         return { success: true, record: response.data.data };
       } else {
+        console.warn("⚠️ Attendance checkOut gagal:", response.data.message);
         return {
           success: false,
           error: response.data.message || "Absensi check-out gagal",
         };
       }
     } catch (error: any) {
-      console.error("attendance checkOut error:", error);
-      return { success: false, error: "Gagal absen check-out" };
+      console.error("❌ Attendance checkOut error:", {
+        message: error.message,
+        response: error.response?.data,
+      });
+      return {
+        success: false,
+        error: error.response?.data?.message || "Gagal absen check-out",
+      };
     }
   },
 
   async getTodayRecords(userId: string) {
+    console.log("Fetching today's attendance records for user:", userId);
     try {
       const response = await apiClient.get<{
         success: boolean;
         message?: string;
         data: AttendanceRecord[];
-      }>(`/api/attendance/today?kode_sales=${userId}`);
+      }>(`/attendance/today?kode_sales=${userId}`);
 
       return {
         success: response.data.success,
         records: response.data.data || [],
       };
     } catch (error) {
-      console.warn("getTodayRecords failed");
+      console.warn("⚠️ getTodayRecords failed:", error);
       return { success: true, records: [] };
     }
   },
 };
+
 
 // BATAS DARI SINI KE BAWAH ADALAH MOCK API
 // Gunakan apiClient dari axiosConfig.ts untuk API nyata

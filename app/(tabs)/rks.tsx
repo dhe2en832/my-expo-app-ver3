@@ -443,6 +443,86 @@ export default function RKSPage() {
     }
   };
 
+  // const proceedWithCheckIn = async (
+  //   originalRks: RKS,
+  //   lat: number,
+  //   lon: number,
+  //   acc: number,
+  //   targetRksId: string,
+  //   updateGeofence: boolean
+  // ) => {
+  //   try {
+  //     const selfie = await takeSelfieFront();
+  //     if (!selfie) return;
+
+  //     const shift = getCurrentShift();
+  //     const attendanceResp = await attendanceAPI.checkIn({
+  //       photo: selfie,
+  //       location: { latitude: lat, longitude: lon, accuracy: acc },
+  //       address: originalRks.customerAddress || originalRks.customerName,
+  //       shift,
+  //     });
+
+  //     const rksResp = await rksAPI.checkIn(targetRksId, {
+  //       latitude: lat,
+  //       longitude: lon,
+  //       accuracy: acc,
+  //       photo: selfie,
+  //       updateGeofence, // ✅ Kirim flag ke backend
+  //     });
+
+  //     if (!rksResp.success) {
+  //       Alert.alert("Error", rksResp.error || "Gagal check in.");
+  //       return;
+  //     }
+
+  //     if (attendanceResp?.success && attendanceResp.record) {
+  //       await appendAttendanceLocal(attendanceResp.record as AttendanceRecord);
+  //     }
+
+  //     setRksList((prev) => {
+  //       let updated = prev.map((x) => {
+  //         if (x.id === originalRks.id) {
+  //           if (rksResp.rks && originalRks.id.startsWith("master_")) {
+  //             return rksResp.rks;
+  //           }
+  //           if (rksResp.rks && x.id === rksResp.rks.id) {
+  //             return rksResp.rks;
+  //           }
+  //         }
+  //         return x;
+  //       });
+  //       if (originalRks.id.startsWith("master_") && rksResp.rks) {
+  //         const exists = updated.some((x) => x.id === rksResp.rks.id);
+  //         if (!exists) {
+  //           updated = [rksResp.rks, ...updated];
+  //         }
+  //       }
+  //       return updated;
+  //     });
+
+  //     addToQueue({
+  //       type: "rks_checkin",
+  //       data: {
+  //         rksId: targetRksId,
+  //         latitude: lat,
+  //         longitude: lon,
+  //         accuracy: acc,
+  //         photo: "[local-uri]",
+  //         updateGeofence,
+  //       },
+  //       endpoint: `/api/rks/${targetRksId}/checkin`,
+  //     });
+
+  //     Alert.alert("Check In berhasil", "Check In tersimpan.");
+  //   } catch (err) {
+  //     console.error("proceedWithCheckIn error:", err);
+  //     Alert.alert("Error", "Gagal melakukan check in.");
+  //   }
+  // };
+
+  // Perbaikan fungsi proceedWithCheckIn di rks.tsx
+
   const proceedWithCheckIn = async (
     originalRks: RKS,
     lat: number,
@@ -456,19 +536,52 @@ export default function RKSPage() {
       if (!selfie) return;
 
       const shift = getCurrentShift();
-      const attendanceResp = await attendanceAPI.checkIn({
-        photo: selfie,
-        location: { latitude: lat, longitude: lon, accuracy: acc },
-        address: originalRks.customerAddress || originalRks.customerName,
-        shift,
-      });
 
+      // ✅ Hitung is_within_geofence untuk attendance
+      let isWithinGeofence = false;
+      const customerLoc =
+        originalRks.customerLocation || originalRks.coordinates;
+      if (customerLoc?.latitude && customerLoc?.longitude) {
+        const distance = calculateDistance(
+          lat,
+          lon,
+          customerLoc.latitude,
+          customerLoc.longitude
+        );
+        const allowedRadius = originalRks.radius ?? 150;
+        isWithinGeofence = distance <= allowedRadius;
+      }
+
+      // ✅ Check-in ke attendance dengan semua field yang diperlukan
+      try {
+        const attendanceResp = await attendanceAPI.checkIn({
+          photo: selfie,
+          location: { latitude: lat, longitude: lon, accuracy: acc },
+          address: originalRks.customerAddress || originalRks.customerName,
+          shift,
+          is_within_geofence: isWithinGeofence, // ✅ DITAMBAHKAN
+        });
+
+        if (attendanceResp?.success && attendanceResp.record) {
+          await appendAttendanceLocal(
+            attendanceResp.record as AttendanceRecord
+          );
+        }
+      } catch (attErr) {
+        console.warn(
+          "⚠️ Attendance check-in gagal, lanjutkan RKS check-in:",
+          attErr
+        );
+        // ✅ Jangan throw error, biarkan RKS check-in tetap jalan
+      }
+
+      // ✅ Check-in RKS (tetap dilakukan meski attendance gagal)
       const rksResp = await rksAPI.checkIn(targetRksId, {
         latitude: lat,
         longitude: lon,
         accuracy: acc,
         photo: selfie,
-        updateGeofence, // ✅ Kirim flag ke backend
+        updateGeofence,
       });
 
       if (!rksResp.success) {
@@ -476,10 +589,7 @@ export default function RKSPage() {
         return;
       }
 
-      if (attendanceResp?.success && attendanceResp.record) {
-        await appendAttendanceLocal(attendanceResp.record as AttendanceRecord);
-      }
-
+      // Update state RKS
       setRksList((prev) => {
         let updated = prev.map((x) => {
           if (x.id === originalRks.id) {
@@ -501,6 +611,7 @@ export default function RKSPage() {
         return updated;
       });
 
+      // Tambahkan ke offline queue
       addToQueue({
         type: "rks_checkin",
         data: {
@@ -516,11 +627,22 @@ export default function RKSPage() {
 
       Alert.alert("Check In berhasil", "Check In tersimpan.");
     } catch (err) {
-      console.error("proceedWithCheckIn error:", err);
+      console.log("🔍 Debugging attendance check-in:", {
+        shift,
+        isWithinGeofence,
+        address: originalRks.customerAddress || originalRks.customerName,
+        hasPhoto: !!selfie,
+        location: { lat, lon, acc },
+      });
+      console.error("❌ proceedWithCheckIn error:", err);
       Alert.alert("Error", "Gagal melakukan check in.");
     }
   };
-
+  // Declare shift and isWithinGeofence for debugging
+  let shift: string | undefined = undefined;
+  let isWithinGeofence: boolean | undefined = undefined;
+  let selfie: string | undefined = undefined;
+  // The above variables are only for debugging and will be set in proceedWithCheckIn
   const handleCheckOut = async (rks: RKS) => {
     try {
       if (!rks.checkIn) {
