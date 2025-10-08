@@ -63,13 +63,13 @@ export const loginAPI = {
    * @returns {Promise<LoginResponse>}
    */
   login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
-    console.log("Body request login:", credentials);
+    // console.log("Body request login:", credentials);
     try {
       const response = await apiClient.post<LoginResponse>(
         "/login",
         credentials
       );
-      console.log("Response login:", response.data);
+      // console.log("Response login:", response.data);
       // Jika response dari backend sesuai format
       if (response.data.success && response.data.data) {
         const { token, user } = response.data.data;
@@ -213,7 +213,7 @@ export const rksAPI = {
         master_rowid: data.masterDetailRowId,
         master_kode_rks: data.kodeRks,
       };
-      console.log("payload", payload);
+      // console.log("payload", payload);
 
       const response = await apiClient.post<{
         success: boolean;
@@ -221,7 +221,7 @@ export const rksAPI = {
         data: RKS;
       }>("/rks-mobile/from-master", payload);
 
-      console.log("createMobileFromMaster response:", response.data);
+      // console.log("createMobileFromMaster response:", response.data);
 
       if (response.data.success) {
         return { success: true, rks: response.data.data };

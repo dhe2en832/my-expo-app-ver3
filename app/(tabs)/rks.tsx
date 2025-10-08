@@ -381,12 +381,12 @@ export default function RKSPage() {
           masterDetailRowId: rowid,
           kodeRks: rks.kodeRks,
         });
-        console.log("createResp:", createResp);
+        // console.log("createResp:", createResp);
         if (!createResp.success || !createResp.rks) {
           Alert.alert("Error", createResp.error || "Gagal memulai kunjungan.");
           return;
         }
-        console.log("hasLocation:", hasLocation);
+        // console.log("hasLocation:", hasLocation);
         // Lanjutkan check-in ke record mobile baru
         await proceedWithCheckIn(
           createResp.rks,
