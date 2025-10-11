@@ -1,115 +1,48 @@
 // contexts/OfflineContext.tsx
 import createContextHook from '@nkzw/create-context-hook';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useState, useEffect, useMemo, useCallback } from 'react';
-
-interface QueueItem {
-  id: string;
-  type: string;
-  data: any;
-  endpoint: string;
-  method?: string;
-  timestamp: string;
-  retryCount: number;
-}
+import { useState, useMemo, useCallback } from "react";
+import { rksAPI } from "../api/services";
+import { getPendingRKSLocal, updateRKSLocal } from "../utils/database";
 
 interface OfflineContextType {
-  queueItems: QueueItem[];
   isOnline: boolean;
-  addToQueue: (item: Omit<QueueItem, 'id' | 'timestamp' | 'retryCount'>) => void;
+  addToQueue: (type: string) => void;
   processQueue: () => Promise<void>;
-  clearQueue: () => void;
 }
 
-export const [OfflineProvider, useOfflineQueue] = createContextHook<OfflineContextType>(() => {
-  const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
-  const [isOnline] = useState<boolean>(true);
+export const [OfflineProvider, useOfflineQueue] =
+  createContextHook<OfflineContextType>(() => {
+    const [isOnline] = useState<boolean>(true);
 
-  useEffect(() => {
-    loadQueue();
-  }, []);
+    const addToQueue = useCallback((type: string) => {
+      console.log("Added to offline queue (SQLite):", type);
+    }, []);
 
-  const loadQueue = async () => {
-    try {
-      const storedQueue = await AsyncStorage.getItem('offlineQueue');
-      if (storedQueue) {
-        setQueueItems(JSON.parse(storedQueue));
-      }
-    } catch (error) {
-      console.error('Error loading offline queue:', error);
-    }
-  };
-
-  const saveQueue = async (items: QueueItem[]) => {
-    try {
-      await AsyncStorage.setItem('offlineQueue', JSON.stringify(items));
-    } catch (error) {
-      console.error('Error saving offline queue:', error);
-    }
-  };
-
-  const sanitizeData = (data: any) => {
-    const clone = { ...data };
-    if (clone.photo && typeof clone.photo === 'string' && clone.photo.startsWith('file:')) {
-      // jangan simpan file besar, pakai placeholder
-      clone.photo = '[local-uri]';
-    }
-    return clone;
-  };
-
-  const addToQueue = useCallback((item: Omit<QueueItem, 'id' | 'timestamp' | 'retryCount'>) => {
-    try {
-      const queueItem: QueueItem = {
-        ...item,
-        id: Date.now().toString(),
-        timestamp: new Date().toISOString(),
-        retryCount: 0,
-        data: sanitizeData(item.data),
-      };
-
-      const updatedQueue = [...queueItems, queueItem];
-      setQueueItems(updatedQueue);
-      saveQueue(updatedQueue);
-
-      console.log('Added to offline queue:', queueItem);
-    } catch (error) {
-      console.error('Error adding to queue:', error);
-      // jangan crash app
-    }
-  }, [queueItems]);
-
-  const processQueue = useCallback(async () => {
-    if (queueItems.length === 0) return;
-
-    console.log('Processing offline queue:', queueItems.length, 'items');
-
-    const remaining: QueueItem[] = [];
-
-    for (const item of queueItems) {
+    const processQueue = useCallback(async () => {
       try {
-        console.log('Processing item:', item.type, item.data);
-        // TODO: ganti dengan call API nyata
-        // sementara ini, kita anggap semua sukses -> tidak disimpan lagi
-      } catch (err) {
-        console.error('Error processing item:', item.id, err);
-        remaining.push({ ...item, retryCount: item.retryCount + 1 });
+        const pendingRecords = await getPendingRKSLocal();
+        if (pendingRecords.length === 0) return;
+
+        const syncResult = await rksAPI.syncRKS(pendingRecords);
+        if (syncResult.success) {
+          for (const record of pendingRecords) {
+            await updateRKSLocal(record.id, { status: "synced" });
+          }
+          console.log(
+            `[OfflineContext] Synced ${pendingRecords.length} records`
+          );
+        }
+      } catch (error) {
+        console.error("[OfflineContext] Process queue error:", error);
       }
-    }
+    }, []);
 
-    setQueueItems(remaining);
-    saveQueue(remaining);
-  }, [queueItems]);
-
-  const clearQueue = useCallback(() => {
-    setQueueItems([]);
-    AsyncStorage.removeItem('offlineQueue');
-  }, []);
-
-  return useMemo(() => ({
-    queueItems,
-    isOnline,
-    addToQueue,
-    processQueue,
-    clearQueue,
-  }), [queueItems, isOnline, addToQueue, processQueue, clearQueue]);
-});
+    return useMemo(
+      () => ({
+        isOnline,
+        addToQueue,
+        processQueue,
+      }),
+      [isOnline, addToQueue, processQueue]
+    );
+  });

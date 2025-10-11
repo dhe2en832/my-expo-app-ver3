@@ -13,16 +13,13 @@
       "resizeMode": "cover",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "package": "com.batasku.salesapp",
       "versionCode": 1,
-      "versionName": "1.0.0",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -43,7 +40,30 @@
       "expo-font",
       "expo-splash-screen",
       "expo-sqlite",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Aplikasi membutuhkan akses lokasi untuk fitur check-in / check-out toko.",
+          "locationAlwaysPermission": "Aplikasi membutuhkan akses lokasi untuk fitur check-in / check-out toko.",
+          "locationWhenInUsePermission": "Aplikasi membutuhkan akses lokasi untuk fitur check-in / check-out toko."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Aplikasi membutuhkan akses foto untuk mengunggah gambar.",
+          "cameraPermission": "Aplikasi membutuhkan akses kamera untuk mengambil foto."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/alert.png",
+          "color": "#ffffff",
+          "sounds": ["./assets/sounds/new-notification.mp3"]
+        }
+      ]
     ],
     "extra": {
       "router": {},

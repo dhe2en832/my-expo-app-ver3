@@ -1,39 +1,13 @@
-// my-expo-app/api/services.ts
-// Modul API untuk berinteraksi dengan backend
-// Gunakan axios untuk HTTP requests
-// Gunakan SecureStore untuk penyimpanan token aman
-import {
-  // mockRKS,
-  // mockCustomers,
-  RKS,
-  Customer,
-  AttendanceRecord,
-  // geofenceLocations,
-  // mockSalesOrders,
-  SalesOrder,
-  // mockProducts,
-  // mockPayments,
-  // mockInvoices,
-  Payment,
-  // mockBesiCompetitor,
-  // BesiCompetitor,
-  // mockTargets,
-} from "./mockData";
-import { calculateDistance, delay } from "../utils/helpers";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { nanoid } from "nanoid/non-secure";
-import { v4 as uuidv4 } from "uuid";
-import { Alert } from "react-native";
-import { normalizeSuccess, normalizeError } from "../utils/normalizeResponse";
-
-import apiClient from "./axiosConfig";
+// myExpoApp/api/services.ts
+import axios from "./axiosConfig";
 import * as SecureStore from "expo-secure-store";
 import { AxiosRequestConfig } from "axios";
+import * as FileSystem from "expo-file-system";
 
-// Tipe data
+// --- Tipe Data Login ---
 export type LoginCredentials = {
   userid: string;
-  password: string; // plain text dulu
+  password: string;
   kodecabang: string;
 };
 
@@ -54,37 +28,37 @@ export type LoginResponse = {
   };
 };
 
-// ================
+// --- Tipe Data RKS & Lainnya ---
+import {
+  RKSHeader,
+  RKSDetail,
+  Customer,
+  FasMap,
+  MobileRKS,
+  NewCustomerPayload,
+  RKSList,
+} from "./interface";
+import apiClient from "./axiosConfig";
+
+// ==================
 // Login API Module
-// ================
+// ==================
 export const loginAPI = {
-  /**
-   * Melakukan login ke backend
-   * @returns {Promise<LoginResponse>}
-   */
   login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
     // console.log("Body request login:", credentials);
     try {
-      const response = await apiClient.post<LoginResponse>(
-        "/login",
-        credentials
-      );
+      const response = await axios.post<LoginResponse>("/login", credentials);
       // console.log("Response login:", response.data);
-      // Jika response dari backend sesuai format
       if (response.data.success && response.data.data) {
         const { token, user } = response.data.data;
-
-        // Simpan ke secure storage
         await SecureStore.setItemAsync("auth_token", token);
         await SecureStore.setItemAsync("user_data", JSON.stringify(user));
-
         return {
           success: true,
           data: { token, user },
           message: response.data.message,
         };
       } else {
-        // Backend kirim success: false
         return {
           success: false,
           message: response.data.message || "Login gagal",
@@ -92,18 +66,13 @@ export const loginAPI = {
       }
     } catch (error: any) {
       console.error("Login API error:", error);
-
-      // Tangani error Axios
       if (error.response) {
-        // Error dari backend (4xx, 5xx)
         const message =
           error.response.data?.message || "Terjadi kesalahan pada server";
         return { success: false, message };
       } else if (error.request) {
-        // Tidak ada respons (network error)
         return { success: false, message: "Tidak ada koneksi ke server" };
       } else {
-        // Error lain
         return {
           success: false,
           message: error.message || "Error tidak dikenal",
@@ -112,45 +81,26 @@ export const loginAPI = {
     }
   },
 
-  /**
-   * Logout: hapus token & user dari secure storage
-   */
-  // logout: async (): Promise<void> => {
-  //   await SecureStore.deleteItemAsync('auth_token');
-  //   await SecureStore.deleteItemAsync('user_data');
-  // },
-  /**
-   * Logout: kirim request ke backend untuk blacklist token, lalu hapus dari secure storage
-   */
   logout: async (): Promise<void> => {
     try {
-      // Ambil token saat ini
       const token = await SecureStore.getItemAsync("auth_token");
-
       if (token) {
-        // Kirim request ke endpoint logout
-        await apiClient.post(
+        await axios.post(
           "/login/logout",
           {},
           {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
+            headers: { Authorization: `Bearer ${token}` },
           }
         );
       }
     } catch (error) {
-      console.warn("Logout API warning (token may be invalid):", error);
-      // Tetap lanjutkan logout di client meski API gagal
+      console.warn("Logout API warning:", error);
     } finally {
-      // Hapus token & user dari penyimpanan lokal
       await SecureStore.deleteItemAsync("auth_token");
       await SecureStore.deleteItemAsync("user_data");
     }
   },
-  /**
-   * Cek apakah user sudah login (untuk auto-login saat app dibuka)
-   */
+
   getStoredAuth: async (): Promise<{
     token: string | null;
     user: User | null;
@@ -162,1184 +112,176 @@ export const loginAPI = {
   },
 };
 
+// ===================
+// RKS Master Module
+// ===================
 export const rksAPI = {
-  async getRKS(userId: string, date?: string) {
+  // --- RKS ---
+  getRKSList: async (kode_sales: string) => {
     try {
-      const params = {
-        kode_sales: userId,
-        ...(date ? { scheduled_date: date } : {}),
-      };
-      const response = await apiClient.get<{
-        success: boolean;
-        message?: string;
-        data: RKS[];
-      }>("/rks-mobile", { params });
-
-      if (response.data.success) {
-        // console.log("getRKS response data:", response.data);
-        return { success: true, rks: response.data.data };
-      } else {
-        return {
-          success: false,
-          rks: [],
-          error: response.data.message || "Gagal memuat RKS",
-        };
-      }
-    } catch (error: any) {
-      console.error("getRKS error:", error);
-      return { success: false, rks: [], error: "Network error" };
-    }
-  },
-
-  // ✅ BARU: Buat RKS mobile dari master
-  async createMobileFromMaster(data: {
-    customerId: string;
-    scheduledDate: string;
-    salesId: string;
-    masterDetailRowId: number;
-    kodeRks?: string;
-    detailrowId?: string;
-  }) {
-    try {
-      const [datePart, timePart] = data.scheduledDate.split(" ");
-      const payload = {
-        kode_sales: data.salesId,
-        kode_cust: data.customerId,
-        scheduled_date: data.scheduledDate,
-        // scheduled_date: datePart,
-        // scheduled_time: timePart,
-        master_detail_rowid: data.masterDetailRowId, // Kirim ke backend
-        kode_rks: data.kodeRks,
-        master_rowid: data.masterDetailRowId,
-        master_kode_rks: data.kodeRks,
-      };
-      // console.log("payload", payload);
-
-      const response = await apiClient.post<{
-        success: boolean;
-        message?: string;
-        data: RKS;
-      }>("/rks-mobile/from-master", payload);
-
-      // console.log("createMobileFromMaster response:", response.data);
-
-      if (response.data.success) {
-        return { success: true, rks: response.data.data };
-      } else {
-        return {
-          success: false,
-          error:
-            response.data.message ||
-            "Else Error. Gagal membuat kunjungan dari jadwal",
-        };
-      }
-    } catch (error: any) {
-      console.error(
-        "createMobileFromMaster error:",
-        error.response?.data || error.message
+      const res = await apiClient.get<{ success: boolean; data?: RKSList[] }>(
+        `/rks/list/${kode_sales}`
       );
-      console.error("createMobileFromMaster error:", error);
+      return { success: true, data: res.data.data || [] };
+    } catch (err: any) {
       return {
         success: false,
-        error: "Catch Error. Gagal membuat kunjungan dari jadwal",
+        error: err.message || "Gagal mengambil RKS List",
       };
     }
   },
-
-  async checkIn(
-    rksId: string,
-    data: {
-      latitude: number;
-      longitude: number;
-      accuracy: number;
-      photo: string;
-      updateGeofence?: boolean;
-    }
-  ) {
+  getRKSHeaders: async (kode_sales: string) => {
     try {
-      const response = await apiClient.post<{
-        success: boolean;
-        message?: string;
-        data: RKS;
-      }>(`/rks-mobile/${rksId}/checkin`, data);
-
-      if (response.data.success) {
-        return { success: true, rks: response.data.data };
-      } else {
-        return {
-          success: false,
-          error: response.data.message || "Check-in gagal",
-        };
-      }
-    } catch (error: any) {
-      console.error("checkIn error:", error);
-      return { success: false, error: "Gagal check-in" };
-    }
-  },
-
-  async checkOut(
-    rksId: string,
-    data: { latitude: number; longitude: number; accuracy: number }
-  ) {
-    try {
-      const response = await apiClient.post<{
-        success: boolean;
-        message?: string;
-        data: RKS;
-      }>(`/rks-mobile/${rksId}/checkout`, data);
-
-      if (response.data.success) {
-        return { success: true, rks: response.data.data };
-      } else {
-        return {
-          success: false,
-          error: response.data.message || "Check-out gagal",
-        };
-      }
-    } catch (error: any) {
-      console.error("checkOut error:", error);
-      return { success: false, error: "Gagal check-out" };
-    }
-  },
-
-  async addUnscheduledVisit(
-    salesId: string,
-    data: {
-      customerId: string;
-      customerNo: string;
-      customerName: string;
-      customerAddress: string;
-      latitude: number;
-      longitude: number;
-      accuracy: number;
-      photo: string;
-    }
-  ) {
-    try {
-      const payload = {
-        kode_sales: salesId,
-        kode_cust: data.customerId,
-        no_cust: data.customerNo,
-        customerName: data.customerName,
-        customerAddress: data.customerAddress,
-        latitude: data.latitude,
-        longitude: data.longitude,
-        accuracy: data.accuracy,
-        photo: data.photo,
-      };
-
-      const response = await apiClient.post<{
-        success: boolean;
-        message?: string;
-        data: RKS;
-      }>("/rks-mobile/additional", payload);
-
-      if (response.data.success) {
-        return { success: true, rks: response.data.data };
-      } else {
-        return {
-          success: false,
-          error: response.data.message || "Gagal membuat kunjungan tambahan",
-        };
-      }
-    } catch (error: any) {
-      console.error("addUnscheduledVisit error:", error);
-      return { success: false, error: "Gagal membuat kunjungan tambahan" };
-    }
-  },
-
-  async addNewCustomerVisit(
-    salesId: string,
-    data: {
-      name: string;
-      address: string;
-      city: string;
-      phone: string;
-      latitude?: number;
-      longitude?: number;
-    }
-  ) {
-    try {
-      const payload = {
-        kode_sales: salesId,
-        name: data.name,
-        address: data.address,
-        city: data.city,
-        phone: data.phone,
-        latitude: data.latitude,
-        longitude: data.longitude,
-      };
-
-      const response = await apiClient.post<{
-        success: boolean;
-        message?: string;
-        data: RKS;
-      }>("/rks-mobile/new-customer", payload);
-
-      if (response.data.success) {
-        return { success: true, rks: response.data.data };
-      } else {
-        return {
-          success: false,
-          error: response.data.message || "Gagal membuat customer baru",
-        };
-      }
-    } catch (error: any) {
-      console.error("addNewCustomerVisit error:", error);
-      return { success: false, error: "Gagal membuat customer baru" };
-    }
-  },
-
-  async updateRKS(rks: RKS) {
-    try {
-      const payload = { notes: rks.activities?.notes || "" };
-      const response = await apiClient.put<{
-        success: boolean;
-        message?: string;
-        data: RKS;
-      }>(`/rks-mobile/${rks.id}`, payload);
-
-      if (response.data.success) {
-        return { success: true, rks: response.data.data };
-      } else {
-        return {
-          success: false,
-          error: response.data.message || "Gagal memperbarui catatan",
-        };
-      }
-    } catch (error: any) {
-      console.error("updateRKS error:", error);
-      return { success: false, error: "Gagal memperbarui catatan" };
-    }
-  },
-
-  async updateRRSafe(rks: RKS) {
-    return this.updateRKS(rks);
-  },
-};
-
-// export const attendanceAPI = {
-//   async checkIn(data: {
-//     photo: string;
-//     location: { latitude: number; longitude: number; accuracy: number };
-//     address: string;
-//     shift: "morning" | "afternoon" | "night";
-//     is_within_geofence?: boolean;
-//   }) {
-//     try {
-//       const userData = await SecureStore.getItemAsync("user_data");
-//       const user = userData ? JSON.parse(userData) : null;
-//       const kode_sales = user?.kode_sales; //user?.kode_user || "unknown";
-
-//       const payload = {
-//         kode_sales,
-//         type: "check-in" as const,
-//         timestamp: new Date().toISOString(),
-//         latitude: data.location.latitude,
-//         longitude: data.location.longitude,
-//         accuracy: data.location.accuracy,
-//         photo: data.photo,
-//         address: data.address,
-//         shift: data.shift,
-//         mobile_id: nanoid(), //uuidv4(),
-//       };
-
-//       const response = await apiClient.post<{
-//         success: boolean;
-//         message?: string;
-//         data: AttendanceRecord;
-//       }>("/api/attendance/checkin", payload);
-
-//       if (response.data.success) {
-//         return { success: true, record: response.data.data };
-//       } else {
-//         return {
-//           success: false,
-//           error: response.data.message || "Absensi check-in gagal",
-//         };
-//       }
-//     } catch (error: any) {
-//       console.error(
-//         "createMobileFromMaster error:",
-//         error.response?.data || error.message
-//       );
-//       console.error("attendance checkIn error:", error);
-//       return { success: false, error: "Gagal absen check-in" };
-//     }
-//   },
-
-//   async checkOut(data: {
-//     photo: string;
-//     location: { latitude: number; longitude: number; accuracy: number };
-//     address: string;
-//   }) {
-//     try {
-//       const userData = await SecureStore.getItemAsync("user_data");
-//       const user = userData ? JSON.parse(userData) : null;
-//       const kode_sales = user?.kode_user; //user?.kode_user || "unknown";
-
-//       const payload = {
-//         kode_sales,
-//         type: "check-out" as const,
-//         timestamp: new Date().toISOString(),
-//         latitude: data.location.latitude,
-//         longitude: data.location.longitude,
-//         accuracy: data.location.accuracy,
-//         photo: data.photo,
-//         address: data.address,
-//         mobile_id: nanoid(), //uuidv4(),
-//       };
-
-//       const response = await apiClient.post<{
-//         success: boolean;
-//         message?: string;
-//         data: AttendanceRecord;
-//       }>("/api/attendance/checkout", payload);
-
-//       if (response.data.success) {
-//         return { success: true, record: response.data.data };
-//       } else {
-//         return {
-//           success: false,
-//           error: response.data.message || "Absensi check-out gagal",
-//         };
-//       }
-//     } catch (error: any) {
-//       console.error("attendance checkOut error:", error);
-//       return { success: false, error: "Gagal absen check-out" };
-//     }
-//   },
-
-//   async getTodayRecords(userId: string) {
-//     try {
-//       const response = await apiClient.get<{
-//         success: boolean;
-//         message?: string;
-//         data: AttendanceRecord[];
-//       }>(`/api/attendance/today?kode_sales=${userId}`);
-
-//       return {
-//         success: response.data.success,
-//         records: response.data.data || [],
-//       };
-//     } catch (error) {
-//       console.warn("getTodayRecords failed");
-//       return { success: true, records: [] };
-//     }
-//   },
-// };
-
-// Perbaikan attendanceAPI.checkIn di services.ts
-
-export const attendanceAPI = {
-  async checkIn(data: {
-    photo: string;
-    location: { latitude: number; longitude: number; accuracy: number };
-    address: string;
-    shift: "morning" | "afternoon" | "night";
-    is_within_geofence?: boolean; // ✅ Ditambahkan sebagai optional
-  }) {
-    try {
-      const userData = await SecureStore.getItemAsync("user_data");
-      const user = userData ? JSON.parse(userData) : null;
-      const kode_sales = user?.kode_sales || user?.kode_user || "unknown";
-
-      // ✅ Generate mobile_id unik
-      const mobile_id = nanoid();
-
-      const payload = {
-        kode_sales,
-        type: "check-in" as const,
-        timestamp: new Date().toISOString(),
-        latitude: data.location.latitude,
-        longitude: data.location.longitude,
-        accuracy: data.location.accuracy,
-        photo: data.photo,
-        address: data.address,
-        shift: data.shift,
-        is_within_geofence: data.is_within_geofence ?? false, // ✅ Default false jika tidak ada
-        mobile_id, // ✅ Wajib ada
-      };
-
-      console.log("📤 Attendance checkIn payload:", {
-        ...payload,
-        photo: payload.photo ? `[${payload.photo.length} chars]` : null,
-      });
-
-      const response = await apiClient.post<{
-        success: boolean;
-        message?: string;
-        data: AttendanceRecord;
-      }>("/attendance/checkin", payload);
-
-      if (response.data.success) {
-        console.log("✅ Attendance checkIn berhasil:", response.data.data);
-        return { success: true, record: response.data.data };
-      } else {
-        console.warn("⚠️ Attendance checkIn gagal:", response.data.message);
-        return {
-          success: false,
-          error: response.data.message || "Absensi check-in gagal",
-        };
-      }
-    } catch (error: any) {
-      console.error("❌ Attendance checkIn error:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-      });
+      const res = await apiClient.get<{ success: boolean; data?: RKSHeader[] }>(
+        `/rks/headers/${kode_sales}`
+      );
+      return { success: true, data: res.data.data || [] };
+    } catch (err: any) {
       return {
         success: false,
-        error: error.response?.data?.message || "Gagal absen check-in",
+        error: err.message || "Gagal mengambil RKS header",
       };
     }
   },
 
-  async checkOut(data: {
-    photo: string;
-    location: { latitude: number; longitude: number; accuracy: number };
-    address: string;
-    is_within_geofence?: boolean; // ✅ Ditambahkan
-  }) {
+  getRKSDetails: async (kode_rks: string) => {
     try {
-      const userData = await SecureStore.getItemAsync("user_data");
-      const user = userData ? JSON.parse(userData) : null;
-      const kode_sales = user?.kode_sales || user?.kode_user || "unknown";
-
-      const mobile_id = nanoid();
-
-      const payload = {
-        kode_sales,
-        type: "check-out" as const,
-        timestamp: new Date().toISOString(),
-        latitude: data.location.latitude,
-        longitude: data.location.longitude,
-        accuracy: data.location.accuracy,
-        photo: data.photo,
-        address: data.address,
-        is_within_geofence: data.is_within_geofence ?? false, // ✅ Default false
-        mobile_id,
-      };
-
-      console.log("📤 Attendance checkOut payload:", {
-        ...payload,
-        photo: payload.photo ? `[${payload.photo.length} chars]` : null,
-      });
-
-      const response = await apiClient.post<{
-        success: boolean;
-        message?: string;
-        data: AttendanceRecord;
-      }>("/attendance/checkout", payload);
-
-      if (response.data.success) {
-        console.log("✅ Attendance checkOut berhasil:", response.data.data);
-        return { success: true, record: response.data.data };
-      } else {
-        console.warn("⚠️ Attendance checkOut gagal:", response.data.message);
-        return {
-          success: false,
-          error: response.data.message || "Absensi check-out gagal",
-        };
-      }
-    } catch (error: any) {
-      console.error("❌ Attendance checkOut error:", {
-        message: error.message,
-        response: error.response?.data,
-      });
+      const res = await apiClient.get<{ success: boolean; data?: RKSDetail[] }>(
+        `/rks/details/${kode_rks}`
+      );
+      return { success: true, data: res.data.data || [] };
+    } catch (err: any) {
       return {
         success: false,
-        error: error.response?.data?.message || "Gagal absen check-out",
+        error: err.message || "Gagal mengambil RKS detail",
       };
     }
   },
 
-  async getTodayRecords(userId: string) {
-    console.log("Fetching today's attendance records for user:", userId);
+  // --- Customer ---
+  getCustomer: async (kode_cust: string) => {
     try {
-      const response = await apiClient.get<{
-        success: boolean;
-        message?: string;
-        data: AttendanceRecord[];
-      }>(`/attendance/today?kode_sales=${userId}`);
-
+      const res = await apiClient.get<{ success: boolean; data?: Customer }>(
+        `/customer/${kode_cust}`
+      );
+      return { success: true, data: res.data.data || null };
+    } catch (err: any) {
+      if (err.response?.status === 404) {
+        return { success: true, error: null };
+      }
       return {
-        success: response.data.success,
-        records: response.data.data || [],
+        success: false,
+        error: err.message || "Gagal mengambil data customer",
       };
-    } catch (error) {
-      console.warn("⚠️ getTodayRecords failed:", error);
-      return { success: true, records: [] };
+    }
+  },
+
+  // --- FasMap ---
+  getFasMap: async (kode_cust: string) => {
+    try {
+      const res = await apiClient.get<{ success: boolean; data?: FasMap }>(
+        `/fasmap/${kode_cust}`
+      );
+      return { success: true, data: res.data.data || undefined };
+    } catch (err: any) {
+      if (err.response?.status === 404) {
+        return { success: true, undefined };
+      }
+      return {
+        success: false,
+        error: err.message || "Gagal validasi lokasi customer",
+      };
+    }
+  },
+
+  createFasMap: async (data: {
+    kode_cust: string;
+    latitude: string;
+    longitude: string;
+  }) => {
+    try {
+      const res = await apiClient.post<{ success: boolean; data?: FasMap }>(
+        `/fasmap`,
+        data
+      );
+      return { success: true, data: res.data.data || null };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || "Gagal menyimpan lokasi customer",
+      };
+    }
+  },
+
+  // --- Mobile RKS ---
+  createMobileRKS: async (data: Partial<MobileRKS>) => {
+    try {
+      const res = await apiClient.post<{ success: boolean; data?: MobileRKS }>(
+        `/rks-mobile`,
+        data
+      );
+      return { success: true, data: res.data.data || null };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || "Gagal membuat kunjungan",
+      };
+    }
+  },
+
+  updateMobileRKS: async (id: string, data: Partial<MobileRKS>) => {
+    try {
+      const res = await apiClient.patch<{ success: boolean; data?: MobileRKS }>(
+        `/rks-mobile/${id}`,
+        data
+      );
+      return { success: true, data: res.data.data || null };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || "Gagal memperbarui kunjungan",
+      };
+    }
+  },
+
+  syncRKS: async (records: MobileRKS[]) => {
+    try {
+      const res = await apiClient.post<{ success: boolean; message?: string }>(
+        `/rks-mobile/sync`,
+        { records }
+      );
+      return { success: true, message: res.data.message || "Sync berhasil" };
+    } catch (err: any) {
+      return { success: false, error: err.message || "Gagal sync kunjungan" };
     }
   },
 };
 
-
-// BATAS DARI SINI KE BAWAH ADALAH MOCK API
-// Gunakan apiClient dari axiosConfig.ts untuk API nyata
-// const STORAGE_KEY = "competitor_besi_queue";
-
-// export const competitorBesiAPI = {
-//   getAll: async (rksId?: string) => {
-//     await delay(500);
-//     const data = rksId
-//       ? mockBesiCompetitor.filter((item:any) => item.rksId === rksId)
-//       : mockBesiCompetitor;
-//     return { success: true, data };
-//   },
-
-//   getById: async (id: string) => {
-//     await delay(300);
-//     const item = mockBesiCompetitor.find((x) => x.id === id);
-//     return item ? { success: true, data: item } : { success: false };
-//   },
-
-//   addEntry: async (entry: Omit<BesiCompetitor, "id" | "timestamp">) => {
-//     try {
-//       await delay(2000); // simulasi request
-//       const record: BesiCompetitor = {
-//         ...entry,
-//         id: nanoid(),
-//         timestamp: new Date().toISOString(),
-//       };
-//       mockBesiCompetitor.push(record);
-//       return { success: true, record };
-//     } catch (err) {
-//       console.error("addEntry error:", err);
-//       return { success: false };
-//     }
-//   },
-
-//   updateEntry: async (id: string, updates: Partial<BesiCompetitor>) => {
-//     await delay(500);
-//     const index = mockBesiCompetitor.findIndex((x) => x.id === id);
-//     if (index === -1) return { success: false };
-//     mockBesiCompetitor[index] = { ...mockBesiCompetitor[index], ...updates };
-//     return { success: true, data: mockBesiCompetitor[index] };
-//   },
-
-//   deleteEntry: async (id: string) => {
-//     await delay(300);
-//     const index = mockBesiCompetitor.findIndex((x:any) => x.id === id);
-//     if (index === -1) return { success: false };
-//     mockBesiCompetitor.splice(index, 1);
-//     return { success: true };
-//   },
-// };
-
-// export const rksAPIMocked = {
-//   async getRKS(userId: string, date?: string) {
-//     await delay(300);
-//     let list = mockRKS.filter((r) => r.userId === userId);
-//     if (date) list = list.filter((r) => r.scheduledDate === date);
-//     return { success: true, rks: list };
-//   },
-
-//   async checkIn(
-//     rksId: string,
-//     data: {
-//       latitude: number;
-//       longitude: number;
-//       accuracy: number;
-//       photo: string;
-//     }
-//   ) {
-//     await delay(400);
-//     const rks = mockRKS.find((r) => r.id === rksId);
-//     // if (!rks) throw new Error("RKS not found");
-//     if (!rks) {
-//       // ❌ JANGAN THROW
-//       // throw new Error("RKS not found");
-//       // ✅ GANTI DENGAN:
-//       return { success: false, error: "RKS tidak ditemukan" };
-//     }
-//     // Hitung apakah berada di radius customer (geofence)
-//     let isWithinGeofence = false;
-//     if (rks.customerLocation && rks.radius) {
-//       const distance = calculateDistance(
-//         data.latitude,
-//         data.longitude,
-//         rks.customerLocation.latitude,
-//         rks.customerLocation.longitude
-//       );
-//       isWithinGeofence = distance <= rks.radius;
-//     }
-
-//     rks.checkIn = {
-//       timestamp: new Date().toISOString(),
-//       latitude: data.latitude,
-//       longitude: data.longitude,
-//       accuracy: data.accuracy,
-//       photo: data.photo,
-//       isWithinGeofence,
-//     };
-//     rks.status = "incomplete";
-//     return { success: true, rks };
-//   },
-
-//   async checkOut(
-//     rksId: string,
-//     data: { latitude: number; longitude: number; accuracy: number }
-//   ) {
-//     await delay(400);
-//     const rks = mockRKS.find((r) => r.id === rksId);
-//     if (!rks || !rks.checkIn) throw new Error("Check-in not found");
-
-//     rks.checkOut = {
-//       timestamp: new Date().toISOString(),
-//       latitude: data.latitude,
-//       longitude: data.longitude,
-//       accuracy: data.accuracy,
-//     };
-
-//     // Hitung durasi kunjungan
-//     const start = new Date(rks.checkIn.timestamp).getTime();
-//     const end = new Date(rks.checkOut.timestamp).getTime();
-//     rks.duration = Math.round((end - start) / 60000);
-
-//     rks.status = "completed";
-//     return { success: true, rks };
-//   },
-
-//   async addUnscheduledVisit(
-//     userId: string,
-//     data: {
-//       customerId: string;
-//       customerName: string;
-//       customerAddress: string;
-//       latitude: number;
-//       longitude: number;
-//       accuracy: number;
-//       photo: string;
-//     }
-//   ) {
-//     await delay(400);
-//     const newRks: RKS = {
-//       id: Date.now().toString(),
-//       userId,
-//       customerId: data.customerId,
-//       customerName: data.customerName,
-//       customerAddress: data.customerAddress,
-//       scheduledDate: new Date().toISOString().split("T")[0],
-//       scheduledTime: new Date().toISOString().split("T")[1].slice(0, 5),
-//       status: "additional",
-//       checkIn: {
-//         timestamp: new Date().toISOString(),
-//         latitude: data.latitude,
-//         longitude: data.longitude,
-//         accuracy: data.accuracy,
-//         photo: data.photo,
-//         isWithinGeofence: true,
-//       },
-//       createdBy: userId,
-//       createdAt: new Date().toISOString(),
-//       salesId: userId,
-//     };
-//     mockRKS.push(newRks);
-//     return { success: true, rks: newRks };
-//   },
-
-//   async addNewCustomerVisit(
-//     userId: string,
-//     data: {
-//       name: string;
-//       address: string;
-//       phone: string;
-//       type: "regular" | "vip" | "new";
-//       coordinates?: { latitude: number; longitude: number };
-//       photo?: string;
-//     }
-//   ) {
-//     await delay(300);
-
-//     const newCustomer: Customer = {
-//       id: Date.now().toString(),
-//       name: data.name,
-//       address: data.address,
-//       phone: data.phone,
-//       creditLimit: 0,
-//       outstanding: 0,
-//       territory: "Unassigned",
-//       type: data.type,
-//       coordinates: data.coordinates,
-//       photo: data.photo,
-//     };
-//     mockCustomers.push(newCustomer);
-
-//     const newRks: RKS = {
-//       id: Date.now().toString(),
-//       userId,
-//       customerId: newCustomer.id,
-//       customerName: newCustomer.name,
-//       customerAddress: newCustomer.address,
-//       scheduledDate: new Date().toISOString().split("T")[0],
-//       scheduledTime: new Date().toLocaleTimeString("id-ID", {
-//         hour: "2-digit",
-//         minute: "2-digit",
-//       }),
-//       coordinates: newCustomer.coordinates,
-//       status: "new-customer",
-//       createdBy: userId,
-//       createdAt: new Date().toISOString(),
-//       salesId: userId,
-//     };
-
-//     mockRKS.push(newRks);
-//     return { success: true, rks: newRks };
-//   },
-
-//   async updateRKS(rks: RKS) {
-//     const index = mockRKS.findIndex((r) => r.id === rks.id);
-//     if (index >= 0) {
-//       mockRKS[index] = rks;
-//     }
-//     return { success: true, rks };
-//   },
-
-//   async updateRRSafe(rks: RKS) {
-//     try {
-//       return await this.updateRKS(rks);
-//     } catch (err) {
-//       console.error("updateRRSafe error:", err);
-//       return { success: false, rks };
-//     }
-//   },
-// };
-
-// // Attendance API
-// export const attendanceAPIMocked = {
-//   async checkIn(data: {
-//     photo: string;
-//     location: { latitude: number; longitude: number; accuracy: number };
-//     address: string;
-//     shift: "morning" | "afternoon" | "night";
-//   }) {
-//     await delay(2000);
-
-//     const isWithinGeofence = geofenceLocations.some((fence) => {
-//       const distance = calculateDistance(
-//         data.location.latitude,
-//         data.location.longitude,
-//         fence.latitude,
-//         fence.longitude
-//       );
-//       return distance <= fence.radius;
-//     });
-
-//     const record: AttendanceRecord = {
-//       id: Date.now().toString(),
-//       userId: "1",
-//       type: "check-in",
-//       timestamp: new Date().toISOString(),
-//       location: {
-//         ...data.location,
-//         address: data.address,
-//       },
-//       photo: data.photo,
-//       shift: data.shift,
-//       isWithinGeofence,
-//       notes: !isWithinGeofence ? "Outside geofence area" : undefined,
-//     };
-
-//     // console.log("Check-in recorded:", record);
-//     return { success: true, record };
-//   },
-
-//   async checkOut(data: {
-//     photo: string;
-//     location: { latitude: number; longitude: number; accuracy: number };
-//     address: string;
-//   }) {
-//     await delay(2000);
-
-//     const isWithinGeofence = geofenceLocations.some((fence) => {
-//       const distance = calculateDistance(
-//         data.location.latitude,
-//         data.location.longitude,
-//         fence.latitude,
-//         fence.longitude
-//       );
-//       return distance <= fence.radius;
-//     });
-
-//     const record: AttendanceRecord = {
-//       id: Date.now().toString(),
-//       userId: "1",
-//       type: "check-out",
-//       timestamp: new Date().toISOString(),
-//       location: {
-//         ...data.location,
-//         address: data.address,
-//       },
-//       photo: data.photo,
-//       shift: "morning",
-//       isWithinGeofence,
-//       notes: !isWithinGeofence ? "Outside geofence area" : undefined,
-//     };
-
-//     console.log("Check-out recorded:", record);
-//     return { success: true, record };
-//   },
-
-//   async getTodayRecords(userId: string) {
-//     await delay(500);
-
-//     const mockRecords: AttendanceRecord[] = [
-//       {
-//         id: "1",
-//         userId,
-//         type: "check-in",
-//         timestamp: new Date().toISOString().replace(/T.*/, "T08:30:00Z"),
-//         location: {
-//           latitude: -6.2088,
-//           longitude: 106.8456,
-//           accuracy: 5,
-//           address: "Jl. Sudirman No. 123, Jakarta",
-//         },
-//         photo:
-//           "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
-//         shift: "morning",
-//         isWithinGeofence: true,
-//       },
-//     ];
-
-//     return { success: true, records: mockRecords };
-//   },
-// };
-
-// // Sales Order API
-// export const salesOrderAPI = {
-//   async getOrders(filters?: {
-//     status?: string;
-//     customerId?: string;
-//     dateFrom?: string;
-//     dateTo?: string;
-//   }) {
-//     await delay(1000);
-//     // In real app: GET /api/sales-orders with query params
-
-//     let orders = [...mockSalesOrders];
-
-//     if (filters?.status) {
-//       orders = orders.filter((order) => order.status === filters.status);
-//     }
-//     if (filters?.customerId) {
-//       orders = orders.filter(
-//         (order) => order.customerId === filters.customerId
-//       );
-//     }
-
-//     return { success: true, orders };
-//   },
-
-//   async getOrder(id: string) {
-//     await delay(500);
-//     // In real app: GET /api/sales-orders/${id}
-
-//     const order = mockSalesOrders.find((o) => o.id === id);
-//     if (!order) throw new Error("Order not found");
-
-//     return { success: true, order };
-//   },
-
-//   createOrder: async (
-//     orderData: Omit<SalesOrder, "id" | "orderNumber" | "status" | "createdBy">
-//   ) => {
-//     await delay(2000);
-//     const newOrder: SalesOrder = {
-//       ...orderData,
-//       id: Date.now().toString(),
-//       orderNumber: `SO-${String(mockSalesOrders.length + 1).padStart(4, "0")}`,
-//       status: "draft",
-//       createdBy: "1",
-//     };
-
-//     // Tambahkan ke mock data
-//     mockSalesOrders.push(newOrder);
-
-//     console.log("Order created:", newOrder);
-//     return { success: true, order: newOrder };
-//   },
-
-//   updateOrder: async (id: string, orderData: Partial<SalesOrder>) => {
-//     await delay(1500);
-
-//     // Cari dan update order
-//     const index = mockSalesOrders.findIndex((order) => order.id === id);
-//     if (index !== -1) {
-//       mockSalesOrders[index] = {
-//         ...mockSalesOrders[index],
-//         ...orderData,
-//       };
-//     }
-
-//     console.log("Order updated:", id, orderData);
-//     return { success: true };
-//   },
-
-//   submitForApproval: async (id: string) => {
-//     await delay(1000);
-
-//     // Update status
-//     const index = mockSalesOrders.findIndex((order) => order.id === id);
-//     if (index !== -1) {
-//       mockSalesOrders[index] = {
-//         ...mockSalesOrders[index],
-//         status: "submitted",
-//       };
-//     }
-
-//     console.log("Order submitted for approval:", id);
-//     return { success: true };
-//   },
-
-//   async approveOrder(id: string, approvedBy: string) {
-//     await delay(1000);
-//     // In real app: POST /api/sales-orders/${id}/approve
-
-//     console.log("Order approved:", id, "by:", approvedBy);
-//     return { success: true };
-//   },
-
-//   async rejectOrder(id: string, reason: string, rejectedBy: string) {
-//     await delay(1000);
-//     // In real app: POST /api/sales-orders/${id}/reject
-
-//     console.log("Order rejected:", id, "reason:", reason, "by:", rejectedBy);
-//     return { success: true };
-//   },
-
-//   deleteOrder: async (id: string) => {
-//     await delay(500);
-
-//     // Hapus order
-//     const index = mockSalesOrders.findIndex((order) => order.id === id);
-//     if (index !== -1) {
-//       mockSalesOrders.splice(index, 1);
-//     }
-
-//     console.log("Order deleted:", id);
-//     return { success: true };
-//   },
-
-//   async exportToCSV(filters?: any) {
-//     await delay(2000);
-//     // In real app: GET /api/sales-orders/export with query params
-
-//     const csvData = mockSalesOrders.map((order) => ({
-//       "Order Number": order.orderNumber,
-//       Customer: order.customerName,
-//       Date: order.date,
-//       Total: order.total,
-//       Status: order.status,
-//     }));
-
-//     console.log("CSV export generated:", csvData);
-//     return { success: true, csvData };
-//   },
-// };
-
-// export const customerAPI = {
-//   async getCustomers(filters?: { territory?: string; type?: string }) {
-//     await delay(1000);
-//     // In real app: GET /api/customers with query params
-
-//     let customers = [...mockCustomers];
-
-//     if (filters?.territory) {
-//       customers = customers.filter(
-//         (customer) => customer.territory === filters.territory
-//       );
-//     }
-//     if (filters?.type) {
-//       customers = customers.filter(
-//         (customer) => customer.type === filters.type
-//       );
-//     }
-
-//     return { success: true, customers };
-//   },
-
-//   async getCustomer(id: string) {
-//     await delay(500);
-//     // In real app: GET /api/customers/${id}
-
-//     const customer = mockCustomers.find((c) => c.id === id);
-//     if (!customer) throw new Error("Customer not found");
-
-//     return { success: true, customer };
-//   },
-// };
-
-// // Product API
-// export const productAPI = {
-//   async getProducts(filters?: { category?: string; search?: string }) {
-//     await delay(1000);
-//     // In real app: GET /api/products with query params
-
-//     let products = [...mockProducts];
-
-//     if (filters?.category) {
-//       products = products.filter(
-//         (product) => product.category === filters.category
-//       );
-//     }
-//     if (filters?.search) {
-//       const search = filters.search.toLowerCase();
-//       products = products.filter(
-//         (product) =>
-//           product.name.toLowerCase().includes(search) ||
-//           product.code.toLowerCase().includes(search)
-//       );
-//     }
-
-//     return { success: true, products };
-//   },
-
-//   async getProduct(id: string) {
-//     await delay(500);
-//     // In real app: GET /api/products/${id}
-
-//     const product = mockProducts.find((p) => p.id === id);
-//     if (!product) throw new Error("Product not found");
-
-//     return { success: true, product };
-//   },
-
-//   async getSpecialPrice(customerId: string, productId: string) {
-//     await delay(500);
-//     // In real app: GET /api/products/${productId}/price?customerId=${customerId}
-
-//     const product = mockProducts.find((p) => p.id === productId);
-//     if (!product) throw new Error("Product not found");
-
-//     // Mock special pricing logic
-//     const customer = mockCustomers.find((c) => c.id === customerId);
-//     let price = product.basePrice;
-
-//     if (customer?.type === "vip") {
-//       price = price * 0.95; // 5% discount for VIP
-//     }
-
-//     return { success: true, price, discount: product.basePrice - price };
-//   },
-// };
-
-// export const collectionAPI = {
-//   async getInvoices(filters?: { status?: string; customerId?: string }) {
-//     await delay(1000);
-//     // In real app: GET /api/invoices with query params
-
-//     let invoices = [...mockInvoices];
-
-//     if (filters?.status) {
-//       invoices = invoices.filter(
-//         (invoice) => invoice.status === filters.status
-//       );
-//     }
-//     if (filters?.customerId) {
-//       invoices = invoices.filter(
-//         (invoice) => invoice.customerId === filters.customerId
-//       );
-//     }
-
-//     return { success: true, invoices };
-//   },
-
-//   async getPayments(filters?: { status?: string; customerId?: string }) {
-//     await delay(1000);
-
-//     let payments = [...mockPayments]; // ← INI HANYA mockPayments
-
-//     if (filters?.status) {
-//       payments = payments.filter((p) => p.status === filters.status);
-//     }
-//     if (filters?.customerId) {
-//       payments = payments.filter((p) => p.customerId === filters.customerId);
-//     }
-
-//     return { success: true, payments };
-//   },
-
-//   async recordPayment(paymentData: {
-//     invoiceId: string;
-//     amount: number;
-//     method: Payment["method"];
-//     receiptPhoto?: string;
-//     notes?: string;
-//   }) {
-//     await delay(2000);
-//     // In real app: POST /api/payments
-
-//     const invoice = mockInvoices.find(
-//       (inv) => inv.id === paymentData.invoiceId
-//     );
-//     if (!invoice) throw new Error("Invoice not found");
-
-//     const payment: Payment = {
-//       id: Date.now().toString(),
-//       invoiceId: paymentData.invoiceId,
-//       customerName: invoice.customerName,
-//       amount: paymentData.amount,
-//       method: paymentData.method,
-//       date: new Date().toISOString().split("T")[0],
-//       receiptPhoto: paymentData.receiptPhoto,
-//       notes: paymentData.notes,
-//       reference: `REF-${Date.now()}`,
-//     };
-
-//     // ✅ SIMPAN KE MOCK DATA
-//     mockPayments.push(payment);
-
-//     // ✅ UPDATE INVOICE PAID AMOUNT
-//     invoice.paidAmount += paymentData.amount;
-
-//     // Update status invoice
-//     if (invoice.paidAmount >= invoice.amount) {
-//       invoice.status = "paid";
-//     } else if (invoice.paidAmount > 0) {
-//       invoice.status = "partial";
-//     }
-
-//     console.log("Payment recorded:", payment);
-//     return { success: true, payment };
-//   },
-// };
-
-// // Target API
-// export const targetAPI = {
-//   async getTargets(filters?: { userId?: string; period?: string; type?: string }) {
-//     await delay(500);
-//     let targets = [...mockTargets];
-//     if (filters?.userId) {
-//       targets = targets.filter(t => t.userId === filters.userId);
-//     }
-//     if (filters?.period) {
-//       targets = targets.filter(t => t.period === filters.period);
-//     }
-//     if (filters?.type) {
-//       targets = targets.filter(t => t.type === filters.type);
-//     }
-//     return { success: true, targets };
-//   },
-
-//   async getTargetById(id: string) {
-//     await delay(300);
-//     const target = mockTargets.find(t => t.id === id);
-//     return target ? { success: true, target } : { success: false };
-//   },
-
-//   // Simpan realisasi (offline-friendly)
-//   async updateRealization(id: string, updates: Partial<{
-//     salesRealization: number;
-//     salesRealizationUnits: number;
-//     collectionRealization: number;
-//     visitRealization: number;
-//   }>) {
-//     await delay(800);
-//     const index = mockTargets.findIndex(t => t.id === id);
-//     if (index === -1) return { success: false };
-//     mockTargets[index] = { ...mockTargets[index], ...updates };
-//     return { success: true, target: mockTargets[index] };
-//   },
-// };
+// myExpoApp/api/services.ts
+export const customerAPI = {
+  createNewCustomer: async (payload: NewCustomerPayload) => {
+    try {
+      const res = await apiClient.post<{ success: boolean; data?: any }>(
+        "/customer-mobile",
+        payload
+      );
+      return { success: true, data: res.data.data || null };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || "Gagal membuat customer baru",
+      };
+    }
+  },
+  // createNewCustomer: async (data: any) => {
+  //   try {
+  //     const res = await axios.post("/customer-mobile/new", data);
+  //     return { success: true, data: res.data.data || null };
+  //   } catch (err: any) {
+  //     return {
+  //       success: false,
+  //       error: err.message || "Gagal membuat customer baru",
+  //     };
+  //   }
+  // },
+};

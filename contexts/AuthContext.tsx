@@ -71,7 +71,7 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
       ): Promise<boolean> => {
         try {
           const result = await loginAPI.login({ userid, password, kodecabang });
-          console.log("Login result:", result);
+          // console.log("Login result:", result);
           if (result.success && result.data) {
             const { user: apiUser } = result.data;
             const frontendUser: User = {
