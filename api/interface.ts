@@ -67,7 +67,7 @@ export interface MobileRKS {
   kode_rks: string;
   kode_cust: string;
   userid: string;
-  kode_sales:string
+  kode_sales: string;
   checkin_time: string; // ISO string
   checkout_time?: string;
   latitude_in: string;
@@ -79,24 +79,36 @@ export interface MobileRKS {
   photo_in?: string; // base64 atau path
   photo_out?: string;
   duration?: number; // menit
-  status: 'pending' | 'synced';
+  status: "pending" | "synced";
   created_at?: string;
   updated_at?: string;
+  customer_name?: string; // ✅ Tambahan untuk watermark
 }
 
 // Payload untuk check-in
 export interface CheckInPayload {
-  latitude: number;
-  longitude: number;
-  accuracy: number;
-  photo: string; // base64
+  kode_rks: string;
+  kode_cust: string;
+  userid: string;
+  kode_sales: string;
+  checkin_time: string;
+  latitude_in: string;
+  longitude_in: string;
+  accuracy_in: number;
+  photo_in: string;
+  status: "pending";
+  customer_name?: string; // ✅ Untuk watermark
 }
 
 // Payload untuk check-out
 export interface CheckOutPayload {
-  latitude: number;
-  longitude: number;
-  accuracy: number;
+  checkout_time: string;
+  latitude_out: string;
+  longitude_out: string;
+  accuracy_out: number;
+  photo_out: string;
+  status: "pending";
+  customer_name?: string; // ✅ Untuk watermark
 }
 
 // Response dari /api/rks/sync
@@ -122,11 +134,8 @@ export interface NewCustomerPayload {
   longitude: string;
   kode_sales: string;
   photo?: string; // base64 encoded photo
-  // photo_out?: string; // base64 encoded photo
-  // userid: string;
-  kode_cust?: string; // Optional, jika ada
-};
-
+  customer_name?: string; // ✅ Untuk watermark
+}
 
 export interface CustomerFormData {
   name: string;
@@ -137,4 +146,94 @@ export interface CustomerFormData {
   store_name?: string;
   latitude: string;
   longitude: string;
+  customer_name?: string; // ✅ Untuk watermark
+}
+
+// ✅ Interface untuk payload create mobile RKS dengan watermark
+export interface CreateMobileRKSPayload {
+  kode_rks: string;
+  kode_cust: string;
+  userid: string;
+  kode_sales: string;
+  checkin_time: string;
+  latitude_in: string;
+  longitude_in: string;
+  accuracy_in: number;
+  photo_in: string;
+  status: "pending";
+  customer_name?: string; // ✅ Untuk watermark
+}
+
+// ✅ Interface untuk payload update mobile RKS dengan watermark
+export interface UpdateMobileRKSPayload {
+  checkout_time: string;
+  latitude_out: string;
+  longitude_out: string;
+  accuracy_out: number;
+  photo_out: string;
+  status: "pending";
+  customer_name?: string; // ✅ Untuk watermark
+}
+
+// ✅ Interface untuk save fasmap
+export interface SaveFasMapPayload {
+  kode_cust: string;
+  latitude: string;
+  longitude: string;
+}
+
+// ✅ Interface untuk camera component props
+export interface CameraOverlayProps {
+  visible: boolean;
+  onClose: () => void;
+  onCapture: (photo: string) => void;
+  customerName: string;
+  checkType?: "checkin" | "checkout";
+}
+
+// ✅ Interface untuk fasmap modal props
+export interface FasMapModalProps {
+  visible: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+  customerName: string;
+  location: { latitude: number; longitude: number };
+}
+
+// ✅ Interface untuk RKS item dengan extended properties
+export interface RKSItem {
+  id: string;
+  kode_rks: string;
+  kode_cust: string;
+  no_cust?: string;
+  customerName: string;
+  customerAddress: string;
+  scheduledDate: string;
+  status: "scheduled" | "checked-in" | "completed";
+  checkIn?: MobileRKS;
+  checkOut?: MobileRKS;
+  fasmap?: { latitude: string; longitude: string };
+  radius?: number;
+}
+
+// ✅ Interface untuk camera permission
+export interface CameraPermission {
+  granted: boolean;
+  canAskAgain: boolean;
+  status: "undetermined" | "granted" | "denied";
+}
+
+// ✅ Interface untuk location data
+export interface LocationData {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+}
+
+// ✅ Interface untuk photo result
+export interface PhotoResult {
+  base64?: string;
+  uri: string;
+  width: number;
+  height: number;
 }

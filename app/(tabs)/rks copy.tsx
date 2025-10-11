@@ -12,19 +12,18 @@ import {
   ActivityIndicator,
   Animated,
   PanResponder,
-  Button,
 } from "react-native";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useRouter } from "expo-router";
+// import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system";
 import { TabView, SceneMap, TabBar } from "react-native-tab-view";
 import { useWindowDimensions } from "react-native";
-import { Camera, CameraView, useCameraPermissions } from "expo-camera";
 // --- API & Interfaces ---
-import { rksAPI, customerAPI, fasmapAPI } from "../../api/services";
+import { rksAPI, customerAPI } from "../../api/services";
 import { RKSList, MobileRKS } from "../../api/interface";
 import { useAuth } from "../../contexts/AuthContext";
 import { useOfflineQueue } from "../../contexts/OfflineContext";
@@ -33,7 +32,7 @@ import {
   insertRKSLocal,
   updateRKSLocal,
   getPendingRKSLocal,
-  getAllLocalRKS,
+  getAllLocalRKS, // ✅ Ganti dengan ini
 } from "../../utils/database";
 import { getLocationWithRetry } from "@/utils/location";
 import * as Notifications from "expo-notifications";
@@ -57,199 +56,6 @@ type RKSItem = {
 type RangeKey = "today" | "week" | "month";
 type CustomDate = { month: number; year: number };
 
-// ✅ Custom Camera Component dengan Overlay Geotagging
-const CustomCameraWithOverlay = ({
-  visible,
-  onClose,
-  onCapture,
-  customerName,
-  checkType = "checkin",
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onCapture: (photo: string) => void;
-  customerName: string;
-  checkType?: "checkin" | "checkout";
-}) => {
-  const [cameraRef, setCameraRef] = useState<CameraView | null>(null);
-  const [permission, requestPermission] = useCameraPermissions();
-  const [facing, setFacing] = useState<"front" | "back">("front");
-  const [location, setLocation] = useState<Location.LocationObject | null>(
-    null
-  );
-  const [timestamp, setTimestamp] = useState(new Date());
-
-  useEffect(() => {
-    if (visible) {
-      setTimestamp(new Date());
-      // Get current location
-      (async () => {
-        try {
-          const loc = await Location.getCurrentPositionAsync({});
-          setLocation(loc);
-        } catch (error) {
-          console.error("Error getting location:", error);
-        }
-      })();
-    }
-  }, [visible]);
-
-  const takePicture = async () => {
-    if (cameraRef) {
-      try {
-        const photo = await cameraRef.takePictureAsync({
-          base64: true,
-          quality: 0.7,
-        });
-
-        if (photo.base64) {
-          // Tambahkan watermark di frontend juga
-          const watermarkedBase64 = `data:image/jpeg;base64,${photo.base64}`;
-          onCapture(watermarkedBase64);
-        }
-      } catch (error) {
-        console.error("Error taking picture:", error);
-        Alert.alert("Error", "Gagal mengambil foto");
-      }
-    }
-  };
-
-  const toggleCameraFacing = () => {
-    setFacing((current) => (current === "back" ? "front" : "back"));
-  };
-
-  if (!visible) return null;
-
-  if (!permission) {
-    return (
-      <Modal visible={visible} animationType="slide">
-        <View style={styles.cameraContainer}>
-          <Text>Meminta izin kamera...</Text>
-        </View>
-      </Modal>
-    );
-  }
-
-  if (!permission.granted) {
-    return (
-      <Modal visible={visible} animationType="slide">
-        <View style={styles.cameraContainer}>
-          <Text style={styles.message}>Butuh izin untuk mengakses kamera</Text>
-          <Button title="Berikan Izin" onPress={requestPermission} />
-        </View>
-      </Modal>
-    );
-  }
-
-  const formatLocation = () => {
-    if (!location) return "Mendapatkan lokasi...";
-    const lat = location.coords.latitude.toFixed(6);
-    const lon = location.coords.longitude.toFixed(6);
-    return `📍 ${lat}, ${lon}`;
-  };
-
-  const formatTimestamp = () => {
-    return timestamp.toLocaleString("id-ID", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  };
-
-  return (
-    <Modal visible={visible} animationType="slide">
-      <View style={styles.cameraContainer}>
-        <CameraView
-          style={styles.camera}
-          facing={facing}
-          ref={(ref) => setCameraRef(ref)}
-        >
-          {/* OVERLAY GEOTAGGING */}
-          <View style={styles.cameraOverlay}>
-            <View style={styles.watermarkContainer}>
-              <Text style={styles.watermarkTitle}>RKS MOBILE APP</Text>
-              <Text style={styles.watermarkText}>{customerName}</Text>
-              <Text style={styles.watermarkText}>{formatTimestamp()}</Text>
-              <Text style={styles.watermarkText}>{formatLocation()}</Text>
-              <Text style={styles.watermarkType}>
-                {checkType === "checkin" ? "CHECK-IN" : "CHECK-OUT"}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.cameraControls}>
-            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-              <MaterialIcons name="close" size={30} color="#fff" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.captureButton}
-              onPress={takePicture}
-            >
-              <View style={styles.captureInner} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.flipButton}
-              onPress={toggleCameraFacing}
-            >
-              <MaterialIcons name="flip-camera-ios" size={30} color="#fff" />
-            </TouchableOpacity>
-          </View>
-        </CameraView>
-      </View>
-    </Modal>
-  );
-};
-
-// ✅ Modal untuk konfirmasi simpan fasmap
-const FasMapConfirmationModal = ({
-  visible,
-  onConfirm,
-  onCancel,
-  customerName,
-  location,
-}: {
-  visible: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-  customerName: string;
-  location: { latitude: number; longitude: number };
-}) => {
-  return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={styles.modalOverlay}>
-        <View style={styles.fasmapModal}>
-          <Text style={styles.fasmapTitle}>Simpan Lokasi Customer</Text>
-          <Text style={styles.fasmapText}>
-            Customer <Text style={styles.bold}>{customerName}</Text> belum
-            memiliki titik lokasi di sistem.
-          </Text>
-          <Text style={styles.fasmapText}>
-            Apakah Anda ingin menyimpan lokasi saat ini sebagai titik lokasi
-            utama?
-          </Text>
-          <Text style={styles.fasmapLocation}>
-            📍 {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
-          </Text>
-
-          <View style={styles.fasmapButtons}>
-            <TouchableOpacity style={styles.fasmapCancel} onPress={onCancel}>
-              <Text style={styles.fasmapCancelText}>Nanti</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.fasmapConfirm} onPress={onConfirm}>
-              <Text style={styles.fasmapConfirmText}>Simpan Lokasi</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-};
-
 export default function RKSPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -259,22 +65,11 @@ export default function RKSPage() {
   const [loading, setLoading] = useState(true);
   const [checkingInId, setCheckingInId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [gettingLocation, setGettingLocation] = useState<string | null>(null);
+  const [gettingLocation, setGettingLocation] = useState<string | null>(null); // ✅ NEW
+  // Di dalam component RKSPage, tambahkan state:
   const [gpsStatus, setGpsStatus] = useState<"searching" | "ready" | "error">(
     "searching"
   );
-
-  // ✅ State baru untuk camera dan fasmap
-  const [cameraVisible, setCameraVisible] = useState(false);
-  const [fasmapModalVisible, setFasmapModalVisible] = useState(false);
-  const [currentPhoto, setCurrentPhoto] = useState<string | null>(null);
-  const [currentLocation, setCurrentLocation] = useState<{
-    latitude: number;
-    longitude: number;
-  } | null>(null);
-  const [currentCustomer, setCurrentCustomer] = useState<RKSItem | null>(null);
-  const [checkType, setCheckType] = useState<"checkin" | "checkout">("checkin");
-
   // --- Tab State ---
   const [index, setIndex] = useState(0);
   const [routes] = useState([
@@ -299,6 +94,7 @@ export default function RKSPage() {
   // --- Modal State ---
   const [calendarVisible, setCalendarVisible] = useState(false);
 
+  // Di dalam component RKSPage, tambahkan function:
   const checkGPSStatus = async () => {
     try {
       const status = await Location.getProviderStatusAsync();
@@ -317,9 +113,13 @@ export default function RKSPage() {
     }
   };
 
+  // Di dalam component RKSPage, tambahkan useEffect:
   useEffect(() => {
-    checkGPSStatus();
+    checkGPSStatus(); // Cek sekali saat component mount
+
+    // Cek status GPS setiap 5 detik
     const interval = setInterval(checkGPSStatus, 5000);
+
     return () => clearInterval(interval);
   }, []);
 
@@ -333,13 +133,16 @@ export default function RKSPage() {
     console.log("🚀 Mulai loadRKS...");
     setLoading(true);
     try {
+      // 1. Ambil data master dari server
       const listRes = await rksAPI.getRKSList(user.kodeSales);
+      // console.log("✅ getRKSList response:", listRes);
       if (!listRes.success) {
         console.log("❌ Gagal ambil data");
         setRksList([]);
         return;
       }
 
+      // ✅ Normalisasi data ke array
       const rawData = listRes.data;
       let rksArray: RKSList[] = [];
       if (Array.isArray(rawData)) {
@@ -354,11 +157,12 @@ export default function RKSPage() {
         return;
       }
 
-      const localVisits = await getAllLocalRKS();
+      // 2. Ambil semua kunjungan lokal (termasuk check-in/check-out offline)
+      const localVisits = await getAllLocalRKS(); // ✅ pastikan fungsi ini ada
       console.log("📁 Local visits:", localVisits);
-
+      // 3. Gabungkan & tentukan status
       const items: RKSItem[] = rksArray.map((item) => {
-        const scheduledDate = item.rks_tanggal.split(" ")[0];
+        const scheduledDate = item.rks_tanggal.split(" ")[0]; // '2025-10-11'
 
         const localMatch = localVisits.find(
           (r) =>
@@ -383,6 +187,7 @@ export default function RKSPage() {
           };
         }
 
+        // Status dari server: kunjung='Y' → completed, else scheduled
         const status = item.kunjung === "Y" ? "completed" : "scheduled";
 
         return {
@@ -464,6 +269,7 @@ export default function RKSPage() {
     [range, customDate]
   );
 
+  // --- FAB Animation (nonaktif untuk sekarang, karena fokus RKS terjadwal) ---
   const toggleFab = () => {
     const toValue = fabOpen ? 0 : 1;
     if (!fabOpen) {
@@ -491,14 +297,61 @@ export default function RKSPage() {
     onPanResponderRelease: () => pan.flattenOffset(),
   });
 
-  // ✅ Fungsi untuk check fasmap sebelum check-in
-  // ✅ Fungsi untuk check fasmap sebelum check-in
-  const checkFasMapAndProceed = async (
-    item: RKSItem,
-    type: "checkin" | "checkout"
-  ) => {
+  // --- Selfie ---
+  const takeStorePhoto = async (): Promise<string | null> => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        // Alert.alert("Izin Kamera", "Izin kamera diperlukan.");
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "📷 Izin Kamera",
+            body: "Izin kamera diperlukan.",
+            sound: true, // ✅ Mainkan sound
+            // data: { screen: 'rks' }, // Optional data
+          },
+          trigger: null, // Tampilkan segera
+        });
+        return null;
+      }
+      const res = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.6,
+        cameraType: ImagePicker.CameraType.front,
+        base64: true,
+      });
+      if (!res.canceled && res.assets?.[0]) {
+        const asset = res.assets[0];
+        if (asset.base64 && asset.base64.length > 100) {
+          return `image/jpeg;base64,${asset.base64}`;
+        }
+        if (asset.uri) {
+          const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+            encoding: "base64",
+          });
+          if (base64 && base64.length > 100) {
+            return `image/jpeg;base64,${base64}`;
+          }
+        }
+      }
+      return null;
+    } catch (err) {
+      console.error("Store photo error:", err);
+      Alert.alert("Error", "Gagal mengambil foto.");
+      return null;
+    }
+  };
+
+  // --- Check-in Logic ---
+  const handleCheckIn = async (item: RKSItem) => {
+    if (!user?.id) {
+      Alert.alert("Error", "User tidak dikenali.");
+      return;
+    }
     setCheckingInId(item.id);
-    setGettingLocation(item.id);
+    setGettingLocation(item.id); // ✅ Tampilkan loading location
 
     try {
       let { status } = await Location.requestForegroundPermissionsAsync();
@@ -526,16 +379,17 @@ export default function RKSPage() {
         return;
       }
 
+      // ✅ Dapatkan lokasi dengan retry function
       let loc;
       try {
-        loc = await getLocationWithRetry(2);
+        loc = await getLocationWithRetry(2); // 2x retry
       } catch (locationError) {
         console.error("Location error:", locationError);
         await Notifications.scheduleNotificationAsync({
           content: {
             title: "📍 Lokasi Tidak Ditemukan",
             body: "Tidak dapat mendapatkan lokasi saat ini. Pastikan GPS aktif, terhubung internet, dan tidak berada dalam gedung.",
-            sound: "new-notification.mp3",
+            sound: "new-notification.mp3", // ✅ Custom sound
           },
           trigger: null,
         });
@@ -545,94 +399,28 @@ export default function RKSPage() {
       const lat = loc.coords.latitude;
       const lon = loc.coords.longitude;
       const acc = loc.coords.accuracy ?? 999;
+      console.log("📍 Lokasi didapat:", { lat, lon, accuracy: acc });
 
-      setCurrentLocation({ latitude: lat, longitude: lon });
-      setCurrentCustomer(item);
-      setCheckType(type);
+      // ✅ Sembunyikan loading location sebelum ambil foto
       setGettingLocation(null);
 
-      // Cek apakah customer sudah punya fasmap
-      if (type === "checkin") {
-        const fasmapRes = await fasmapAPI.getFasMap(item.kode_cust);
-        if (!fasmapRes.success || !fasmapRes.data) {
-          // Customer belum punya fasmap, tampilkan modal konfirmasi
-          setFasmapModalVisible(true);
-          return;
-        }
+      const photo = await takeStorePhoto();
+      if (!photo) {
+        Alert.alert("Foto Diperlukan", "Foto toko diperlukan untuk check-in.");
+        return;
       }
 
-      // Jika sudah punya fasmap atau checkout, langsung buka kamera
-      setCameraVisible(true);
-    } catch (error) {
-      console.error("Error in checkFasMapAndProceed:", error);
-      setCheckingInId(null);
-      setGettingLocation(null);
-    }
-  };
-
-  // ✅ Handle konfirmasi simpan fasmap
-  // ✅ Handle konfirmasi simpan fasmap
-  const handleFasMapConfirm = async () => {
-    if (!currentCustomer || !currentLocation) return;
-
-    try {
-      // Simpan fasmap ke backend
-      const fasmapRes = await fasmapAPI.saveFasMap({
-        kode_cust: currentCustomer.kode_cust,
-        latitude: currentLocation.latitude.toString(),
-        longitude: currentLocation.longitude.toString(),
-      });
-
-      if (fasmapRes.success) {
-        console.log("✅ Fasmap berhasil disimpan");
-        setFasmapModalVisible(false);
-        setCameraVisible(true);
-      } else {
-        Alert.alert("Error", "Gagal menyimpan lokasi customer");
-        setFasmapModalVisible(false);
-      }
-    } catch (error) {
-      console.error("Error saving fasmap:", error);
-      Alert.alert("Error", "Gagal menyimpan lokasi customer");
-      setFasmapModalVisible(false);
-    }
-  };
-
-  const handleFasMapCancel = () => {
-    setFasmapModalVisible(false);
-    setCheckingInId(null);
-  };
-
-  // ✅ Handle capture photo dari custom camera
-  const handlePhotoCapture = (photoBase64: string) => {
-    setCurrentPhoto(photoBase64);
-    setCameraVisible(false);
-
-    // Lanjutkan proses check-in/checkout
-    if (checkType === "checkin") {
-      processCheckIn(photoBase64);
-    } else {
-      processCheckOut(photoBase64);
-    }
-  };
-
-  // ✅ Process check-in setelah foto diambil
-  const processCheckIn = async (photoBase64: string) => {
-    if (!user?.id || !currentCustomer || !currentLocation) return;
-
-    try {
       const createRes = await rksAPI.createMobileRKS({
-        kode_rks: currentCustomer.kode_rks,
-        kode_cust: currentCustomer.kode_cust,
+        kode_rks: item.kode_rks,
+        kode_cust: item.kode_cust,
         userid: user.id,
         kode_sales: user.kodeSales,
         checkin_time: new Date().toISOString(),
-        latitude_in: currentLocation.latitude.toString(),
-        longitude_in: currentLocation.longitude.toString(),
-        accuracy_in: currentLocation.latitude, // Using lat as accuracy placeholder
-        photo_in: photoBase64,
+        latitude_in: lat.toString(),
+        longitude_in: lon.toString(),
+        accuracy_in: acc,
+        photo_in: photo,
         status: "pending",
-        customer_name: currentCustomer.customerName,
       });
 
       if (!createRes.success || !createRes.data?.id) {
@@ -651,18 +439,15 @@ export default function RKSPage() {
       await insertRKSLocal(newCheckIn);
 
       const updatedItem: RKSItem = {
-        ...currentCustomer,
+        ...item,
         id: newCheckIn.id,
         status: "checked-in",
         checkIn: newCheckIn,
-        fasmap: {
-          latitude: currentLocation.latitude.toString(),
-          longitude: currentLocation.longitude.toString(),
-        },
+        fasmap: { latitude: lat.toString(), longitude: lon.toString() },
       };
 
       setRksList((prev) =>
-        prev.map((x) => (x.id === currentCustomer.id ? updatedItem : x))
+        prev.map((x) => (x.id === item.id ? updatedItem : x))
       );
 
       addToQueue("rks_checkin");
@@ -677,41 +462,108 @@ export default function RKSPage() {
       });
     } catch (err: any) {
       console.error("Check-in error:", err);
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: "❌ Gagal Check-in",
-          body: "Gagal melakukan check-in: " + err.message,
-          sound: "new-notification.mp3",
-        },
-        trigger: null,
-      });
+
+      if (
+        err.message.includes("location") ||
+        err.message.includes("Location") ||
+        err.message.includes("Timeout")
+      ) {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "📍 Lokasi Tidak Ditemukan",
+            body: "Tidak dapat mengakses lokasi device. Pastikan GPS aktif, izin lokasi diberikan, dan coba di area terbuka.",
+            sound: "new-notification.mp3",
+          },
+          trigger: null,
+        });
+      } else {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "❌ Gagal Check-in",
+            body: "Gagal melakukan check-in: " + err.message,
+            sound: "new-notification.mp3",
+          },
+          trigger: null,
+        });
+      }
     } finally {
       setCheckingInId(null);
-      setCurrentCustomer(null);
-      setCurrentLocation(null);
-      setCurrentPhoto(null);
+      setGettingLocation(null); // ✅ PASTIKAN loading dimatikan
     }
   };
 
-  // ✅ Process check-out setelah foto diambil
-  const processCheckOut = async (photoBase64: string) => {
-    if (!currentCustomer?.checkIn || !currentLocation) return;
+  const handleCheckOut = async (item: RKSItem) => {
+    if (!item.checkIn) return;
+    setIsLoading(true);
+    setGettingLocation(item.id); // ✅ Tampilkan loading location
 
     try {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Izin Lokasi Diperlukan",
+          "Aplikasi membutuhkan akses lokasi untuk check-out. Silakan aktifkan izin lokasi di pengaturan device."
+        );
+        return;
+      }
+
+      const locationEnabled = await Location.hasServicesEnabledAsync();
+      if (!locationEnabled) {
+        Alert.alert(
+          "Lokasi Dimatikan",
+          "Silakan aktifkan GPS/lokasi di device Anda untuk melakukan check-out.",
+          [
+            { text: "Batal", style: "cancel" },
+            {
+              text: "Buka Pengaturan",
+              onPress: () => Location.enableNetworkProviderAsync(),
+            },
+          ]
+        );
+        return;
+      }
+
+      // ✅ Dapatkan lokasi dengan retry function
+      let loc;
+      try {
+        loc = await getLocationWithRetry(2); // 2x retry
+      } catch (locationError) {
+        console.error("Location error:", locationError);
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "📍 Lokasi Tidak Ditemukan",
+            body: "Tidak dapat mendapatkan lokasi saat ini. Pastikan GPS aktif, terhubung internet, dan tidak berada dalam gedung.",
+            sound: "new-notification.mp3",
+          },
+          trigger: null,
+        });
+        return;
+      }
+
+      const lat = loc.coords.latitude;
+      const lon = loc.coords.longitude;
+      const acc = loc.coords.accuracy ?? 999;
+      console.log("📍 Lokasi checkout didapat:", { lat, lon, accuracy: acc });
+
+      // ✅ Sembunyikan loading location sebelum ambil foto
+      setGettingLocation(null);
+
       const checkout_time = new Date().toISOString();
-      const checkInTime = new Date(currentCustomer.checkIn.checkin_time);
+      const checkInTime = new Date(item.checkIn.checkin_time);
       const duration = Math.round(
         (new Date(checkout_time).getTime() - checkInTime.getTime()) / 60000
       );
 
-      const checkoutRes = await rksAPI.updateMobileRKS(currentCustomer.id, {
+      const photo = await takeStorePhoto();
+      if (!photo) return;
+
+      const checkoutRes = await rksAPI.updateMobileRKS(item.id, {
         checkout_time,
-        latitude_out: currentLocation.latitude.toString(),
-        longitude_out: currentLocation.longitude.toString(),
-        accuracy_out: currentLocation.latitude, // Using lat as accuracy placeholder
-        photo_out: photoBase64,
+        latitude_out: lat.toString(),
+        longitude_out: lon.toString(),
+        accuracy_out: acc,
+        photo_out: photo,
         status: "pending",
-        customer_name: currentCustomer.customerName,
       });
 
       if (!checkoutRes.success || !checkoutRes.data) {
@@ -727,27 +579,27 @@ export default function RKSPage() {
       }
 
       const updatedCheckOut: MobileRKS = {
-        ...currentCustomer.checkIn,
+        ...item.checkIn,
         ...checkoutRes.data,
-        id: currentCustomer.id,
+        id: item.id,
         checkout_time,
-        latitude_out: currentLocation.latitude.toString(),
-        longitude_out: currentLocation.longitude.toString(),
-        accuracy_out: currentLocation.latitude,
+        latitude_out: lat.toString(),
+        longitude_out: lon.toString(),
+        accuracy_out: acc,
         duration,
         status: "pending",
       };
 
-      await updateRKSLocal(currentCustomer.id, updatedCheckOut);
+      await updateRKSLocal(item.id, updatedCheckOut);
 
       const updatedItem: RKSItem = {
-        ...currentCustomer,
+        ...item,
         status: "completed",
         checkOut: updatedCheckOut,
       };
 
       setRksList((prev) =>
-        prev.map((x) => (x.id === currentCustomer.id ? updatedItem : x))
+        prev.map((x) => (x.id === item.id ? updatedItem : x))
       );
 
       addToQueue("rks_checkout");
@@ -762,32 +614,34 @@ export default function RKSPage() {
       });
     } catch (err: any) {
       console.error("Check-out error:", err);
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: "❌ Gagal Check-out",
-          body: "Gagal melakukan check-out: " + err.message,
-          sound: "new-notification.mp3",
-        },
-        trigger: null,
-      });
+
+      if (
+        err.message.includes("location") ||
+        err.message.includes("Location") ||
+        err.message.includes("Timeout")
+      ) {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "📍 Gagal Mendapatkan Lokasi",
+            body: "Tidak dapat mengakses lokasi device. Pastikan GPS aktif, izin lokasi diberikan, dan coba di area terbuka.",
+            sound: "new-notification.mp3",
+          },
+          trigger: null,
+        });
+      } else {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "❌ Gagal Check-out",
+            body: "Gagal melakukan check-out: " + err.message,
+            sound: "new-notification.mp3",
+          },
+          trigger: null,
+        });
+      }
     } finally {
       setIsLoading(false);
-      setCurrentCustomer(null);
-      setCurrentLocation(null);
-      setCurrentPhoto(null);
+      setGettingLocation(null); // ✅ PASTIKAN loading dimatikan
     }
-  };
-
-  // --- Check-in Logic (Updated) ---
-  const handleCheckIn = async (item: RKSItem) => {
-    await checkFasMapAndProceed(item, "checkin");
-  };
-
-  // --- Check-out Logic (Updated) ---
-  const handleCheckOut = async (item: RKSItem) => {
-    if (!item.checkIn) return;
-    setIsLoading(true);
-    await checkFasMapAndProceed(item, "checkout");
   };
 
   const renderItem = ({ item }: { item: RKSItem }) => {
@@ -851,6 +705,7 @@ export default function RKSPage() {
             Durasi: {item.checkIn.duration} menit
           </Text>
         )}
+        {/* ✅ LOADING ANIMATION UNTUK LOKASI */}
         {isGettingLocation && (
           <View style={styles.locationLoadingContainer}>
             <ActivityIndicator size="small" color="#667eea" />
@@ -1125,6 +980,18 @@ export default function RKSPage() {
     );
   };
 
+  // const useFocusEffect = (callback: () => void) => {
+  //   useEffect(() => {
+  //     const onFocus = () => callback();
+  //     onFocus();
+  //   }, [user?.kodeSales]);
+  // };
+
+  // useFocusEffect(() => {
+  //   console.log("RKSPage focused, reloading RKS...");
+  //   loadRKS();
+  // });
+
   useFocusEffect(
     React.useCallback(() => {
       console.log("RKSPage focused, reloading RKS...");
@@ -1201,26 +1068,27 @@ export default function RKSPage() {
         initialLayout={{ width: layout.width }}
         renderTabBar={renderTabBar}
       />
-
-      {/* ✅ Custom Camera dengan Overlay */}
-      <CustomCameraWithOverlay
-        visible={cameraVisible}
-        onClose={() => setCameraVisible(false)}
-        onCapture={handlePhotoCapture}
-        customerName={currentCustomer?.customerName || ""}
-        checkType={checkType}
-      />
-
-      {/* ✅ FasMap Confirmation Modal */}
-      <FasMapConfirmationModal
-        visible={fasmapModalVisible}
-        onConfirm={handleFasMapConfirm}
-        onCancel={handleFasMapCancel}
-        customerName={currentCustomer?.customerName || ""}
-        location={currentLocation || { latitude: 0, longitude: 0 }}
-      />
-
       <CalendarModal />
+      {/* FAB sementara disembunyikan karena fokus RKS terjadwal */}
+      {/* <Animated.View
+        style={[
+          styles.fabContainer,
+          { transform: [{ translateX: pan.x }, { translateY: pan.y }] },
+        ]}
+        {...panResponder.panHandlers}
+      >
+        <TouchableOpacity
+          style={styles.fabMain}
+          onPress={toggleFab}
+          disabled={isAnyCheckedIn}
+        >
+          <MaterialIcons
+            name={fabOpen ? "close" : "add"}
+            size={28}
+            color="#fff"
+          />
+        </TouchableOpacity>
+      </Animated.View> */}
       {isLoading && (
         <View style={styles.overlay}>
           <View style={styles.loadingBox}>
@@ -1392,6 +1260,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 8,
   },
+  // ✅ GPS STATUS STYLES
   gpsStatusContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -1414,6 +1283,8 @@ const styles = StyleSheet.create({
   gpsRetryButton: {
     padding: 4,
   },
+
+  // ✅ LOCATION LOADING STYLES
   locationLoadingContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -1428,153 +1299,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     color: "#667eea",
     fontSize: 12,
-    fontWeight: "600",
-  },
-  // ✅ Camera Styles
-  cameraContainer: {
-    flex: 1,
-    backgroundColor: "black",
-  },
-  camera: {
-    flex: 1,
-  },
-  message: {
-    textAlign: "center",
-    paddingBottom: 10,
-  },
-  // ✅ Fixed: Renamed duplicate overlay to cameraOverlay
-  cameraOverlay: {
-    flex: 1,
-    backgroundColor: "transparent",
-    justifyContent: "flex-start",
-    paddingTop: 50,
-  },
-  watermarkContainer: {
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
-    padding: 15,
-    marginHorizontal: 20,
-    borderRadius: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: "#667eea",
-  },
-  watermarkTitle: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-    marginBottom: 5,
-    textAlign: "center",
-  },
-  watermarkText: {
-    color: "#fff",
-    fontSize: 14,
-    marginBottom: 3,
-  },
-  watermarkType: {
-    color: "#ffeb3b",
-    fontSize: 16,
-    fontWeight: "bold",
-    marginTop: 5,
-    textAlign: "center",
-  },
-  cameraControls: {
-    position: "absolute",
-    bottom: 30,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 30,
-  },
-  closeButton: {
-    padding: 10,
-  },
-  captureButton: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: "rgba(255, 255, 255, 0.3)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  captureInner: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "#fff",
-  },
-  flipButton: {
-    padding: 10,
-  },
-  // ✅ FasMap Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  fasmapModal: {
-    backgroundColor: "white",
-    borderRadius: 15,
-    padding: 20,
-    width: "100%",
-    maxWidth: 400,
-  },
-  fasmapTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 15,
-    textAlign: "center",
-    color: "#333",
-  },
-  fasmapText: {
-    fontSize: 14,
-    marginBottom: 10,
-    color: "#666",
-    lineHeight: 20,
-  },
-  bold: {
-    fontWeight: "bold",
-    color: "#333",
-  },
-  fasmapLocation: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginVertical: 15,
-    padding: 10,
-    backgroundColor: "#f0f4ff",
-    borderRadius: 8,
-    textAlign: "center",
-    color: "#667eea",
-  },
-  fasmapButtons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 20,
-  },
-  fasmapCancel: {
-    flex: 1,
-    padding: 12,
-    backgroundColor: "#f5f5f5",
-    borderRadius: 8,
-    marginRight: 10,
-    alignItems: "center",
-  },
-  fasmapCancelText: {
-    color: "#666",
-    fontWeight: "600",
-  },
-  fasmapConfirm: {
-    flex: 1,
-    padding: 12,
-    backgroundColor: "#667eea",
-    borderRadius: 8,
-    marginLeft: 10,
-    alignItems: "center",
-  },
-  fasmapConfirmText: {
-    color: "white",
     fontWeight: "600",
   },
 });

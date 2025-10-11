@@ -37,7 +37,6 @@ import {
   MobileRKS,
   NewCustomerPayload,
   RKSList,
-  SaveFasMapPayload,
 } from "./interface";
 import apiClient from "./axiosConfig";
 
@@ -177,42 +176,42 @@ export const rksAPI = {
     }
   },
 
-  // // --- FasMap ---
-  // getFasMap: async (kode_cust: string) => {
-  //   try {
-  //     const res = await apiClient.get<{ success: boolean; data?: FasMap }>(
-  //       `/fasmap/${kode_cust}`
-  //     );
-  //     return { success: true, data: res.data.data || undefined };
-  //   } catch (err: any) {
-  //     if (err.response?.status === 404) {
-  //       return { success: true, data: undefined };
-  //     }
-  //     return {
-  //       success: false,
-  //       error: err.message || "Gagal validasi lokasi customer",
-  //     };
-  //   }
-  // },
+  // --- FasMap ---
+  getFasMap: async (kode_cust: string) => {
+    try {
+      const res = await apiClient.get<{ success: boolean; data?: FasMap }>(
+        `/fasmap/${kode_cust}`
+      );
+      return { success: true, data: res.data.data || undefined };
+    } catch (err: any) {
+      if (err.response?.status === 404) {
+        return { success: true, undefined };
+      }
+      return {
+        success: false,
+        error: err.message || "Gagal validasi lokasi customer",
+      };
+    }
+  },
 
-  // createFasMap: async (data: {
-  //   kode_cust: string;
-  //   latitude: string;
-  //   longitude: string;
-  // }) => {
-  //   try {
-  //     const res = await apiClient.post<{ success: boolean; data?: FasMap }>(
-  //       `/fasmap`,
-  //       data
-  //     );
-  //     return { success: true, data: res.data.data || null };
-  //   } catch (err: any) {
-  //     return {
-  //       success: false,
-  //       error: err.message || "Gagal menyimpan lokasi customer",
-  //     };
-  //   }
-  // },
+  createFasMap: async (data: {
+    kode_cust: string;
+    latitude: string;
+    longitude: string;
+  }) => {
+    try {
+      const res = await apiClient.post<{ success: boolean; data?: FasMap }>(
+        `/fasmap`,
+        data
+      );
+      return { success: true, data: res.data.data || null };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || "Gagal menyimpan lokasi customer",
+      };
+    }
+  },
 
   // --- Mobile RKS ---
   createMobileRKS: async (data: Partial<MobileRKS>) => {
@@ -258,93 +257,7 @@ export const rksAPI = {
   },
 };
 
-// ===================
-// FasMap API Module
-// ===================
-export const fasmapAPI = {
-  // ✅ Get fasmap untuk customer
-  getFasMap: async (
-    kode_cust: string
-  ): Promise<{
-    success: boolean;
-    data?: FasMap;
-    message?: string;
-  }> => {
-    try {
-      const response = await apiClient.get(`/fasmap/${kode_cust}`);
-      return {
-        success: true,
-        data: response.data.data,
-      };
-    } catch (error: any) {
-      console.error("Error getting fasmap:", error);
-      if (error.response?.status === 404) {
-        return {
-          success: true,
-          data: undefined,
-        };
-      }
-      return {
-        success: false,
-        message:
-          error.response?.data?.message || "Gagal mendapatkan data fasmap",
-      };
-    }
-  },
-
-  // ✅ Save fasmap baru
-  saveFasMap: async (
-    payload: SaveFasMapPayload
-  ): Promise<{
-    success: boolean;
-    data?: any;
-    message?: string;
-  }> => {
-    try {
-      const response = await apiClient.post("/fasmap", payload);
-      return {
-        success: true,
-        data: response.data.data,
-      };
-    } catch (error: any) {
-      console.error("Error saving fasmap:", error);
-      return {
-        success: false,
-        message: error.response?.data?.message || "Gagal menyimpan fasmap",
-      };
-    }
-  },
-
-  // ✅ Check if fasmap exists
-  checkFasMapExists: async (
-    kode_cust: string
-  ): Promise<{
-    success: boolean;
-    exists: boolean;
-    fasmap?: FasMap;
-    message?: string;
-  }> => {
-    try {
-      const response = await apiClient.get(`/fasmap/check/${kode_cust}`);
-      return {
-        success: true,
-        exists: response.data.data?.exists || false,
-        fasmap: response.data.data?.fasmap,
-      };
-    } catch (error: any) {
-      console.error("Error checking fasmap:", error);
-      return {
-        success: false,
-        exists: false,
-        message: error.response?.data?.message || "Gagal mengecek fasmap",
-      };
-    }
-  },
-};
-
-// ===================
-// Customer API Module
-// ===================
+// myExpoApp/api/services.ts
 export const customerAPI = {
   createNewCustomer: async (payload: NewCustomerPayload) => {
     try {
@@ -360,36 +273,15 @@ export const customerAPI = {
       };
     }
   },
-
-  // ✅ Get customer details
-  getCustomer: async (
-    kode_cust: string
-  ): Promise<{
-    success: boolean;
-    data?: Customer;
-    message?: string;
-  }> => {
-    try {
-      const response = await apiClient.get(`/customer/${kode_cust}`);
-      return {
-        success: true,
-        data: response.data.data,
-      };
-    } catch (error: any) {
-      console.error("Error getting customer:", error);
-      return {
-        success: false,
-        message:
-          error.response?.data?.message || "Gagal mendapatkan data customer",
-      };
-    }
-  },
-};
-
-// ✅ Export semua service
-export default {
-  loginAPI,
-  rksAPI,
-  customerAPI,
-  fasmapAPI,
+  // createNewCustomer: async (data: any) => {
+  //   try {
+  //     const res = await axios.post("/customer-mobile/new", data);
+  //     return { success: true, data: res.data.data || null };
+  //   } catch (err: any) {
+  //     return {
+  //       success: false,
+  //       error: err.message || "Gagal membuat customer baru",
+  //     };
+  //   }
+  // },
 };

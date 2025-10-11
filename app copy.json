@@ -15,12 +15,7 @@
     },
     "assetBundlePatterns": ["**/*"],
     "ios": {
-      "supportsTablet": true,
-      "infoPlist": {
-        "NSCameraUsageDescription": "Aplikasi membutuhkan akses kamera untuk mengambil foto toko saat check-in dan check-out dengan overlay geotagging.",
-        "NSLocationWhenInUseUsageDescription": "Aplikasi membutuhkan akses lokasi untuk mencatat koordinat GPS dan menampilkan geotagging di foto.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Aplikasi membutuhkan akses lokasi untuk mencatat koordinat GPS dan menampilkan geotagging di foto."
-      }
+      "supportsTablet": true
     },
     "android": {
       "package": "com.batasku.salesapp",
@@ -35,15 +30,7 @@
         "image": "./assets/splash-icon.png",
         "resizeMode": "cover",
         "backgroundColor": "#ffffff"
-      },
-      "permissions": [
-        "CAMERA",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "android.permission.CAMERA",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION"
-      ]
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -55,17 +42,11 @@
       "expo-sqlite",
       "expo-secure-store",
       [
-        "expo-camera",
-        {
-          "cameraPermission": "Aplikasi membutuhkan akses kamera untuk mengambil foto toko dengan overlay geotagging."
-        }
-      ],
-      [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Aplikasi membutuhkan akses lokasi untuk fitur check-in / check-out toko dan menampilkan geotagging di foto.",
-          "locationAlwaysPermission": "Aplikasi membutuhkan akses lokasi untuk fitur check-in / check-out toko dan menampilkan geotagging di foto.",
-          "locationWhenInUsePermission": "Aplikasi membutuhkan akses lokasi untuk fitur check-in / check-out toko dan menampilkan geotagging di foto."
+          "locationAlwaysAndWhenInUsePermission": "Aplikasi membutuhkan akses lokasi untuk fitur check-in / check-out toko.",
+          "locationAlwaysPermission": "Aplikasi membutuhkan akses lokasi untuk fitur check-in / check-out toko.",
+          "locationWhenInUsePermission": "Aplikasi membutuhkan akses lokasi untuk fitur check-in / check-out toko."
         }
       ],
       [

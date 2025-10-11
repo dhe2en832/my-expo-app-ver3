@@ -26,7 +26,10 @@ export const initDatabase = async (): Promise<void> => {
       photo_in TEXT,
       photo_out TEXT,
       duration INTEGER,
-      status TEXT DEFAULT 'pending'
+      status TEXT DEFAULT 'pending',
+      customer_name TEXT, -- ✅ Tambahan untuk watermark
+      fasmap_latitude TEXT, -- ✅ Tambahan untuk fasmap data
+      fasmap_longitude TEXT -- ✅ Tambahan untuk fasmap data
     );
   `);
 
@@ -46,18 +49,36 @@ export const initDatabase = async (): Promise<void> => {
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  // ✅ Tabel untuk menyimpan data fasmap lokal
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS tb_fasmap_local (
+      kode_cust TEXT PRIMARY KEY,
+      latitude TEXT NOT NULL,
+      longitude TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
 };
 
 /**
  * Simpan record RKS ke database lokal (SQLite)
  */
-export const insertRKSLocal = async (rks: MobileRKS): Promise<void> => {
+export const insertRKSLocal = async (
+  rks: MobileRKS & {
+    customer_name?: string;
+    fasmap_latitude?: string;
+    fasmap_longitude?: string;
+  }
+): Promise<void> => {
   await db.runAsync(
     `INSERT INTO tb_mobile_rks_local (
       id, kode_rks, kode_cust, userid, checkin_time, checkout_time,
       latitude_in, longitude_in, latitude_out, longitude_out,
-      accuracy_in, accuracy_out, photo_in, photo_out, duration, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      accuracy_in, accuracy_out, photo_in, photo_out, duration, status,
+      customer_name, fasmap_latitude, fasmap_longitude
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       rks.id,
       rks.kode_rks,
@@ -75,6 +96,9 @@ export const insertRKSLocal = async (rks: MobileRKS): Promise<void> => {
       rks.photo_out ?? null,
       rks.duration ?? null,
       rks.status,
+      rks.customer_name ?? null,
+      rks.fasmap_latitude ?? null,
+      rks.fasmap_longitude ?? null,
     ]
   );
 };
@@ -84,7 +108,13 @@ export const insertRKSLocal = async (rks: MobileRKS): Promise<void> => {
  */
 export const updateRKSLocal = async (
   id: string,
-  updates: Partial<MobileRKS>
+  updates: Partial<
+    MobileRKS & {
+      customer_name?: string;
+      fasmap_latitude?: string;
+      fasmap_longitude?: string;
+    }
+  >
 ): Promise<void> => {
   const fields: string[] = [];
   const values: any[] = [];
@@ -117,6 +147,18 @@ export const updateRKSLocal = async (
     fields.push("status = ?");
     values.push(updates.status);
   }
+  if (updates.customer_name !== undefined) {
+    fields.push("customer_name = ?");
+    values.push(updates.customer_name ?? null);
+  }
+  if (updates.fasmap_latitude !== undefined) {
+    fields.push("fasmap_latitude = ?");
+    values.push(updates.fasmap_latitude ?? null);
+  }
+  if (updates.fasmap_longitude !== undefined) {
+    fields.push("fasmap_longitude = ?");
+    values.push(updates.fasmap_longitude ?? null);
+  }
 
   if (fields.length === 0) return;
 
@@ -131,11 +173,22 @@ export const updateRKSLocal = async (
 /**
  * Ambil semua record RKS lokal yang belum disinkronkan (status = 'pending')
  */
-export const getPendingRKSLocal = async (): Promise<MobileRKS[]> => {
-  const results = await db.getAllAsync<MobileRKS>(
-    "SELECT * FROM tb_mobile_rks_local WHERE status = ?",
-    ["pending"]
-  );
+export const getPendingRKSLocal = async (): Promise<
+  Array<
+    MobileRKS & {
+      customer_name?: string;
+      fasmap_latitude?: string;
+      fasmap_longitude?: string;
+    }
+  >
+> => {
+  const results = await db.getAllAsync<
+    MobileRKS & {
+      customer_name?: string;
+      fasmap_latitude?: string;
+      fasmap_longitude?: string;
+    }
+  >("SELECT * FROM tb_mobile_rks_local WHERE status = ?", ["pending"]);
   return results;
 };
 
@@ -222,10 +275,184 @@ export const updateCustomerLocalStatus = async (
   ]);
 };
 
-// ✅ Tambahkan di utils/database.ts
-export const getAllLocalRKS = async (): Promise<MobileRKS[]> => {
-  const results = await db.getAllAsync<MobileRKS>(
-    "SELECT * FROM tb_mobile_rks_local"
-  );
+// ✅ Ambil semua RKS lokal
+export const getAllLocalRKS = async (): Promise<
+  Array<
+    MobileRKS & {
+      customer_name?: string;
+      fasmap_latitude?: string;
+      fasmap_longitude?: string;
+    }
+  >
+> => {
+  const results = await db.getAllAsync<
+    MobileRKS & {
+      customer_name?: string;
+      fasmap_latitude?: string;
+      fasmap_longitude?: string;
+    }
+  >("SELECT * FROM tb_mobile_rks_local");
   return results;
+};
+
+// ✅ Ambil RKS lokal by ID
+export const getRKSLocalById = async (
+  id: string
+): Promise<
+  | (MobileRKS & {
+      customer_name?: string;
+      fasmap_latitude?: string;
+      fasmap_longitude?: string;
+    })
+  | null
+> => {
+  const results = await db.getAllAsync<
+    MobileRKS & {
+      customer_name?: string;
+      fasmap_latitude?: string;
+      fasmap_longitude?: string;
+    }
+  >("SELECT * FROM tb_mobile_rks_local WHERE id = ?", [id]);
+  return results.length > 0 ? results[0] : null;
+};
+
+// ✅ Simpan fasmap ke lokal
+export const insertFasMapLocal = async (fasmap: {
+  kode_cust: string;
+  latitude: string;
+  longitude: string;
+}): Promise<void> => {
+  await db.runAsync(
+    `INSERT OR REPLACE INTO tb_fasmap_local (kode_cust, latitude, longitude, updated_at)
+     VALUES (?, ?, ?, datetime('now'))`,
+    [fasmap.kode_cust, fasmap.latitude, fasmap.longitude]
+  );
+};
+
+// ✅ Ambil fasmap by kode_cust
+export const getFasMapLocal = async (
+  kode_cust: string
+): Promise<{
+  kode_cust: string;
+  latitude: string;
+  longitude: string;
+} | null> => {
+  const results = await db.getAllAsync<{
+    kode_cust: string;
+    latitude: string;
+    longitude: string;
+  }>("SELECT * FROM tb_fasmap_local WHERE kode_cust = ?", [kode_cust]);
+  return results.length > 0 ? results[0] : null;
+};
+
+// ✅ Ambil semua fasmap lokal
+export const getAllFasMapLocal = async (): Promise<
+  Array<{ kode_cust: string; latitude: string; longitude: string }>
+> => {
+  const results = await db.getAllAsync<{
+    kode_cust: string;
+    latitude: string;
+    longitude: string;
+  }>("SELECT * FROM tb_fasmap_local");
+  return results;
+};
+
+// ✅ Hapus fasmap lokal
+export const deleteFasMapLocal = async (kode_cust: string): Promise<void> => {
+  await db.runAsync("DELETE FROM tb_fasmap_local WHERE kode_cust = ?", [
+    kode_cust,
+  ]);
+};
+
+// ✅ Update fasmap lokal
+export const updateFasMapLocal = async (
+  kode_cust: string,
+  updates: { latitude?: string; longitude?: string }
+): Promise<void> => {
+  const fields: string[] = [];
+  const values: any[] = [];
+
+  if (updates.latitude !== undefined) {
+    fields.push("latitude = ?");
+    values.push(updates.latitude);
+  }
+  if (updates.longitude !== undefined) {
+    fields.push("longitude = ?");
+    values.push(updates.longitude);
+  }
+
+  if (fields.length === 0) return;
+
+  fields.push("updated_at = datetime('now')");
+  values.push(kode_cust);
+
+  const query = `UPDATE tb_fasmap_local SET ${fields.join(
+    ", "
+  )} WHERE kode_cust = ?`;
+  await db.runAsync(query, values);
+};
+
+// ✅ Simpan fasmap dengan fallback ke lokal jika offline
+export const saveFasMapWithFallback = async (fasmap: {
+  kode_cust: string;
+  latitude: string;
+  longitude: string;
+}): Promise<boolean> => {
+  try {
+    // Coba simpan ke server
+    const apiResult = await fetch("/api/fasmap/save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(fasmap),
+    });
+
+    if (apiResult.ok) {
+      return true;
+    } else {
+      // Jika gagal, simpan ke lokal
+      await insertFasMapLocal(fasmap);
+      return false; // Menandakan data disimpan lokal
+    }
+  } catch (error) {
+    // Jika error, simpan ke lokal
+    await insertFasMapLocal(fasmap);
+    return false; // Menandakan data disimpan lokal
+  }
+};
+
+// ✅ Sync fasmap lokal ke server
+export const syncFasMapLocal = async (): Promise<{
+  success: boolean;
+  syncedCount: number;
+}> => {
+  try {
+    const localFasMaps = await getAllFasMapLocal();
+    let syncedCount = 0;
+
+    for (const fasmap of localFasMaps) {
+      try {
+        const apiResult = await fetch("/api/fasmap/save", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(fasmap),
+        });
+
+        if (apiResult.ok) {
+          await deleteFasMapLocal(fasmap.kode_cust);
+          syncedCount++;
+        }
+      } catch (error) {
+        console.error(`Gagal sync fasmap untuk ${fasmap.kode_cust}:`, error);
+      }
+    }
+
+    return { success: true, syncedCount };
+  } catch (error) {
+    console.error("Error sync fasmap:", error);
+    return { success: false, syncedCount: 0 };
+  }
 };
