@@ -17,6 +17,7 @@ export type User = {
   nama_user: string;
   kodecabang: string;
   kode_sales: string;
+  nama_sales: string; // ✅ Tambahan field nama_sales
 };
 
 export type LoginResponse = {
@@ -38,6 +39,8 @@ import {
   NewCustomerPayload,
   RKSList,
   SaveFasMapPayload,
+  SalesDetail,
+  salesList,
 } from "./interface";
 import apiClient from "./axiosConfig";
 
@@ -46,10 +49,8 @@ import apiClient from "./axiosConfig";
 // ==================
 export const loginAPI = {
   login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
-    // console.log("Body request login:", credentials);
     try {
       const response = await axios.post<LoginResponse>("/login", credentials);
-      // console.log("Response login:", response.data);
       if (response.data.success && response.data.data) {
         const { token, user } = response.data.data;
         await SecureStore.setItemAsync("auth_token", token);
@@ -176,43 +177,6 @@ export const rksAPI = {
       };
     }
   },
-
-  // // --- FasMap ---
-  // getFasMap: async (kode_cust: string) => {
-  //   try {
-  //     const res = await apiClient.get<{ success: boolean; data?: FasMap }>(
-  //       `/fasmap/${kode_cust}`
-  //     );
-  //     return { success: true, data: res.data.data || undefined };
-  //   } catch (err: any) {
-  //     if (err.response?.status === 404) {
-  //       return { success: true, data: undefined };
-  //     }
-  //     return {
-  //       success: false,
-  //       error: err.message || "Gagal validasi lokasi customer",
-  //     };
-  //   }
-  // },
-
-  // createFasMap: async (data: {
-  //   kode_cust: string;
-  //   latitude: string;
-  //   longitude: string;
-  // }) => {
-  //   try {
-  //     const res = await apiClient.post<{ success: boolean; data?: FasMap }>(
-  //       `/fasmap`,
-  //       data
-  //     );
-  //     return { success: true, data: res.data.data || null };
-  //   } catch (err: any) {
-  //     return {
-  //       success: false,
-  //       error: err.message || "Gagal menyimpan lokasi customer",
-  //     };
-  //   }
-  // },
 
   // --- Mobile RKS ---
   createMobileRKS: async (data: Partial<MobileRKS>) => {
@@ -386,10 +350,46 @@ export const customerAPI = {
   },
 };
 
+// ===================
+// Sales API Module
+// ===================
+export const salesAPI = {
+  getSalesList: async (kode_sales: string) => {
+    try {
+      const res = await apiClient.get<{ success: boolean; data?: salesList[] }>(
+        `/sales/list/${kode_sales}`
+      );
+      return { success: true, data: res.data.data || [] };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || "Gagal mengambil RKS List",
+      };
+    }
+  },
+
+  // ✅ Get customer details
+  getSalesDetail: async (kode_sales: string) => {
+    try {
+      const res = await apiClient.get<{
+        success: boolean;
+        data?: SalesDetail[];
+      }>(`/sales/details/${kode_sales}`);
+      return { success: true, data: res.data.data || [] };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || "Gagal mengambil Sales detail",
+      };
+    }
+  },
+};
+
 // ✅ Export semua service
 export default {
   loginAPI,
   rksAPI,
   customerAPI,
   fasmapAPI,
+  salesAPI,
 };

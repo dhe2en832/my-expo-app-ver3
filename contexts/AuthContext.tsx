@@ -12,6 +12,7 @@ interface User {
   role: string;
   territory: string;
   kodeSales: string;
+  namaSales?: string; // ← tambahkan properti namaSales (opsional)
 }
 
 interface AuthContextType {
@@ -51,7 +52,8 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
             username: apiUser.userid,
             role: "Sales",
             territory: apiUser.kodecabang,
-            kodeSales: apiUser.kode_sales  || "",
+            kodeSales: apiUser.kode_sales || "",
+            namaSales: apiUser.nama_sales || "", // ← inisialisasi namaSales
           };
           console.log("Loaded stored user:", frontendUser);
           setUser(frontendUser);
@@ -81,6 +83,7 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
               role: "Sales",
               territory: apiUser.kodecabang,
               kodeSales: apiUser.kode_sales || "",
+              namaSales: apiUser.nama_sales || "", // ← inisialisasi namaSales
             };
             setUser(frontendUser);
             return true;
@@ -108,81 +111,3 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
   }
 );
 
-// // contexts/AuthContext.tsx
-// import createContextHook from '@nkzw/create-context-hook';
-// import AsyncStorage from '@react-native-async-storage/async-storage';
-// import { useState, useEffect, useMemo, useCallback } from 'react';
-
-// interface User {
-//   id: string;
-//   name: string;
-//   username: string;
-//   role: string;
-//   territory: string;
-// }
-
-// interface AuthContextType {
-//   user: User | null;
-//   isLoading: boolean;
-//   login: (username: string, password: string) => Promise<void>;
-//   logout: () => void;
-// }
-
-// export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(() => {
-//   const [user, setUser] = useState<User | null>(null);
-//   const [isLoading, setIsLoading] = useState<boolean>(true);
-
-//   useEffect(() => {
-//     loadStoredUser();
-//   }, []);
-
-
-// const loadStoredUser = async () => {
-//   try {
-//     // Tunggu user dari AsyncStorage
-//     const storedUser = await AsyncStorage.getItem('user');
-
-//     // ✅ Tambahkan delay minimal 2 detik agar splash screen terlihat keren
-//     await new Promise(resolve => setTimeout(resolve, 10000)); // 2000ms = 2 detik
-
-//     if (storedUser) {
-//       setUser(JSON.parse(storedUser));
-//     }
-//   } catch (error) {
-//     console.error('Error loading stored user:', error);
-//   } finally {
-//     setIsLoading(false);
-//   }
-// };
-
-//   const login = useCallback(async (username: string, password: string): Promise<void> => {
-//     if (username === 'demo' && password === 'demo123') {
-//       const mockUser: User = {
-//         id: '1',
-//         name: 'Asep',
-//         username: 'demo',
-//         role: 'Sales Representative',
-//         territory: 'Jakarta Central',
-//       };
-
-//       setUser(mockUser);
-//       await AsyncStorage.setItem('user', JSON.stringify(mockUser));
-//       await AsyncStorage.setItem('token', 'mock-jwt-token');
-//     } else {
-//       throw new Error('Invalid credentials');
-//     }
-//   }, []);
-
-//   const logout = useCallback(async () => {
-//     setUser(null);
-//     await AsyncStorage.removeItem('user');
-//     await AsyncStorage.removeItem('token');
-//   }, []);
-
-//   return useMemo(() => ({
-//     user,
-//     isLoading,
-//     login,
-//     logout,
-//   }), [user, isLoading, login, logout]);
-// });

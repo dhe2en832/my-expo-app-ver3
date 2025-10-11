@@ -8,11 +8,11 @@ export interface RKSList {
   no_cust: string;
   nama_cust: string;
   alamat: string;
-  rencana: 'Y' | 'T';
-  kunjung: 'Y' | 'T';
-  baru: 'Y' | 'T';
+  rencana: "Y" | "T";
+  kunjung: "Y" | "T";
+  baru: "Y" | "T";
   detail_rowid: number;
-  sales_nama_sales: string;
+  sales_nama_sales: string; // ✅ Tambahan untuk nama sales
   ket: string;
   ket1: string;
   ket2: string;
@@ -24,7 +24,7 @@ export interface RKSHeader {
   nama_user: string;
   tgl_mulai: string; // YYYY-MM-DD
   tgl_akhir: string;
-  status: 'active' | 'inactive';
+  status: "active" | "inactive";
 }
 
 export interface RKSDetail {
@@ -32,12 +32,38 @@ export interface RKSDetail {
   tanggal: string; // YYYY-MM-DD
   kode_cust: string;
   rowid: number;
-  rencana: 'Y' | 'T';
-  kunjung: 'Y' | 'T';
-  baru: 'Y' | 'T';
+  rencana: "Y" | "T";
+  kunjung: "Y" | "T";
+  baru: "Y" | "T";
   ket?: string;
   ket1?: string;
   ket2?: string;
+}
+
+export interface salesList {
+  kode_sales: string;
+  no_sales: string;
+  nama_sales: string;
+  alamat: string;
+  jabatan: string;
+  aktif: string;
+  userid: string;
+  komisi: string;
+  opname: string;
+  internal: string;
+}
+
+export interface SalesDetail {
+  kode_sales: string;
+  no_sales: string;
+  nama_sales: string;
+  alamat: string;
+  jabatan: string;
+  aktif: string;
+  userid: string;
+  komisi: string;
+  opname: string;
+  internal: string;
 }
 
 export interface Customer {
@@ -51,7 +77,7 @@ export interface Customer {
   lat_kirim?: string;
   long_kirim?: string;
   kode_sales?: string;
-  rks: 'Y' | 'N';
+  rks: "Y" | "N";
 }
 
 export interface FasMap {
@@ -68,6 +94,7 @@ export interface MobileRKS {
   kode_cust: string;
   userid: string;
   kode_sales: string;
+  nama_sales: string; // ✅ Tambahan field nama_sales
   checkin_time: string; // ISO string
   checkout_time?: string;
   latitude_in: string;
@@ -82,7 +109,7 @@ export interface MobileRKS {
   status: "pending" | "synced";
   created_at?: string;
   updated_at?: string;
-  customer_name?: string; // ✅ Tambahan untuk watermark
+  customer_name?: string;
 }
 
 // Payload untuk check-in
@@ -91,13 +118,14 @@ export interface CheckInPayload {
   kode_cust: string;
   userid: string;
   kode_sales: string;
+  nama_sales: string; // ✅ Tambahan field nama_sales
   checkin_time: string;
   latitude_in: string;
   longitude_in: string;
   accuracy_in: number;
   photo_in: string;
   status: "pending";
-  customer_name?: string; // ✅ Untuk watermark
+  customer_name?: string;
 }
 
 // Payload untuk check-out
@@ -108,7 +136,8 @@ export interface CheckOutPayload {
   accuracy_out: number;
   photo_out: string;
   status: "pending";
-  customer_name?: string; // ✅ Untuk watermark
+  customer_name?: string;
+  nama_sales?: string; // ✅ Tambahan field nama_sales
 }
 
 // Response dari /api/rks/sync
@@ -134,7 +163,7 @@ export interface NewCustomerPayload {
   longitude: string;
   kode_sales: string;
   photo?: string; // base64 encoded photo
-  customer_name?: string; // ✅ Untuk watermark
+  customer_name?: string;
 }
 
 export interface CustomerFormData {
@@ -146,7 +175,7 @@ export interface CustomerFormData {
   store_name?: string;
   latitude: string;
   longitude: string;
-  customer_name?: string; // ✅ Untuk watermark
+  customer_name?: string;
 }
 
 // ✅ Interface untuk payload create mobile RKS dengan watermark
@@ -155,13 +184,14 @@ export interface CreateMobileRKSPayload {
   kode_cust: string;
   userid: string;
   kode_sales: string;
+  nama_sales: string; // ✅ Tambahan field nama_sales
   checkin_time: string;
   latitude_in: string;
   longitude_in: string;
   accuracy_in: number;
   photo_in: string;
   status: "pending";
-  customer_name?: string; // ✅ Untuk watermark
+  customer_name?: string;
 }
 
 // ✅ Interface untuk payload update mobile RKS dengan watermark
@@ -172,7 +202,8 @@ export interface UpdateMobileRKSPayload {
   accuracy_out: number;
   photo_out: string;
   status: "pending";
-  customer_name?: string; // ✅ Untuk watermark
+  customer_name?: string;
+  nama_sales?: string; // ✅ Tambahan field nama_sales
 }
 
 // ✅ Interface untuk save fasmap
@@ -188,6 +219,7 @@ export interface CameraOverlayProps {
   onClose: () => void;
   onCapture: (photo: string) => void;
   customerName: string;
+  namaSales: string; // ✅ Tambahan field nama_sales
   checkType?: "checkin" | "checkout";
 }
 
@@ -197,6 +229,7 @@ export interface FasMapModalProps {
   onConfirm: () => void;
   onCancel: () => void;
   customerName: string;
+  namaSales: string; // ✅ Tambahan field nama_sales
   location: { latitude: number; longitude: number };
 }
 
@@ -214,6 +247,7 @@ export interface RKSItem {
   checkOut?: MobileRKS;
   fasmap?: { latitude: string; longitude: string };
   radius?: number;
+  namaSales?: string; // ✅ Tambahan field nama_sales
 }
 
 // ✅ Interface untuk camera permission
@@ -236,4 +270,12 @@ export interface PhotoResult {
   uri: string;
   width: number;
   height: number;
+}
+
+// ✅ Interface untuk map view
+export interface MapViewProps {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  style?: any;
 }

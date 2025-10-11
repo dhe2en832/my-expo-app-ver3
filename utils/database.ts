@@ -27,9 +27,11 @@ export const initDatabase = async (): Promise<void> => {
       photo_out TEXT,
       duration INTEGER,
       status TEXT DEFAULT 'pending',
-      customer_name TEXT, -- ✅ Tambahan untuk watermark
-      fasmap_latitude TEXT, -- ✅ Tambahan untuk fasmap data
-      fasmap_longitude TEXT -- ✅ Tambahan untuk fasmap data
+      customer_name TEXT,
+      fasmap_latitude TEXT,
+      fasmap_longitude TEXT,
+      kode_sales TEXT NOT NULL, -- ✅ Tambahan field kode_sales
+      nama_sales TEXT NOT NULL -- ✅ Tambahan field nama_sales
     );
   `);
 
@@ -77,8 +79,8 @@ export const insertRKSLocal = async (
       id, kode_rks, kode_cust, userid, checkin_time, checkout_time,
       latitude_in, longitude_in, latitude_out, longitude_out,
       accuracy_in, accuracy_out, photo_in, photo_out, duration, status,
-      customer_name, fasmap_latitude, fasmap_longitude
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      customer_name, fasmap_latitude, fasmap_longitude, kode_sales, nama_sales
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       rks.id,
       rks.kode_rks,
@@ -99,6 +101,8 @@ export const insertRKSLocal = async (
       rks.customer_name ?? null,
       rks.fasmap_latitude ?? null,
       rks.fasmap_longitude ?? null,
+      rks.kode_sales, // ✅ Tambahan field kode_sales
+      rks.nama_sales, // ✅ Tambahan field nama_sales
     ]
   );
 };
@@ -158,6 +162,14 @@ export const updateRKSLocal = async (
   if (updates.fasmap_longitude !== undefined) {
     fields.push("fasmap_longitude = ?");
     values.push(updates.fasmap_longitude ?? null);
+  }
+  if (updates.kode_sales !== undefined) {
+    fields.push("kode_sales = ?");
+    values.push(updates.kode_sales);
+  }
+  if (updates.nama_sales !== undefined) {
+    fields.push("nama_sales = ?");
+    values.push(updates.nama_sales);
   }
 
   if (fields.length === 0) return;

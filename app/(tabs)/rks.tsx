@@ -13,6 +13,7 @@ import {
   Animated,
   PanResponder,
   Button,
+  Linking,
 } from "react-native";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
@@ -24,7 +25,7 @@ import { TabView, SceneMap, TabBar } from "react-native-tab-view";
 import { useWindowDimensions } from "react-native";
 import { Camera, CameraView, useCameraPermissions } from "expo-camera";
 // --- API & Interfaces ---
-import { rksAPI, customerAPI, fasmapAPI } from "../../api/services";
+import { rksAPI, customerAPI, fasmapAPI, salesAPI } from "../../api/services";
 import { RKSList, MobileRKS } from "../../api/interface";
 import { useAuth } from "../../contexts/AuthContext";
 import { useOfflineQueue } from "../../contexts/OfflineContext";
@@ -52,34 +53,77 @@ type RKSItem = {
   checkOut?: MobileRKS;
   fasmap?: { latitude: string; longitude: string };
   radius?: number;
+  namaSales?: string;
 };
 
 type RangeKey = "today" | "week" | "month";
 type CustomDate = { month: number; year: number };
 
-// ✅ Custom Camera Component dengan Real-time Location Tracking
+// ✅ Simple Map Component tanpa react-native-maps
+const SimpleLocationMap = ({
+  latitude,
+  longitude,
+  style,
+}: {
+  latitude: number;
+  longitude: number;
+  style?: any;
+}) => {
+  const openInMaps = () => {
+    const url = `https://maps.google.com/?q=${latitude},${longitude}`;
+    Linking.openURL(url).catch((err) =>
+      console.error("Error opening maps:", err)
+    );
+  };
+
+  return (
+    <TouchableOpacity
+      style={[styles.simpleMapContainer, style]}
+      onPress={openInMaps}
+    >
+      <View style={styles.simpleMap}>
+        <Text style={styles.simpleMapText}>
+          📍 {latitude.toFixed(6)}, {longitude.toFixed(6)}
+        </Text>
+        <Text style={styles.simpleMapSubtext}>
+          Tap untuk buka di Google Maps
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+// ✅ Custom Camera Component dengan Real-time Location Tracking dan Simple Map
 const CustomCameraWithOverlay = ({
   visible,
   onClose,
   onCapture,
   customerName,
+  namaSales,
   checkType = "checkin",
   onCameraClose,
 }: {
   visible: boolean;
   onClose: () => void;
-  onCapture: (photo: { base64: string; location: Location.LocationObject }) => void;
+  onCapture: (photo: {
+    base64: string;
+    location: Location.LocationObject;
+  }) => void;
   customerName: string;
+  namaSales: string;
   checkType?: "checkin" | "checkout";
   onCameraClose: () => void;
 }) => {
   const [cameraRef, setCameraRef] = useState<CameraView | null>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<"front" | "back">("front");
-  const [location, setLocation] = useState<Location.LocationObject | null>(null);
+  const [location, setLocation] = useState<Location.LocationObject | null>(
+    null
+  );
   const [timestamp, setTimestamp] = useState(new Date());
   const [locationLoading, setLocationLoading] = useState(true);
-  const [locationSubscription, setLocationSubscription] = useState<Location.LocationSubscription | null>(null);
+  const [locationSubscription, setLocationSubscription] =
+    useState<Location.LocationSubscription | null>(null);
 
   // Real-time location tracking
   useEffect(() => {
@@ -159,7 +203,7 @@ const CustomCameraWithOverlay = ({
         if (photo.base64 && location) {
           onCapture({
             base64: photo.base64,
-            location: location
+            location: location,
           });
         }
       } catch (error) {
@@ -203,7 +247,7 @@ const CustomCameraWithOverlay = ({
         </View>
       </Modal>
     );
-  };
+  }
 
   const formatLocation = () => {
     if (!location) return "Mendapatkan lokasi...";
@@ -228,11 +272,30 @@ const CustomCameraWithOverlay = ({
 
     const accuracy = location.coords.accuracy || 999;
 
-    if (accuracy < 10) return { text: `Akurasi: ${accuracy.toFixed(1)}m (Sangat Baik)`, color: "#4CAF50" };
-    if (accuracy < 25) return { text: `Akurasi: ${accuracy.toFixed(1)}m (Baik)`, color: "#8BC34A" };
-    if (accuracy < 50) return { text: `Akurasi: ${accuracy.toFixed(1)}m (Cukup)`, color: "#FFC107" };
-    if (accuracy < 100) return { text: `Akurasi: ${accuracy.toFixed(1)}m (Sedang)`, color: "#FF9800" };
-    return { text: `Akurasi: ${accuracy.toFixed(1)}m (Rendah)`, color: "#F44336" };
+    if (accuracy < 10)
+      return {
+        text: `Akurasi: ${accuracy.toFixed(1)}m (Sangat Baik)`,
+        color: "#4CAF50",
+      };
+    if (accuracy < 25)
+      return {
+        text: `Akurasi: ${accuracy.toFixed(1)}m (Baik)`,
+        color: "#8BC34A",
+      };
+    if (accuracy < 50)
+      return {
+        text: `Akurasi: ${accuracy.toFixed(1)}m (Cukup)`,
+        color: "#FFC107",
+      };
+    if (accuracy < 100)
+      return {
+        text: `Akurasi: ${accuracy.toFixed(1)}m (Sedang)`,
+        color: "#FF9800",
+      };
+    return {
+      text: `Akurasi: ${accuracy.toFixed(1)}m (Rendah)`,
+      color: "#F44336",
+    };
   };
 
   const accuracyStatus = getAccuracyStatus();
@@ -246,23 +309,41 @@ const CustomCameraWithOverlay = ({
           facing={facing}
           ref={(ref) => setCameraRef(ref)}
         >
-          {/* OVERLAY GEOTAGGING DENGAN REAL-TIME INFO */}
+          {/* OVERLAY GEOTAGGING DENGAN REAL-TIME INFO DAN SIMPLE MAP */}
           <View style={styles.cameraOverlay}>
             <View style={styles.watermarkContainer}>
               <Text style={styles.watermarkTitle}>RKS MOBILE APP</Text>
               <Text style={styles.watermarkText}>{customerName}</Text>
+              <Text style={styles.watermarkText}>Sales: {namaSales}</Text>
               <Text style={styles.watermarkText}>{formatTimestamp()}</Text>
               <Text style={styles.watermarkText}>{formatLocation()}</Text>
 
               {/* Accuracy Display */}
-              <View style={[styles.accuracyContainer, { backgroundColor: accuracyStatus.color }]}>
-                <Text style={styles.accuracyText}>
-                  {accuracyStatus.text}
-                </Text>
+              <View
+                style={[
+                  styles.accuracyContainer,
+                  { backgroundColor: accuracyStatus.color },
+                ]}
+              >
+                <Text style={styles.accuracyText}>{accuracyStatus.text}</Text>
                 {locationLoading && (
-                  <ActivityIndicator size="small" color="#fff" style={styles.accuracyLoader} />
+                  <ActivityIndicator
+                    size="small"
+                    color="#fff"
+                    style={styles.accuracyLoader}
+                  />
                 )}
               </View>
+
+              {/* ✅ Simple Map Display */}
+              {/* {location && (
+                <SimpleLocationMap
+                  latitude={location.coords.latitude}
+                  longitude={location.coords.longitude}
+                  accuracy={location.coords.accuracy ?? undefined} // ✅ Fix: Convert null to undefined
+                  style={styles.simpleMapContainer}
+                />
+              )} */}
 
               <Text style={styles.watermarkType}>
                 {checkType === "checkin" ? "CHECK-IN" : "CHECK-OUT"}
@@ -278,7 +359,7 @@ const CustomCameraWithOverlay = ({
             <TouchableOpacity
               style={[
                 styles.captureButton,
-                isCaptureDisabled && styles.captureButtonDisabled
+                isCaptureDisabled && styles.captureButtonDisabled,
               ]}
               onPress={takePicture}
               disabled={isCaptureDisabled}
@@ -318,6 +399,7 @@ const FasMapConfirmationModal = ({
   onConfirm,
   onCancel,
   customerName,
+  namaSales,
   location,
   accuracy,
 }: {
@@ -325,6 +407,7 @@ const FasMapConfirmationModal = ({
   onConfirm: () => void;
   onCancel: () => void;
   customerName: string;
+  namaSales: string;
   location: { latitude: number; longitude: number };
   accuracy: number;
 }) => {
@@ -348,6 +431,9 @@ const FasMapConfirmationModal = ({
             memiliki titik lokasi di sistem.
           </Text>
           <Text style={styles.fasmapText}>
+            Sales: <Text style={styles.bold}>{namaSales}</Text>
+          </Text>
+          <Text style={styles.fasmapText}>
             Apakah Anda ingin menyimpan lokasi saat ini sebagai titik lokasi
             utama?
           </Text>
@@ -356,11 +442,23 @@ const FasMapConfirmationModal = ({
             <Text style={styles.locationCoordinate}>
               📍 {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
             </Text>
-            <View style={[styles.accuracyBadge, { backgroundColor: accuracyStatus.color }]}>
+            <View
+              style={[
+                styles.accuracyBadge,
+                { backgroundColor: accuracyStatus.color },
+              ]}
+            >
               <Text style={styles.accuracyBadgeText}>
                 Akurasi: {accuracy.toFixed(1)}m ({accuracyStatus.text})
               </Text>
             </View>
+
+            {/* ✅ Simple Map di Modal */}
+            <SimpleLocationMap
+              latitude={location.latitude}
+              longitude={location.longitude}
+              style={styles.modalSimpleMapContainer}
+            />
           </View>
 
           <View style={styles.fasmapButtons}>
@@ -390,6 +488,7 @@ export default function RKSPage() {
   const [gpsStatus, setGpsStatus] = useState<"searching" | "ready" | "error">(
     "searching"
   );
+  const [namaSales, setNamaSales] = useState<string>(""); // ✅ State untuk nama sales
 
   // ✅ State baru untuk camera dan fasmap
   const [cameraVisible, setCameraVisible] = useState(false);
@@ -467,11 +566,35 @@ export default function RKSPage() {
     setCurrentPhoto(null);
   };
 
+  // ✅ Fungsi untuk mendapatkan nama sales dari API
+  const getNamaSales = async () => {
+    if (!user?.kodeSales) return "";
+
+    try {
+      const salesRes = await salesAPI.getSalesList(user.kodeSales);
+      console.log("📋 Sales data:", salesRes);
+
+      if (salesRes.success && salesRes.data && salesRes.data.length > 0) {
+        // Ambil nama sales dari data pertama
+        const salesData = salesRes.data[0];
+        return salesData.nama_sales || user.name || "Sales";
+      }
+    } catch (error) {
+      console.error("Error getting sales data:", error);
+    }
+
+    return user.name || "Sales";
+  };
+
   const loadRKS = async () => {
     if (!user?.kodeSales) return;
     console.log("🚀 Mulai loadRKS...");
     setLoading(true);
     try {
+      // ✅ Ambil nama sales terlebih dahulu
+      const salesName = await getNamaSales();
+      setNamaSales(salesName);
+
       const listRes = await rksAPI.getRKSList(user.kodeSales);
       if (!listRes.success) {
         console.log("❌ Gagal ambil data");
@@ -519,6 +642,7 @@ export default function RKSPage() {
             checkOut: localMatch.checkout_time ? localMatch : undefined,
             fasmap: undefined,
             radius: 150,
+            namaSales: salesName, // ✅ Gunakan nama sales dari API
           };
         }
 
@@ -535,6 +659,7 @@ export default function RKSPage() {
           status,
           fasmap: undefined,
           radius: 150,
+          namaSales: salesName, // ✅ Gunakan nama sales dari API
         };
       });
 
@@ -551,12 +676,18 @@ export default function RKSPage() {
 
   const isAnyCheckedIn = rksList.some((r) => r.checkIn && !r.checkOut);
 
+  // ✅ FIX: Filter yang benar untuk tanggal
   const filterByRange = useCallback(
     (list: RKSItem[]) => {
       const now = new Date();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Set ke awal hari
+
       const safeParseDate = (str: string): Date => {
         if (!str) return new Date(NaN);
-        return new Date(str);
+        const date = new Date(str);
+        date.setHours(0, 0, 0, 0); // Normalisasi waktu ke 00:00:00
+        return date;
       };
 
       if (customDate) {
@@ -571,26 +702,32 @@ export default function RKSPage() {
       }
 
       if (range === "today") {
-        const todayStr = now.toISOString().split("T")[0];
+        // ✅ FIX: Hanya tampilkan data dengan tanggal sama dengan hari ini
         return list.filter((r) => {
           const d = safeParseDate(r.scheduledDate);
+          const todayStart = new Date(today);
           return (
-            !isNaN(d.getTime()) && d.toISOString().split("T")[0] === todayStr
+            !isNaN(d.getTime()) && d.getTime() === todayStart.getTime() // ✅ Pastikan tanggal sama persis
           );
         });
       }
 
       if (range === "week") {
-        const start = new Date(now);
-        start.setDate(now.getDate() - now.getDay());
+        const start = new Date(today);
+        start.setDate(today.getDate() - today.getDay()); // Minggu lalu
+        start.setHours(0, 0, 0, 0);
+
         const end = new Date(start);
-        end.setDate(start.getDate() + 7);
+        end.setDate(start.getDate() + 6); // Sabtu minggu ini
+        end.setHours(23, 59, 59, 999);
+
         return list.filter((r) => {
           const d = safeParseDate(r.scheduledDate);
           return !isNaN(d.getTime()) && d >= start && d <= end;
         });
       }
 
+      // Range "month"
       return list.filter((r) => {
         const d = safeParseDate(r.scheduledDate);
         return (
@@ -660,7 +797,7 @@ export default function RKSPage() {
       setCurrentLocation({
         latitude: lat,
         longitude: lon,
-        accuracy: acc
+        accuracy: acc,
       });
       setCurrentCustomer(item);
       setCheckType(type);
@@ -720,7 +857,10 @@ export default function RKSPage() {
   };
 
   // ✅ Handle capture photo dari custom camera
-  const handlePhotoCapture = async (photoData: { base64: string; location: Location.LocationObject }) => {
+  const handlePhotoCapture = async (photoData: {
+    base64: string;
+    location: Location.LocationObject;
+  }) => {
     setCurrentPhoto(photoData.base64);
     setCameraVisible(false);
 
@@ -729,7 +869,7 @@ export default function RKSPage() {
       setCurrentLocation({
         latitude: photoData.location.coords.latitude,
         longitude: photoData.location.coords.longitude,
-        accuracy: photoData.location.coords.accuracy || 999
+        accuracy: photoData.location.coords.accuracy || 999,
       });
     }
 
@@ -742,7 +882,10 @@ export default function RKSPage() {
   };
 
   // ✅ Process check-in setelah foto diambil dengan proper accuracy handling
-  const processCheckIn = async (photoBase64: string, locationData: Location.LocationObject) => {
+  const processCheckIn = async (
+    photoBase64: string,
+    locationData: Location.LocationObject
+  ) => {
     if (!user?.id || !currentCustomer || !currentLocation) return;
 
     try {
@@ -753,10 +896,11 @@ export default function RKSPage() {
         kode_cust: currentCustomer.kode_cust,
         userid: user.id,
         kode_sales: user.kodeSales,
+        nama_sales: namaSales, // ✅ Gunakan nama sales dari state
         checkin_time: new Date().toISOString(),
         latitude_in: currentLocation.latitude.toString(),
         longitude_in: currentLocation.longitude.toString(),
-        accuracy_in: accuracy, // ✅ Proper accuracy handling
+        accuracy_in: accuracy,
         photo_in: photoBase64,
         status: "pending",
         customer_name: currentCustomer.customerName,
@@ -818,7 +962,10 @@ export default function RKSPage() {
   };
 
   // ✅ Process check-out setelah foto diambil dengan proper accuracy handling
-  const processCheckOut = async (photoBase64: string, locationData: Location.LocationObject) => {
+  const processCheckOut = async (
+    photoBase64: string,
+    locationData: Location.LocationObject
+  ) => {
     if (!currentCustomer?.checkIn || !currentLocation) return;
 
     try {
@@ -833,10 +980,11 @@ export default function RKSPage() {
         checkout_time,
         latitude_out: currentLocation.latitude.toString(),
         longitude_out: currentLocation.longitude.toString(),
-        accuracy_out: accuracy, // ✅ Proper accuracy handling
+        accuracy_out: accuracy,
         photo_out: photoBase64,
         status: "pending",
         customer_name: currentCustomer.customerName,
+        nama_sales: namaSales, // ✅ Gunakan nama sales dari state
       });
 
       if (!checkoutRes.success || !checkoutRes.data) {
@@ -1324,22 +1472,24 @@ export default function RKSPage() {
         renderTabBar={renderTabBar}
       />
 
-      {/* ✅ Custom Camera dengan Real-time Location Tracking */}
+      {/* ✅ Custom Camera dengan Real-time Location Tracking dan Simple Map */}
       <CustomCameraWithOverlay
         visible={cameraVisible}
         onClose={() => setCameraVisible(false)}
         onCapture={handlePhotoCapture}
         customerName={currentCustomer?.customerName || ""}
+        namaSales={namaSales} // ✅ Gunakan nama sales dari state
         checkType={checkType}
         onCameraClose={handleCameraClose}
       />
 
-      {/* ✅ FasMap Confirmation Modal dengan Accuracy Info */}
+      {/* ✅ FasMap Confirmation Modal dengan Accuracy Info dan Simple Map */}
       <FasMapConfirmationModal
         visible={fasmapModalVisible}
         onConfirm={handleFasMapConfirm}
         onCancel={handleFasMapCancel}
         customerName={currentCustomer?.customerName || ""}
+        namaSales={namaSales} // ✅ Gunakan nama sales dari state
         location={currentLocation || { latitude: 0, longitude: 0 }}
         accuracy={currentLocation?.accuracy || 999}
       />
@@ -1607,7 +1757,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 6,
     marginVertical: 5,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
   },
   accuracyText: {
     color: "#fff",
@@ -1622,7 +1772,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 6,
     marginTop: 5,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
   },
   accuracyBadgeText: {
     color: "#fff",
@@ -1682,6 +1832,40 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.7)",
     padding: 15,
     borderRadius: 10,
+  },
+  // ✅ Simple Map Styles (menggantikan MapView styles)
+  simpleMapContainer: {
+    marginTop: 10,
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  simpleMap: {
+    height: 80,
+    backgroundColor: "#f0f4ff",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#667eea",
+    borderRadius: 8,
+    padding: 10,
+  },
+  simpleMapText: {
+    color: "#667eea",
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  simpleMapSubtext: {
+    color: "#667eea",
+    fontSize: 10,
+    marginTop: 4,
+    textAlign: "center",
+  },
+  modalSimpleMapContainer: {
+    marginTop: 10,
+    borderRadius: 8,
+    overflow: "hidden",
+    height: 100,
   },
   // ✅ FasMap Modal Styles
   modalOverlay: {
