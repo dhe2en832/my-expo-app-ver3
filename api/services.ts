@@ -17,7 +17,7 @@ export type User = {
   nama_user: string;
   kodecabang: string;
   kode_sales: string;
-  nama_sales: string; // ✅ Tambahan field nama_sales
+  nama_sales: string;
 };
 
 export type LoginResponse = {
@@ -132,6 +132,7 @@ export const rksAPI = {
       };
     }
   },
+
   getRKSHeaders: async (kode_sales: string) => {
     try {
       const res = await apiClient.get<{ success: boolean; data?: RKSHeader[] }>(
@@ -181,30 +182,48 @@ export const rksAPI = {
   // --- Mobile RKS ---
   createMobileRKS: async (data: Partial<MobileRKS>) => {
     try {
+      console.log("📤 Mengirim data check-in ke server...");
       const res = await apiClient.post<{ success: boolean; data?: MobileRKS }>(
         `/rks-mobile`,
         data
       );
+      console.log("✅ Response createMobileRKS:", res.data);
       return { success: true, data: res.data.data || null };
     } catch (err: any) {
+      console.error(
+        "❌ Error createMobileRKS:",
+        err.response?.data || err.message
+      );
       return {
         success: false,
-        error: err.message || "Gagal membuat kunjungan",
+        error:
+          err.response?.data?.message ||
+          err.message ||
+          "Gagal membuat kunjungan",
       };
     }
   },
 
   updateMobileRKS: async (id: string, data: Partial<MobileRKS>) => {
     try {
+      console.log("📤 Mengirim data check-out ke server...");
       const res = await apiClient.patch<{ success: boolean; data?: MobileRKS }>(
         `/rks-mobile/${id}`,
         data
       );
+      console.log("✅ Response updateMobileRKS:", res.data);
       return { success: true, data: res.data.data || null };
     } catch (err: any) {
+      console.error(
+        "❌ Error updateMobileRKS:",
+        err.response?.data || err.message
+      );
       return {
         success: false,
-        error: err.message || "Gagal memperbarui kunjungan",
+        error:
+          err.response?.data?.message ||
+          err.message ||
+          "Gagal memperbarui kunjungan",
       };
     }
   },
@@ -226,7 +245,6 @@ export const rksAPI = {
 // FasMap API Module
 // ===================
 export const fasmapAPI = {
-  // ✅ Get fasmap untuk customer
   getFasMap: async (
     kode_cust: string
   ): Promise<{
@@ -256,7 +274,6 @@ export const fasmapAPI = {
     }
   },
 
-  // ✅ Save fasmap baru
   saveFasMap: async (
     payload: SaveFasMapPayload
   ): Promise<{
@@ -279,7 +296,6 @@ export const fasmapAPI = {
     }
   },
 
-  // ✅ Check if fasmap exists
   checkFasMapExists: async (
     kode_cust: string
   ): Promise<{
@@ -325,7 +341,6 @@ export const customerAPI = {
     }
   },
 
-  // ✅ Get customer details
   getCustomer: async (
     kode_cust: string
   ): Promise<{
@@ -363,12 +378,11 @@ export const salesAPI = {
     } catch (err: any) {
       return {
         success: false,
-        error: err.message || "Gagal mengambil RKS List",
+        error: err.message || "Gagal mengambil Sales List",
       };
     }
   },
 
-  // ✅ Get customer details
   getSalesDetail: async (kode_sales: string) => {
     try {
       const res = await apiClient.get<{
@@ -385,7 +399,6 @@ export const salesAPI = {
   },
 };
 
-// ✅ Export semua service
 export default {
   loginAPI,
   rksAPI,
