@@ -12,18 +12,20 @@ import {
   ActivityIndicator,
   Animated,
   PanResponder,
+  Button,
+  Linking,
 } from "react-native";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useRouter } from "expo-router";
-// import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system";
 import { TabView, SceneMap, TabBar } from "react-native-tab-view";
 import { useWindowDimensions } from "react-native";
+import { Camera, CameraView, useCameraPermissions } from "expo-camera";
 // --- API & Interfaces ---
-import { rksAPI, customerAPI } from "../../api/services";
+import { rksAPI, customerAPI, fasmapAPI, salesAPI } from "../../api/services";
 import { RKSList, MobileRKS } from "../../api/interface";
 import { useAuth } from "../../contexts/AuthContext";
 import { useOfflineQueue } from "../../contexts/OfflineContext";
@@ -32,7 +34,7 @@ import {
   insertRKSLocal,
   updateRKSLocal,
   getPendingRKSLocal,
-  getAllLocalRKS, // ✅ Ganti dengan ini
+  getAllLocalRKS,
 } from "../../utils/database";
 import { getLocationWithRetry } from "@/utils/location";
 import * as Notifications from "expo-notifications";
@@ -51,10 +53,427 @@ type RKSItem = {
   checkOut?: MobileRKS;
   fasmap?: { latitude: string; longitude: string };
   radius?: number;
+  namaSales?: string;
 };
 
 type RangeKey = "today" | "week" | "month";
 type CustomDate = { month: number; year: number };
+
+// ✅ Simple Map Component tanpa react-native-maps
+const SimpleLocationMap = ({
+  latitude,
+  longitude,
+  style,
+}: {
+  latitude: number;
+  longitude: number;
+  style?: any;
+}) => {
+  const openInMaps = () => {
+    const url = `https://maps.google.com/?q=${latitude},${longitude}`;
+    Linking.openURL(url).catch((err) =>
+      console.error("Error opening maps:", err)
+    );
+  };
+
+  return (
+    <TouchableOpacity
+      style={[styles.simpleMapContainer, style]}
+      onPress={openInMaps}
+    >
+      <View style={styles.simpleMap}>
+        <Text style={styles.simpleMapText}>
+          📍 {latitude.toFixed(6)}, {longitude.toFixed(6)}
+        </Text>
+        <Text style={styles.simpleMapSubtext}>
+          Tap untuk buka di Google Maps
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+// ✅ Custom Camera Component dengan Real-time Location Tracking dan Simple Map
+const CustomCameraWithOverlay = ({
+  visible,
+  onClose,
+  onCapture,
+  customerName,
+  namaSales,
+  checkType = "checkin",
+  onCameraClose,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onCapture: (photo: {
+    base64: string;
+    location: Location.LocationObject;
+  }) => void;
+  customerName: string;
+  namaSales: string;
+  checkType?: "checkin" | "checkout";
+  onCameraClose: () => void;
+}) => {
+  const [cameraRef, setCameraRef] = useState<CameraView | null>(null);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [facing, setFacing] = useState<"front" | "back">("front");
+  const [location, setLocation] = useState<Location.LocationObject | null>(
+    null
+  );
+  const [timestamp, setTimestamp] = useState(new Date());
+  const [locationLoading, setLocationLoading] = useState(true);
+  const [locationSubscription, setLocationSubscription] =
+    useState<Location.LocationSubscription | null>(null);
+
+  // Real-time location tracking
+  useEffect(() => {
+    if (visible) {
+      setTimestamp(new Date());
+      setLocationLoading(true);
+
+      let isMounted = true;
+
+      const startLocationTracking = async () => {
+        try {
+          // Request high accuracy location
+          const subscription = await Location.watchPositionAsync(
+            {
+              accuracy: Location.Accuracy.BestForNavigation,
+              timeInterval: 1000,
+              distanceInterval: 1,
+            },
+            (newLocation) => {
+              if (isMounted) {
+                console.log("📍 Location updated:", newLocation.coords);
+                setLocation(newLocation);
+                setLocationLoading(false);
+              }
+            }
+          );
+
+          if (isMounted) {
+            setLocationSubscription(subscription);
+          }
+
+          // Also get initial location immediately
+          const initialLocation = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.BestForNavigation,
+          });
+
+          if (isMounted) {
+            setLocation(initialLocation);
+            setLocationLoading(false);
+          }
+        } catch (error) {
+          console.error("Error starting location tracking:", error);
+          if (isMounted) {
+            setLocationLoading(false);
+          }
+        }
+      };
+
+      startLocationTracking();
+
+      return () => {
+        isMounted = false;
+        if (locationSubscription) {
+          locationSubscription.remove();
+        }
+      };
+    } else {
+      // Cleanup when camera closes
+      if (locationSubscription) {
+        locationSubscription.remove();
+        setLocationSubscription(null);
+      }
+      setLocation(null);
+      setLocationLoading(true);
+    }
+  }, [visible]);
+
+  const takePicture = async () => {
+    if (cameraRef && location && !locationLoading) {
+      try {
+        const photo = await cameraRef.takePictureAsync({
+          base64: true,
+          quality: 0.7,
+          exif: true,
+        });
+
+        if (photo.base64 && location) {
+          onCapture({
+            base64: photo.base64,
+            location: location,
+          });
+        }
+      } catch (error) {
+        console.error("Error taking picture:", error);
+        Alert.alert("Error", "Gagal mengambil foto");
+      }
+    }
+  };
+
+  const toggleCameraFacing = () => {
+    setFacing((current) => (current === "back" ? "front" : "back"));
+  };
+
+  const handleClose = () => {
+    if (locationSubscription) {
+      locationSubscription.remove();
+      setLocationSubscription(null);
+    }
+    onCameraClose();
+    onClose();
+  };
+
+  if (!visible) return null;
+
+  if (!permission) {
+    return (
+      <Modal visible={visible} animationType="slide">
+        <View style={styles.cameraContainer}>
+          <Text>Meminta izin kamera...</Text>
+        </View>
+      </Modal>
+    );
+  }
+
+  if (!permission.granted) {
+    return (
+      <Modal visible={visible} animationType="slide">
+        <View style={styles.cameraContainer}>
+          <Text style={styles.message}>Butuh izin untuk mengakses kamera</Text>
+          <Button title="Berikan Izin" onPress={requestPermission} />
+        </View>
+      </Modal>
+    );
+  }
+
+  const formatLocation = () => {
+    if (!location) return "Mendapatkan lokasi...";
+    const lat = location.coords.latitude.toFixed(6);
+    const lon = location.coords.longitude.toFixed(6);
+    return `📍 ${lat}, ${lon}`;
+  };
+
+  const formatTimestamp = () => {
+    return timestamp.toLocaleString("id-ID", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  };
+
+  const getAccuracyStatus = () => {
+    if (!location) return { text: "Mencari sinyal...", color: "#FF9800" };
+
+    const accuracy = location.coords.accuracy || 999;
+
+    if (accuracy < 10)
+      return {
+        text: `Akurasi: ${accuracy.toFixed(1)}m (Sangat Baik)`,
+        color: "#4CAF50",
+      };
+    if (accuracy < 25)
+      return {
+        text: `Akurasi: ${accuracy.toFixed(1)}m (Baik)`,
+        color: "#8BC34A",
+      };
+    if (accuracy < 50)
+      return {
+        text: `Akurasi: ${accuracy.toFixed(1)}m (Cukup)`,
+        color: "#FFC107",
+      };
+    if (accuracy < 100)
+      return {
+        text: `Akurasi: ${accuracy.toFixed(1)}m (Sedang)`,
+        color: "#FF9800",
+      };
+    return {
+      text: `Akurasi: ${accuracy.toFixed(1)}m (Rendah)`,
+      color: "#F44336",
+    };
+  };
+
+  const accuracyStatus = getAccuracyStatus();
+  const isCaptureDisabled = !location || locationLoading;
+
+  return (
+    <Modal visible={visible} animationType="slide">
+      <View style={styles.cameraContainer}>
+        <CameraView
+          style={styles.camera}
+          facing={facing}
+          ref={(ref) => setCameraRef(ref)}
+        >
+          {/* OVERLAY GEOTAGGING DENGAN REAL-TIME INFO DAN SIMPLE MAP */}
+          <View style={styles.cameraOverlay}>
+            <View style={styles.watermarkContainer}>
+              <Text style={styles.watermarkTitle}>RKS MOBILE APP</Text>
+              <Text style={styles.watermarkText}>{customerName}</Text>
+              <Text style={styles.watermarkText}>Sales: {namaSales}</Text>
+              <Text style={styles.watermarkText}>{formatTimestamp()}</Text>
+              <Text style={styles.watermarkText}>{formatLocation()}</Text>
+
+              {/* Accuracy Display */}
+              <View
+                style={[
+                  styles.accuracyContainer,
+                  { backgroundColor: accuracyStatus.color },
+                ]}
+              >
+                <Text style={styles.accuracyText}>{accuracyStatus.text}</Text>
+                {locationLoading && (
+                  <ActivityIndicator
+                    size="small"
+                    color="#fff"
+                    style={styles.accuracyLoader}
+                  />
+                )}
+              </View>
+
+              {/* ✅ Simple Map Display */}
+              {/* {location && (
+                <SimpleLocationMap
+                  latitude={location.coords.latitude}
+                  longitude={location.coords.longitude}
+                  accuracy={location.coords.accuracy ?? undefined} // ✅ Fix: Convert null to undefined
+                  style={styles.simpleMapContainer}
+                />
+              )} */}
+
+              <Text style={styles.watermarkType}>
+                {checkType === "checkin" ? "CHECK-IN" : "CHECK-OUT"}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.cameraControls}>
+            <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
+              <MaterialIcons name="close" size={30} color="#fff" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.captureButton,
+                isCaptureDisabled && styles.captureButtonDisabled,
+              ]}
+              onPress={takePicture}
+              disabled={isCaptureDisabled}
+            >
+              <View style={styles.captureInner}>
+                {locationLoading && (
+                  <ActivityIndicator size="small" color="#fff" />
+                )}
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.flipButton}
+              onPress={toggleCameraFacing}
+            >
+              <MaterialIcons name="flip-camera-ios" size={30} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Capture Disabled Overlay */}
+          {isCaptureDisabled && (
+            <View style={styles.captureDisabledOverlay}>
+              <Text style={styles.captureDisabledText}>
+                Menunggu lokasi siap...
+              </Text>
+            </View>
+          )}
+        </CameraView>
+      </View>
+    </Modal>
+  );
+};
+
+// ✅ Modal untuk konfirmasi simpan fasmap
+const FasMapConfirmationModal = ({
+  visible,
+  onConfirm,
+  onCancel,
+  customerName,
+  namaSales,
+  location,
+  accuracy,
+}: {
+  visible: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+  customerName: string;
+  namaSales: string;
+  location: { latitude: number; longitude: number };
+  accuracy: number;
+}) => {
+  const getAccuracyStatus = (acc: number) => {
+    if (acc < 10) return { text: "Sangat Baik", color: "#4CAF50" };
+    if (acc < 25) return { text: "Baik", color: "#8BC34A" };
+    if (acc < 50) return { text: "Cukup", color: "#FFC107" };
+    if (acc < 100) return { text: "Sedang", color: "#FF9800" };
+    return { text: "Rendah", color: "#F44336" };
+  };
+
+  const accuracyStatus = getAccuracyStatus(accuracy);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={styles.modalOverlay}>
+        <View style={styles.fasmapModal}>
+          <Text style={styles.fasmapTitle}>Simpan Lokasi Customer</Text>
+          <Text style={styles.fasmapText}>
+            Customer <Text style={styles.bold}>{customerName}</Text> belum
+            memiliki titik lokasi di sistem.
+          </Text>
+          <Text style={styles.fasmapText}>
+            Sales: <Text style={styles.bold}>{namaSales}</Text>
+          </Text>
+          <Text style={styles.fasmapText}>
+            Apakah Anda ingin menyimpan lokasi saat ini sebagai titik lokasi
+            utama?
+          </Text>
+
+          <View style={styles.locationInfoContainer}>
+            <Text style={styles.locationCoordinate}>
+              📍 {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
+            </Text>
+            <View
+              style={[
+                styles.accuracyBadge,
+                { backgroundColor: accuracyStatus.color },
+              ]}
+            >
+              <Text style={styles.accuracyBadgeText}>
+                Akurasi: {accuracy.toFixed(1)}m ({accuracyStatus.text})
+              </Text>
+            </View>
+
+            {/* ✅ Simple Map di Modal */}
+            <SimpleLocationMap
+              latitude={location.latitude}
+              longitude={location.longitude}
+              style={styles.modalSimpleMapContainer}
+            />
+          </View>
+
+          <View style={styles.fasmapButtons}>
+            <TouchableOpacity style={styles.fasmapCancel} onPress={onCancel}>
+              <Text style={styles.fasmapCancelText}>Nanti</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.fasmapConfirm} onPress={onConfirm}>
+              <Text style={styles.fasmapConfirmText}>Simpan Lokasi</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 export default function RKSPage() {
   const router = useRouter();
@@ -65,11 +484,24 @@ export default function RKSPage() {
   const [loading, setLoading] = useState(true);
   const [checkingInId, setCheckingInId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [gettingLocation, setGettingLocation] = useState<string | null>(null); // ✅ NEW
-  // Di dalam component RKSPage, tambahkan state:
+  const [gettingLocation, setGettingLocation] = useState<string | null>(null);
   const [gpsStatus, setGpsStatus] = useState<"searching" | "ready" | "error">(
     "searching"
   );
+  const [namaSales, setNamaSales] = useState<string>(""); // ✅ State untuk nama sales
+
+  // ✅ State baru untuk camera dan fasmap
+  const [cameraVisible, setCameraVisible] = useState(false);
+  const [fasmapModalVisible, setFasmapModalVisible] = useState(false);
+  const [currentPhoto, setCurrentPhoto] = useState<string | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<{
+    latitude: number;
+    longitude: number;
+    accuracy: number;
+  } | null>(null);
+  const [currentCustomer, setCurrentCustomer] = useState<RKSItem | null>(null);
+  const [checkType, setCheckType] = useState<"checkin" | "checkout">("checkin");
+
   // --- Tab State ---
   const [index, setIndex] = useState(0);
   const [routes] = useState([
@@ -94,7 +526,6 @@ export default function RKSPage() {
   // --- Modal State ---
   const [calendarVisible, setCalendarVisible] = useState(false);
 
-  // Di dalam component RKSPage, tambahkan function:
   const checkGPSStatus = async () => {
     try {
       const status = await Location.getProviderStatusAsync();
@@ -113,13 +544,9 @@ export default function RKSPage() {
     }
   };
 
-  // Di dalam component RKSPage, tambahkan useEffect:
   useEffect(() => {
-    checkGPSStatus(); // Cek sekali saat component mount
-
-    // Cek status GPS setiap 5 detik
+    checkGPSStatus();
     const interval = setInterval(checkGPSStatus, 5000);
-
     return () => clearInterval(interval);
   }, []);
 
@@ -128,21 +555,53 @@ export default function RKSPage() {
     if (index !== 2) setCustomDate(null);
   }, [index]);
 
+  // ✅ Reset state ketika camera ditutup
+  const handleCameraClose = () => {
+    console.log("🔄 Camera closed, resetting states...");
+    setCheckingInId(null);
+    setGettingLocation(null);
+    setIsLoading(false);
+    setCurrentCustomer(null);
+    setCurrentLocation(null);
+    setCurrentPhoto(null);
+  };
+
+  // ✅ Fungsi untuk mendapatkan nama sales dari API
+  const getNamaSales = async () => {
+    if (!user?.kodeSales) return "";
+
+    try {
+      const salesRes = await salesAPI.getSalesList(user.kodeSales);
+      console.log("📋 Sales data:", salesRes);
+
+      if (salesRes.success && salesRes.data && salesRes.data.length > 0) {
+        // Ambil nama sales dari data pertama
+        const salesData = salesRes.data[0];
+        return salesData.nama_sales || user.name || "Sales";
+      }
+    } catch (error) {
+      console.error("Error getting sales data:", error);
+    }
+
+    return user.name || "Sales";
+  };
+
   const loadRKS = async () => {
     if (!user?.kodeSales) return;
     console.log("🚀 Mulai loadRKS...");
     setLoading(true);
     try {
-      // 1. Ambil data master dari server
+      // ✅ Ambil nama sales terlebih dahulu
+      const salesName = await getNamaSales();
+      setNamaSales(salesName);
+
       const listRes = await rksAPI.getRKSList(user.kodeSales);
-      // console.log("✅ getRKSList response:", listRes);
       if (!listRes.success) {
         console.log("❌ Gagal ambil data");
         setRksList([]);
         return;
       }
 
-      // ✅ Normalisasi data ke array
       const rawData = listRes.data;
       let rksArray: RKSList[] = [];
       if (Array.isArray(rawData)) {
@@ -157,12 +616,11 @@ export default function RKSPage() {
         return;
       }
 
-      // 2. Ambil semua kunjungan lokal (termasuk check-in/check-out offline)
-      const localVisits = await getAllLocalRKS(); // ✅ pastikan fungsi ini ada
+      const localVisits = await getAllLocalRKS();
       console.log("📁 Local visits:", localVisits);
-      // 3. Gabungkan & tentukan status
+
       const items: RKSItem[] = rksArray.map((item) => {
-        const scheduledDate = item.rks_tanggal.split(" ")[0]; // '2025-10-11'
+        const scheduledDate = item.rks_tanggal.split(" ")[0];
 
         const localMatch = localVisits.find(
           (r) =>
@@ -184,10 +642,10 @@ export default function RKSPage() {
             checkOut: localMatch.checkout_time ? localMatch : undefined,
             fasmap: undefined,
             radius: 150,
+            namaSales: salesName, // ✅ Gunakan nama sales dari API
           };
         }
 
-        // Status dari server: kunjung='Y' → completed, else scheduled
         const status = item.kunjung === "Y" ? "completed" : "scheduled";
 
         return {
@@ -201,6 +659,7 @@ export default function RKSPage() {
           status,
           fasmap: undefined,
           radius: 150,
+          namaSales: salesName, // ✅ Gunakan nama sales dari API
         };
       });
 
@@ -217,12 +676,18 @@ export default function RKSPage() {
 
   const isAnyCheckedIn = rksList.some((r) => r.checkIn && !r.checkOut);
 
+  // ✅ FIX: Filter yang benar untuk tanggal
   const filterByRange = useCallback(
     (list: RKSItem[]) => {
       const now = new Date();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Set ke awal hari
+
       const safeParseDate = (str: string): Date => {
         if (!str) return new Date(NaN);
-        return new Date(str);
+        const date = new Date(str);
+        date.setHours(0, 0, 0, 0); // Normalisasi waktu ke 00:00:00
+        return date;
       };
 
       if (customDate) {
@@ -237,26 +702,32 @@ export default function RKSPage() {
       }
 
       if (range === "today") {
-        const todayStr = now.toISOString().split("T")[0];
+        // ✅ FIX: Hanya tampilkan data dengan tanggal sama dengan hari ini
         return list.filter((r) => {
           const d = safeParseDate(r.scheduledDate);
+          const todayStart = new Date(today);
           return (
-            !isNaN(d.getTime()) && d.toISOString().split("T")[0] === todayStr
+            !isNaN(d.getTime()) && d.getTime() === todayStart.getTime() // ✅ Pastikan tanggal sama persis
           );
         });
       }
 
       if (range === "week") {
-        const start = new Date(now);
-        start.setDate(now.getDate() - now.getDay());
+        const start = new Date(today);
+        start.setDate(today.getDate() - today.getDay()); // Minggu lalu
+        start.setHours(0, 0, 0, 0);
+
         const end = new Date(start);
-        end.setDate(start.getDate() + 7);
+        end.setDate(start.getDate() + 6); // Sabtu minggu ini
+        end.setHours(23, 59, 59, 999);
+
         return list.filter((r) => {
           const d = safeParseDate(r.scheduledDate);
           return !isNaN(d.getTime()) && d >= start && d <= end;
         });
       }
 
+      // Range "month"
       return list.filter((r) => {
         const d = safeParseDate(r.scheduledDate);
         return (
@@ -269,89 +740,13 @@ export default function RKSPage() {
     [range, customDate]
   );
 
-  // --- FAB Animation (nonaktif untuk sekarang, karena fokus RKS terjadwal) ---
-  const toggleFab = () => {
-    const toValue = fabOpen ? 0 : 1;
-    if (!fabOpen) {
-      Animated.spring(fabAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-        friction: 5,
-      }).start();
-    } else {
-      Animated.spring(fabAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-        friction: 5,
-      }).start();
-    }
-    setFabOpen(!fabOpen);
-  };
-
-  const panResponder = PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onPanResponderGrant: () => pan.extractOffset(),
-    onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
-      useNativeDriver: false,
-    }),
-    onPanResponderRelease: () => pan.flattenOffset(),
-  });
-
-  // --- Selfie ---
-  const takeStorePhoto = async (): Promise<string | null> => {
-    try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== "granted") {
-        // Alert.alert("Izin Kamera", "Izin kamera diperlukan.");
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: "📷 Izin Kamera",
-            body: "Izin kamera diperlukan.",
-            sound: true, // ✅ Mainkan sound
-            // data: { screen: 'rks' }, // Optional data
-          },
-          trigger: null, // Tampilkan segera
-        });
-        return null;
-      }
-      const res = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.6,
-        cameraType: ImagePicker.CameraType.front,
-        base64: true,
-      });
-      if (!res.canceled && res.assets?.[0]) {
-        const asset = res.assets[0];
-        if (asset.base64 && asset.base64.length > 100) {
-          return `image/jpeg;base64,${asset.base64}`;
-        }
-        if (asset.uri) {
-          const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-            encoding: "base64",
-          });
-          if (base64 && base64.length > 100) {
-            return `image/jpeg;base64,${base64}`;
-          }
-        }
-      }
-      return null;
-    } catch (err) {
-      console.error("Store photo error:", err);
-      Alert.alert("Error", "Gagal mengambil foto.");
-      return null;
-    }
-  };
-
-  // --- Check-in Logic ---
-  const handleCheckIn = async (item: RKSItem) => {
-    if (!user?.id) {
-      Alert.alert("Error", "User tidak dikenali.");
-      return;
-    }
+  // ✅ Fungsi untuk check fasmap sebelum check-in
+  const checkFasMapAndProceed = async (
+    item: RKSItem,
+    type: "checkin" | "checkout"
+  ) => {
     setCheckingInId(item.id);
-    setGettingLocation(item.id); // ✅ Tampilkan loading location
+    setGettingLocation(item.id);
 
     try {
       let { status } = await Location.requestForegroundPermissionsAsync();
@@ -379,17 +774,16 @@ export default function RKSPage() {
         return;
       }
 
-      // ✅ Dapatkan lokasi dengan retry function
       let loc;
       try {
-        loc = await getLocationWithRetry(2); // 2x retry
+        loc = await getLocationWithRetry(2);
       } catch (locationError) {
         console.error("Location error:", locationError);
         await Notifications.scheduleNotificationAsync({
           content: {
             title: "📍 Lokasi Tidak Ditemukan",
             body: "Tidak dapat mendapatkan lokasi saat ini. Pastikan GPS aktif, terhubung internet, dan tidak berada dalam gedung.",
-            sound: "new-notification.mp3", // ✅ Custom sound
+            sound: "new-notification.mp3",
           },
           trigger: null,
         });
@@ -399,28 +793,117 @@ export default function RKSPage() {
       const lat = loc.coords.latitude;
       const lon = loc.coords.longitude;
       const acc = loc.coords.accuracy ?? 999;
-      console.log("📍 Lokasi didapat:", { lat, lon, accuracy: acc });
 
-      // ✅ Sembunyikan loading location sebelum ambil foto
+      setCurrentLocation({
+        latitude: lat,
+        longitude: lon,
+        accuracy: acc,
+      });
+      setCurrentCustomer(item);
+      setCheckType(type);
       setGettingLocation(null);
 
-      const photo = await takeStorePhoto();
-      if (!photo) {
-        Alert.alert("Foto Diperlukan", "Foto toko diperlukan untuk check-in.");
-        return;
+      // Cek apakah customer sudah punya fasmap
+      if (type === "checkin") {
+        const fasmapRes = await fasmapAPI.getFasMap(item.kode_cust);
+        if (!fasmapRes.success || !fasmapRes.data) {
+          // Customer belum punya fasmap, tampilkan modal konfirmasi
+          setFasmapModalVisible(true);
+          return;
+        }
       }
 
+      // Jika sudah punya fasmap atau checkout, langsung buka kamera
+      setCameraVisible(true);
+    } catch (error) {
+      console.error("Error in checkFasMapAndProceed:", error);
+      setCheckingInId(null);
+      setGettingLocation(null);
+    }
+  };
+
+  // ✅ Handle konfirmasi simpan fasmap
+  const handleFasMapConfirm = async () => {
+    if (!currentCustomer || !currentLocation) return;
+
+    try {
+      // Simpan fasmap ke backend
+      const fasmapRes = await fasmapAPI.saveFasMap({
+        kode_cust: currentCustomer.kode_cust,
+        latitude: currentLocation.latitude.toString(),
+        longitude: currentLocation.longitude.toString(),
+      });
+
+      if (fasmapRes.success) {
+        console.log("✅ Fasmap berhasil disimpan");
+        setFasmapModalVisible(false);
+        setCameraVisible(true);
+      } else {
+        Alert.alert("Error", "Gagal menyimpan lokasi customer");
+        setFasmapModalVisible(false);
+        handleCameraClose(); // Reset state
+      }
+    } catch (error) {
+      console.error("Error saving fasmap:", error);
+      Alert.alert("Error", "Gagal menyimpan lokasi customer");
+      setFasmapModalVisible(false);
+      handleCameraClose(); // Reset state
+    }
+  };
+
+  const handleFasMapCancel = () => {
+    setFasmapModalVisible(false);
+    handleCameraClose(); // Reset state
+  };
+
+  // ✅ Handle capture photo dari custom camera
+  const handlePhotoCapture = async (photoData: {
+    base64: string;
+    location: Location.LocationObject;
+  }) => {
+    setCurrentPhoto(photoData.base64);
+    setCameraVisible(false);
+
+    // Update location dengan data terbaru dari camera
+    if (photoData.location) {
+      setCurrentLocation({
+        latitude: photoData.location.coords.latitude,
+        longitude: photoData.location.coords.longitude,
+        accuracy: photoData.location.coords.accuracy || 999,
+      });
+    }
+
+    // Lanjutkan proses check-in/checkout
+    if (checkType === "checkin") {
+      await processCheckIn(photoData.base64, photoData.location);
+    } else {
+      await processCheckOut(photoData.base64, photoData.location);
+    }
+  };
+
+  // ✅ Process check-in setelah foto diambil dengan proper accuracy handling
+  const processCheckIn = async (
+    photoBase64: string,
+    locationData: Location.LocationObject
+  ) => {
+    if (!user?.id || !currentCustomer || !currentLocation) return;
+
+    try {
+      const accuracy = locationData.coords.accuracy || currentLocation.accuracy;
+
       const createRes = await rksAPI.createMobileRKS({
-        kode_rks: item.kode_rks,
-        kode_cust: item.kode_cust,
+        kode_rks: currentCustomer.kode_rks,
+        kode_cust: currentCustomer.kode_cust,
         userid: user.id,
         kode_sales: user.kodeSales,
+        nama_sales: namaSales, // ✅ Gunakan nama sales dari state
         checkin_time: new Date().toISOString(),
-        latitude_in: lat.toString(),
-        longitude_in: lon.toString(),
-        accuracy_in: acc,
-        photo_in: photo,
+        latitude_in: currentLocation.latitude.toString(),
+        longitude_in: currentLocation.longitude.toString(),
+        accuracy_in: accuracy,
+        photo_in: photoBase64,
         status: "pending",
+        customer_name: currentCustomer.customerName,
       });
 
       if (!createRes.success || !createRes.data?.id) {
@@ -439,15 +922,18 @@ export default function RKSPage() {
       await insertRKSLocal(newCheckIn);
 
       const updatedItem: RKSItem = {
-        ...item,
+        ...currentCustomer,
         id: newCheckIn.id,
         status: "checked-in",
         checkIn: newCheckIn,
-        fasmap: { latitude: lat.toString(), longitude: lon.toString() },
+        fasmap: {
+          latitude: currentLocation.latitude.toString(),
+          longitude: currentLocation.longitude.toString(),
+        },
       };
 
       setRksList((prev) =>
-        prev.map((x) => (x.id === item.id ? updatedItem : x))
+        prev.map((x) => (x.id === currentCustomer.id ? updatedItem : x))
       );
 
       addToQueue("rks_checkin");
@@ -455,115 +941,50 @@ export default function RKSPage() {
       await Notifications.scheduleNotificationAsync({
         content: {
           title: "✅ Check In Berhasil",
-          body: "Kunjungan telah dimulai.",
+          body: `Kunjungan telah dimulai. Akurasi: ${accuracy.toFixed(1)}m`,
           sound: "new-notification.mp3",
         },
         trigger: null,
       });
     } catch (err: any) {
       console.error("Check-in error:", err);
-
-      if (
-        err.message.includes("location") ||
-        err.message.includes("Location") ||
-        err.message.includes("Timeout")
-      ) {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: "📍 Lokasi Tidak Ditemukan",
-            body: "Tidak dapat mengakses lokasi device. Pastikan GPS aktif, izin lokasi diberikan, dan coba di area terbuka.",
-            sound: "new-notification.mp3",
-          },
-          trigger: null,
-        });
-      } else {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: "❌ Gagal Check-in",
-            body: "Gagal melakukan check-in: " + err.message,
-            sound: "new-notification.mp3",
-          },
-          trigger: null,
-        });
-      }
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "❌ Gagal Check-in",
+          body: "Gagal melakukan check-in: " + err.message,
+          sound: "new-notification.mp3",
+        },
+        trigger: null,
+      });
     } finally {
-      setCheckingInId(null);
-      setGettingLocation(null); // ✅ PASTIKAN loading dimatikan
+      handleCameraClose(); // Reset semua state
     }
   };
 
-  const handleCheckOut = async (item: RKSItem) => {
-    if (!item.checkIn) return;
-    setIsLoading(true);
-    setGettingLocation(item.id); // ✅ Tampilkan loading location
+  // ✅ Process check-out setelah foto diambil dengan proper accuracy handling
+  const processCheckOut = async (
+    photoBase64: string,
+    locationData: Location.LocationObject
+  ) => {
+    if (!currentCustomer?.checkIn || !currentLocation) return;
 
     try {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Izin Lokasi Diperlukan",
-          "Aplikasi membutuhkan akses lokasi untuk check-out. Silakan aktifkan izin lokasi di pengaturan device."
-        );
-        return;
-      }
-
-      const locationEnabled = await Location.hasServicesEnabledAsync();
-      if (!locationEnabled) {
-        Alert.alert(
-          "Lokasi Dimatikan",
-          "Silakan aktifkan GPS/lokasi di device Anda untuk melakukan check-out.",
-          [
-            { text: "Batal", style: "cancel" },
-            {
-              text: "Buka Pengaturan",
-              onPress: () => Location.enableNetworkProviderAsync(),
-            },
-          ]
-        );
-        return;
-      }
-
-      // ✅ Dapatkan lokasi dengan retry function
-      let loc;
-      try {
-        loc = await getLocationWithRetry(2); // 2x retry
-      } catch (locationError) {
-        console.error("Location error:", locationError);
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: "📍 Lokasi Tidak Ditemukan",
-            body: "Tidak dapat mendapatkan lokasi saat ini. Pastikan GPS aktif, terhubung internet, dan tidak berada dalam gedung.",
-            sound: "new-notification.mp3",
-          },
-          trigger: null,
-        });
-        return;
-      }
-
-      const lat = loc.coords.latitude;
-      const lon = loc.coords.longitude;
-      const acc = loc.coords.accuracy ?? 999;
-      console.log("📍 Lokasi checkout didapat:", { lat, lon, accuracy: acc });
-
-      // ✅ Sembunyikan loading location sebelum ambil foto
-      setGettingLocation(null);
-
+      const accuracy = locationData.coords.accuracy || currentLocation.accuracy;
       const checkout_time = new Date().toISOString();
-      const checkInTime = new Date(item.checkIn.checkin_time);
+      const checkInTime = new Date(currentCustomer.checkIn.checkin_time);
       const duration = Math.round(
         (new Date(checkout_time).getTime() - checkInTime.getTime()) / 60000
       );
 
-      const photo = await takeStorePhoto();
-      if (!photo) return;
-
-      const checkoutRes = await rksAPI.updateMobileRKS(item.id, {
+      const checkoutRes = await rksAPI.updateMobileRKS(currentCustomer.id, {
         checkout_time,
-        latitude_out: lat.toString(),
-        longitude_out: lon.toString(),
-        accuracy_out: acc,
-        photo_out: photo,
+        latitude_out: currentLocation.latitude.toString(),
+        longitude_out: currentLocation.longitude.toString(),
+        accuracy_out: accuracy,
+        photo_out: photoBase64,
         status: "pending",
+        customer_name: currentCustomer.customerName,
+        nama_sales: namaSales, // ✅ Gunakan nama sales dari state
       });
 
       if (!checkoutRes.success || !checkoutRes.data) {
@@ -579,27 +1000,27 @@ export default function RKSPage() {
       }
 
       const updatedCheckOut: MobileRKS = {
-        ...item.checkIn,
+        ...currentCustomer.checkIn,
         ...checkoutRes.data,
-        id: item.id,
+        id: currentCustomer.id,
         checkout_time,
-        latitude_out: lat.toString(),
-        longitude_out: lon.toString(),
-        accuracy_out: acc,
+        latitude_out: currentLocation.latitude.toString(),
+        longitude_out: currentLocation.longitude.toString(),
+        accuracy_out: accuracy,
         duration,
         status: "pending",
       };
 
-      await updateRKSLocal(item.id, updatedCheckOut);
+      await updateRKSLocal(currentCustomer.id, updatedCheckOut);
 
       const updatedItem: RKSItem = {
-        ...item,
+        ...currentCustomer,
         status: "completed",
         checkOut: updatedCheckOut,
       };
 
       setRksList((prev) =>
-        prev.map((x) => (x.id === item.id ? updatedItem : x))
+        prev.map((x) => (x.id === currentCustomer.id ? updatedItem : x))
       );
 
       addToQueue("rks_checkout");
@@ -607,41 +1028,36 @@ export default function RKSPage() {
       await Notifications.scheduleNotificationAsync({
         content: {
           title: "✅ Check Out Berhasil",
-          body: "Kunjungan selesai.",
+          body: `Kunjungan selesai. Akurasi: ${accuracy.toFixed(1)}m`,
           sound: "new-notification.mp3",
         },
         trigger: null,
       });
     } catch (err: any) {
       console.error("Check-out error:", err);
-
-      if (
-        err.message.includes("location") ||
-        err.message.includes("Location") ||
-        err.message.includes("Timeout")
-      ) {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: "📍 Gagal Mendapatkan Lokasi",
-            body: "Tidak dapat mengakses lokasi device. Pastikan GPS aktif, izin lokasi diberikan, dan coba di area terbuka.",
-            sound: "new-notification.mp3",
-          },
-          trigger: null,
-        });
-      } else {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: "❌ Gagal Check-out",
-            body: "Gagal melakukan check-out: " + err.message,
-            sound: "new-notification.mp3",
-          },
-          trigger: null,
-        });
-      }
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "❌ Gagal Check-out",
+          body: "Gagal melakukan check-out: " + err.message,
+          sound: "new-notification.mp3",
+        },
+        trigger: null,
+      });
     } finally {
-      setIsLoading(false);
-      setGettingLocation(null); // ✅ PASTIKAN loading dimatikan
+      handleCameraClose(); // Reset semua state
     }
+  };
+
+  // --- Check-in Logic (Updated) ---
+  const handleCheckIn = async (item: RKSItem) => {
+    await checkFasMapAndProceed(item, "checkin");
+  };
+
+  // --- Check-out Logic (Updated) ---
+  const handleCheckOut = async (item: RKSItem) => {
+    if (!item.checkIn) return;
+    setIsLoading(true);
+    await checkFasMapAndProceed(item, "checkout");
   };
 
   const renderItem = ({ item }: { item: RKSItem }) => {
@@ -705,7 +1121,6 @@ export default function RKSPage() {
             Durasi: {item.checkIn.duration} menit
           </Text>
         )}
-        {/* ✅ LOADING ANIMATION UNTUK LOKASI */}
         {isGettingLocation && (
           <View style={styles.locationLoadingContainer}>
             <ActivityIndicator size="small" color="#667eea" />
@@ -980,18 +1395,6 @@ export default function RKSPage() {
     );
   };
 
-  // const useFocusEffect = (callback: () => void) => {
-  //   useEffect(() => {
-  //     const onFocus = () => callback();
-  //     onFocus();
-  //   }, [user?.kodeSales]);
-  // };
-
-  // useFocusEffect(() => {
-  //   console.log("RKSPage focused, reloading RKS...");
-  //   loadRKS();
-  // });
-
   useFocusEffect(
     React.useCallback(() => {
       console.log("RKSPage focused, reloading RKS...");
@@ -1068,27 +1471,30 @@ export default function RKSPage() {
         initialLayout={{ width: layout.width }}
         renderTabBar={renderTabBar}
       />
+
+      {/* ✅ Custom Camera dengan Real-time Location Tracking dan Simple Map */}
+      <CustomCameraWithOverlay
+        visible={cameraVisible}
+        onClose={() => setCameraVisible(false)}
+        onCapture={handlePhotoCapture}
+        customerName={currentCustomer?.customerName || ""}
+        namaSales={namaSales} // ✅ Gunakan nama sales dari state
+        checkType={checkType}
+        onCameraClose={handleCameraClose}
+      />
+
+      {/* ✅ FasMap Confirmation Modal dengan Accuracy Info dan Simple Map */}
+      <FasMapConfirmationModal
+        visible={fasmapModalVisible}
+        onConfirm={handleFasMapConfirm}
+        onCancel={handleFasMapCancel}
+        customerName={currentCustomer?.customerName || ""}
+        namaSales={namaSales} // ✅ Gunakan nama sales dari state
+        location={currentLocation || { latitude: 0, longitude: 0 }}
+        accuracy={currentLocation?.accuracy || 999}
+      />
+
       <CalendarModal />
-      {/* FAB sementara disembunyikan karena fokus RKS terjadwal */}
-      {/* <Animated.View
-        style={[
-          styles.fabContainer,
-          { transform: [{ translateX: pan.x }, { translateY: pan.y }] },
-        ]}
-        {...panResponder.panHandlers}
-      >
-        <TouchableOpacity
-          style={styles.fabMain}
-          onPress={toggleFab}
-          disabled={isAnyCheckedIn}
-        >
-          <MaterialIcons
-            name={fabOpen ? "close" : "add"}
-            size={28}
-            color="#fff"
-          />
-        </TouchableOpacity>
-      </Animated.View> */}
       {isLoading && (
         <View style={styles.overlay}>
           <View style={styles.loadingBox}>
@@ -1260,7 +1666,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 8,
   },
-  // ✅ GPS STATUS STYLES
   gpsStatusContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -1283,8 +1688,6 @@ const styles = StyleSheet.create({
   gpsRetryButton: {
     padding: 4,
   },
-
-  // ✅ LOCATION LOADING STYLES
   locationLoadingContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -1299,6 +1702,242 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     color: "#667eea",
     fontSize: 12,
+    fontWeight: "600",
+  },
+  // ✅ Camera Styles
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: "black",
+  },
+  camera: {
+    flex: 1,
+  },
+  message: {
+    textAlign: "center",
+    paddingBottom: 10,
+  },
+  cameraOverlay: {
+    flex: 1,
+    backgroundColor: "transparent",
+    justifyContent: "flex-start",
+    paddingTop: 50,
+  },
+  watermarkContainer: {
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    padding: 15,
+    marginHorizontal: 20,
+    borderRadius: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: "#667eea",
+  },
+  watermarkTitle: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 5,
+    textAlign: "center",
+  },
+  watermarkText: {
+    color: "#fff",
+    fontSize: 14,
+    marginBottom: 3,
+  },
+  watermarkType: {
+    color: "#ffeb3b",
+    fontSize: 16,
+    fontWeight: "bold",
+    marginTop: 5,
+    textAlign: "center",
+  },
+  // ✅ Accuracy Display Styles
+  accuracyContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginVertical: 5,
+    alignSelf: "flex-start",
+  },
+  accuracyText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  accuracyLoader: {
+    marginLeft: 5,
+  },
+  accuracyBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginTop: 5,
+    alignSelf: "flex-start",
+  },
+  accuracyBadgeText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  cameraControls: {
+    position: "absolute",
+    bottom: 30,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 30,
+  },
+  closeButton: {
+    padding: 10,
+  },
+  captureButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  captureButtonDisabled: {
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+  },
+  captureInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  flipButton: {
+    padding: 10,
+  },
+  // ✅ Capture Disabled Overlay
+  captureDisabledOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.3)",
+  },
+  captureDisabledText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+    backgroundColor: "rgba(0,0,0,0.7)",
+    padding: 15,
+    borderRadius: 10,
+  },
+  // ✅ Simple Map Styles (menggantikan MapView styles)
+  simpleMapContainer: {
+    marginTop: 10,
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  simpleMap: {
+    height: 80,
+    backgroundColor: "#f0f4ff",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#667eea",
+    borderRadius: 8,
+    padding: 10,
+  },
+  simpleMapText: {
+    color: "#667eea",
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  simpleMapSubtext: {
+    color: "#667eea",
+    fontSize: 10,
+    marginTop: 4,
+    textAlign: "center",
+  },
+  modalSimpleMapContainer: {
+    marginTop: 10,
+    borderRadius: 8,
+    overflow: "hidden",
+    height: 100,
+  },
+  // ✅ FasMap Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  fasmapModal: {
+    backgroundColor: "white",
+    borderRadius: 15,
+    padding: 20,
+    width: "100%",
+    maxWidth: 400,
+  },
+  fasmapTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 15,
+    textAlign: "center",
+    color: "#333",
+  },
+  fasmapText: {
+    fontSize: 14,
+    marginBottom: 10,
+    color: "#666",
+    lineHeight: 20,
+  },
+  bold: {
+    fontWeight: "bold",
+    color: "#333",
+  },
+  locationInfoContainer: {
+    marginVertical: 15,
+    padding: 10,
+    backgroundColor: "#f8f9fa",
+    borderRadius: 8,
+  },
+  locationCoordinate: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 5,
+    color: "#667eea",
+  },
+  fasmapButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 20,
+  },
+  fasmapCancel: {
+    flex: 1,
+    padding: 12,
+    backgroundColor: "#f5f5f5",
+    borderRadius: 8,
+    marginRight: 10,
+    alignItems: "center",
+  },
+  fasmapCancelText: {
+    color: "#666",
+    fontWeight: "600",
+  },
+  fasmapConfirm: {
+    flex: 1,
+    padding: 12,
+    backgroundColor: "#667eea",
+    borderRadius: 8,
+    marginLeft: 10,
+    alignItems: "center",
+  },
+  fasmapConfirmText: {
+    color: "white",
     fontWeight: "600",
   },
 });

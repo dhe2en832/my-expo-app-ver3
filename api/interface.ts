@@ -110,6 +110,7 @@ export interface MobileRKS {
   created_at?: string;
   updated_at?: string;
   customer_name?: string;
+  rowid?: number;
 }
 
 // Payload untuk check-in

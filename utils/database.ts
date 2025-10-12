@@ -13,6 +13,7 @@ export const initDatabase = async (): Promise<void> => {
     CREATE TABLE IF NOT EXISTS tb_mobile_rks_local (
       id TEXT PRIMARY KEY,
       kode_rks TEXT NOT NULL,
+      rowid INTEGER NOT NULL DEFAULT 0,
       kode_cust TEXT NOT NULL,
       userid TEXT NOT NULL,
       checkin_time TEXT NOT NULL,
@@ -72,18 +73,20 @@ export const insertRKSLocal = async (
     customer_name?: string;
     fasmap_latitude?: string;
     fasmap_longitude?: string;
+    rowid?: number;
   }
 ): Promise<void> => {
   await db.runAsync(
     `INSERT INTO tb_mobile_rks_local (
-      id, kode_rks, kode_cust, userid, checkin_time, checkout_time,
+      id, kode_rks, rowid, kode_cust, userid, checkin_time, checkout_time,
       latitude_in, longitude_in, latitude_out, longitude_out,
       accuracy_in, accuracy_out, photo_in, photo_out, duration, status,
       customer_name, fasmap_latitude, fasmap_longitude, kode_sales, nama_sales
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       rks.id,
       rks.kode_rks,
+      rks.rowid ?? 0, // ✅ Tambahan field rowid
       rks.kode_cust,
       rks.userid,
       rks.checkin_time,
@@ -117,12 +120,17 @@ export const updateRKSLocal = async (
       customer_name?: string;
       fasmap_latitude?: string;
       fasmap_longitude?: string;
+      rowid?: number;
     }
   >
 ): Promise<void> => {
   const fields: string[] = [];
   const values: any[] = [];
 
+  if (updates.rowid !== undefined) {
+    fields.push("rowid = ?");
+    values.push(updates.rowid ?? 0);
+  }
   if (updates.checkout_time !== undefined) {
     fields.push("checkout_time = ?");
     values.push(updates.checkout_time ?? null);
@@ -191,6 +199,7 @@ export const getPendingRKSLocal = async (): Promise<
       customer_name?: string;
       fasmap_latitude?: string;
       fasmap_longitude?: string;
+      rowid?: number;
     }
   >
 > => {
@@ -199,6 +208,7 @@ export const getPendingRKSLocal = async (): Promise<
       customer_name?: string;
       fasmap_latitude?: string;
       fasmap_longitude?: string;
+      rowid?: number;
     }
   >("SELECT * FROM tb_mobile_rks_local WHERE status = ?", ["pending"]);
   return results;
@@ -294,6 +304,7 @@ export const getAllLocalRKS = async (): Promise<
       customer_name?: string;
       fasmap_latitude?: string;
       fasmap_longitude?: string;
+      rowid?: number;
     }
   >
 > => {
@@ -302,6 +313,7 @@ export const getAllLocalRKS = async (): Promise<
       customer_name?: string;
       fasmap_latitude?: string;
       fasmap_longitude?: string;
+      rowid?: number;
     }
   >("SELECT * FROM tb_mobile_rks_local");
   return results;
@@ -315,6 +327,7 @@ export const getRKSLocalById = async (
       customer_name?: string;
       fasmap_latitude?: string;
       fasmap_longitude?: string;
+      rowid?: number;
     })
   | null
 > => {
@@ -323,9 +336,44 @@ export const getRKSLocalById = async (
       customer_name?: string;
       fasmap_latitude?: string;
       fasmap_longitude?: string;
+      rowid?: number;
     }
   >("SELECT * FROM tb_mobile_rks_local WHERE id = ?", [id]);
   return results.length > 0 ? results[0] : null;
+};
+
+// ✅ Ambil RKS lokal by rowid
+export const getRKSLocalByRowId = async (
+  rowid: number
+): Promise<
+  | (MobileRKS & {
+      customer_name?: string;
+      fasmap_latitude?: string;
+      fasmap_longitude?: string;
+      rowid?: number;
+    })
+  | null
+> => {
+  const results = await db.getAllAsync<
+    MobileRKS & {
+      customer_name?: string;
+      fasmap_latitude?: string;
+      fasmap_longitude?: string;
+      rowid?: number;
+    }
+  >("SELECT * FROM tb_mobile_rks_local WHERE rowid = ?", [rowid]);
+  return results.length > 0 ? results[0] : null;
+};
+
+// ✅ Update rowid RKS lokal
+export const updateRKSLocalRowId = async (
+  id: string,
+  rowid: number
+): Promise<void> => {
+  await db.runAsync("UPDATE tb_mobile_rks_local SET rowid = ? WHERE id = ?", [
+    rowid,
+    id,
+  ]);
 };
 
 // ✅ Simpan fasmap ke lokal

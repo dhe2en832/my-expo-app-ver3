@@ -54,6 +54,7 @@ type RKSItem = {
   fasmap?: { latitude: string; longitude: string };
   radius?: number;
   namaSales?: string;
+  rowid?: number;
 };
 
 type RangeKey = "today" | "week" | "month";
@@ -340,7 +341,6 @@ const CustomCameraWithOverlay = ({
                 <SimpleLocationMap
                   latitude={location.coords.latitude}
                   longitude={location.coords.longitude}
-                  accuracy={location.coords.accuracy ?? undefined} // ✅ Fix: Convert null to undefined
                   style={styles.simpleMapContainer}
                 />
               )} */}
@@ -643,6 +643,7 @@ export default function RKSPage() {
             fasmap: undefined,
             radius: 150,
             namaSales: salesName, // ✅ Gunakan nama sales dari API
+            rowid: item.detail_rowid,
           };
         }
 
@@ -660,6 +661,7 @@ export default function RKSPage() {
           fasmap: undefined,
           radius: 150,
           namaSales: salesName, // ✅ Gunakan nama sales dari API
+          rowid: item.detail_rowid,
         };
       });
 
@@ -895,15 +897,16 @@ export default function RKSPage() {
         kode_rks: currentCustomer.kode_rks,
         kode_cust: currentCustomer.kode_cust,
         userid: user.id,
-        kode_sales: user.kodeSales,
-        nama_sales: namaSales, // ✅ Gunakan nama sales dari state
         checkin_time: new Date().toISOString(),
         latitude_in: currentLocation.latitude.toString(),
         longitude_in: currentLocation.longitude.toString(),
         accuracy_in: accuracy,
         photo_in: photoBase64,
-        status: "pending",
+        rowid: currentCustomer.rowid,
         customer_name: currentCustomer.customerName,
+        kode_sales: user.kodeSales,
+        nama_sales: namaSales, // ✅ Gunakan nama sales dari state
+        status: "pending",
       });
 
       if (!createRes.success || !createRes.data?.id) {
