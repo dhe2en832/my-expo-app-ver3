@@ -1,5 +1,13 @@
 // myExpoApp/api/interface.ts
 
+// Tambahkan interface untuk consistent API response
+export interface APIResponse<T = any> {
+  success: boolean;
+  data?: T;
+  message?: string; // ✅ Tambahkan message property
+  error?: any;
+}
+
 export interface RKSList {
   rks_kode_rks: string;
   rks_tanggal: string;
@@ -279,4 +287,12 @@ export interface MapViewProps {
   longitude: number;
   accuracy?: number;
   style?: any;
+}
+
+// Update API functions interface
+export interface RKSAPI {
+  getRKSList(kode_sales: string): Promise<APIResponse<RKSList[]>>;
+  createMobileRKS(data: any): Promise<APIResponse<MobileRKS>>; // ✅ Return APIResponse
+  updateMobileRKS(id: string, data: any): Promise<APIResponse<MobileRKS>>;
+  syncRKS(records: any[]): Promise<APIResponse<{ syncedCount: number }>>;
 }

@@ -6,6 +6,49 @@ import { MobileRKS } from "../api/interface";
 const db = SQLite.openDatabaseSync("sales_mobile.db");
 
 /**
+ * ✅ FIX: Reset table RKS lokal untuk menghapus cache/data lama
+ */
+export const resetRKSLocalTable = async (): Promise<void> => {
+  try {
+    console.log("🔄 Resetting tb_mobile_rks_local table...");
+
+    await db.execAsync(`DROP TABLE IF EXISTS tb_mobile_rks_local`);
+
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS tb_mobile_rks_local (
+        id TEXT PRIMARY KEY,
+        kode_rks TEXT NOT NULL,
+        rowid INTEGER NOT NULL DEFAULT 0,
+        kode_cust TEXT NOT NULL,
+        userid TEXT NOT NULL,
+        checkin_time TEXT NOT NULL,
+        checkout_time TEXT,
+        latitude_in TEXT NOT NULL,
+        longitude_in TEXT NOT NULL,
+        latitude_out TEXT,
+        longitude_out TEXT,
+        accuracy_in INTEGER NOT NULL,
+        accuracy_out INTEGER,
+        photo_in TEXT,
+        photo_out TEXT,
+        duration INTEGER,
+        status TEXT DEFAULT 'pending',
+        customer_name TEXT,
+        fasmap_latitude TEXT,
+        fasmap_longitude TEXT,
+        kode_sales TEXT NOT NULL,
+        nama_sales TEXT NOT NULL
+      );
+    `);
+
+    console.log("✅ tb_mobile_rks_local table reset successfully");
+  } catch (error) {
+    console.error("❌ Error resetting table:", error);
+    throw error;
+  }
+};
+
+/**
  * Inisialisasi tabel lokal saat app pertama kali dijalankan
  */
 export const initDatabase = async (): Promise<void> => {

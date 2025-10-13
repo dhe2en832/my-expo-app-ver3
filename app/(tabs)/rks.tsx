@@ -125,6 +125,7 @@ const CustomCameraWithOverlay = ({
   const [locationLoading, setLocationLoading] = useState(true);
   const [locationSubscription, setLocationSubscription] =
     useState<Location.LocationSubscription | null>(null);
+  const [capturing, setCapturing] = useState(false);
 
   // Real-time location tracking
   useEffect(() => {
@@ -194,6 +195,7 @@ const CustomCameraWithOverlay = ({
 
   const takePicture = async () => {
     if (cameraRef && location && !locationLoading) {
+      setCapturing(true);
       try {
         const photo = await cameraRef.takePictureAsync({
           base64: true,
@@ -209,7 +211,17 @@ const CustomCameraWithOverlay = ({
         }
       } catch (error) {
         console.error("Error taking picture:", error);
-        Alert.alert("Error", "Gagal mengambil foto");
+        // Alert.alert("Error", "Gagal mengambil foto");
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "❌ Gagal mengambil foto",
+            body: "Gagal mengambil foto",
+            sound: "new-notification.mp3",
+          },
+          trigger: null,
+        });
+      } finally {
+        setCapturing(false);
       }
     }
   };
@@ -383,7 +395,7 @@ const CustomCameraWithOverlay = ({
           {isCaptureDisabled && (
             <View style={styles.captureDisabledOverlay}>
               <Text style={styles.captureDisabledText}>
-                Menunggu lokasi siap...
+                {capturing ? "Menyimpan foto..." : "Menunggu lokasi siap..."}
               </Text>
             </View>
           )}
@@ -597,7 +609,15 @@ export default function RKSPage() {
 
       const listRes = await rksAPI.getRKSList(user.kodeSales);
       if (!listRes.success) {
-        console.log("❌ Gagal ambil data");
+        // console.log("❌ Gagal ambil data");
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "❌ Gagal ambil data",
+            body: "Gagal ambil data",
+            sound: "new-notification.mp3",
+          },
+          trigger: null,
+        });
         setRksList([]);
         return;
       }
@@ -913,7 +933,7 @@ export default function RKSPage() {
         await Notifications.scheduleNotificationAsync({
           content: {
             title: "❌ Error Check-in",
-            body: "Gagal membuat kunjungan",
+            body: createRes.error || "Gagal membuat kunjungan",
             sound: "new-notification.mp3",
           },
           trigger: null,
@@ -994,7 +1014,7 @@ export default function RKSPage() {
         await Notifications.scheduleNotificationAsync({
           content: {
             title: "❌ Gagal Check-out",
-            body: "Gagal melakukan check-out",
+            body: checkoutRes.error || "Gagal melakukan check-out",
             sound: "new-notification.mp3",
           },
           trigger: null,

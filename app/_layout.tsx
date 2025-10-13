@@ -7,7 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { OfflineProvider } from "@/contexts/OfflineContext";
 import { OrderProvider } from "@/contexts/OrderContext";
 import { startAutoSync } from "@/utils/autoSync";
-import { initDatabase } from "@/utils/database";
+import { initDatabase, resetRKSLocalTable } from "@/utils/database";
 import { SyncLoadingOverlay } from "@/components/SyncLoadingOverlay ";
 import * as Notifications from "expo-notifications";
 import type { NotificationBehavior } from "expo-notifications";
@@ -54,6 +54,7 @@ export default function RootLayout() {
 
         await initDatabase();
         console.log("[App] Database initialized ✅");
+        await resetRKSLocalTable();
 
         // Step 2: Start Auto Sync
         console.log("[App] Starting auto sync...");
