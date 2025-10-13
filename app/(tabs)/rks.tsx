@@ -38,6 +38,7 @@ import {
 } from "../../utils/database";
 import { getLocationWithRetry } from "@/utils/location";
 import * as Notifications from "expo-notifications";
+import { calculateDistance } from "@/utils/helpers";
 
 // ✅ Tipe item untuk tampilan
 type RKSItem = {
@@ -763,6 +764,87 @@ export default function RKSPage() {
   );
 
   // ✅ Fungsi untuk check fasmap sebelum check-in
+  // const checkFasMapAndProceed = async (
+  //   item: RKSItem,
+  //   type: "checkin" | "checkout"
+  // ) => {
+  //   setCheckingInId(item.id);
+  //   setGettingLocation(item.id);
+
+  //   try {
+  //     let { status } = await Location.requestForegroundPermissionsAsync();
+  //     if (status !== "granted") {
+  //       Alert.alert(
+  //         "Izin Lokasi Diperlukan",
+  //         "Aplikasi membutuhkan akses lokasi untuk check-in. Silakan aktifkan izin lokasi di pengaturan device."
+  //       );
+  //       return;
+  //     }
+
+  //     const locationEnabled = await Location.hasServicesEnabledAsync();
+  //     if (!locationEnabled) {
+  //       Alert.alert(
+  //         "Lokasi Dimatikan",
+  //         "Silakan aktifkan GPS/lokasi di device Anda untuk melakukan check-in.",
+  //         [
+  //           { text: "Batal", style: "cancel" },
+  //           {
+  //             text: "Buka Pengaturan",
+  //             onPress: () => Location.enableNetworkProviderAsync(),
+  //           },
+  //         ]
+  //       );
+  //       return;
+  //     }
+
+  //     let loc;
+  //     try {
+  //       loc = await getLocationWithRetry(2);
+  //     } catch (locationError) {
+  //       console.error("Location error:", locationError);
+  //       await Notifications.scheduleNotificationAsync({
+  //         content: {
+  //           title: "📍 Lokasi Tidak Ditemukan",
+  //           body: "Tidak dapat mendapatkan lokasi saat ini. Pastikan GPS aktif, terhubung internet, dan tidak berada dalam gedung.",
+  //           sound: "new-notification.mp3",
+  //         },
+  //         trigger: null,
+  //       });
+  //       return;
+  //     }
+
+  //     const lat = loc.coords.latitude;
+  //     const lon = loc.coords.longitude;
+  //     const acc = loc.coords.accuracy ?? 999;
+
+  //     setCurrentLocation({
+  //       latitude: lat,
+  //       longitude: lon,
+  //       accuracy: acc,
+  //     });
+  //     setCurrentCustomer(item);
+  //     setCheckType(type);
+  //     setGettingLocation(null);
+
+  //     // Cek apakah customer sudah punya fasmap
+  //     if (type === "checkin") {
+  //       const fasmapRes = await fasmapAPI.getFasMap(item.kode_cust);
+  //       if (!fasmapRes.success || !fasmapRes.data) {
+  //         // Customer belum punya fasmap, tampilkan modal konfirmasi
+  //         setFasmapModalVisible(true);
+  //         return;
+  //       }
+  //     }
+
+  //     // Jika sudah punya fasmap atau checkout, langsung buka kamera
+  //     setCameraVisible(true);
+  //   } catch (error) {
+  //     console.error("Error in checkFasMapAndProceed:", error);
+  //     setCheckingInId(null);
+  //     setGettingLocation(null);
+  //   }
+  // };
+
   const checkFasMapAndProceed = async (
     item: RKSItem,
     type: "checkin" | "checkout"
@@ -825,17 +907,47 @@ export default function RKSPage() {
       setCheckType(type);
       setGettingLocation(null);
 
-      // Cek apakah customer sudah punya fasmap
-      if (type === "checkin") {
-        const fasmapRes = await fasmapAPI.getFasMap(item.kode_cust);
-        if (!fasmapRes.success || !fasmapRes.data) {
-          // Customer belum punya fasmap, tampilkan modal konfirmasi
-          setFasmapModalVisible(true);
-          return;
+      // 1. Ambil data FasMap (Diperlukan untuk Check-in dan Validasi Jarak)
+      const fasmapRes = await fasmapAPI.getFasMap(item.kode_cust);
+      const customerLocData = fasmapRes.data;
+
+      // 2. CEK: Jika Check-in tapi FasMap tidak ada
+      if (type === "checkin" && (!fasmapRes.success || !customerLocData)) {
+        // Customer belum punya fasmap, tampilkan modal konfirmasi
+        setFasmapModalVisible(true);
+        return;
+      }
+
+      // 3. VALIDASI JARAK (Hanya jika data FasMap ada)
+      if (customerLocData) {
+        // Konversi string koordinat dari FasMap menjadi float/number
+        const customerLat = parseFloat(customerLocData.latitude);
+        const customerLon = parseFloat(customerLocData.longitude);
+
+        // Hitung jarak (Asumsi calculateDistance dan rks.radius tersedia di scope)
+        const dist = calculateDistance(lat, lon, customerLat, customerLon);
+        const allowed = 50; //rks.radius ?? 50; // Jarak maksimal diizinkan (default 50m)
+
+        if (dist > allowed) {
+          Alert.alert(
+            "Diluar Jarak",
+            `Anda berada ${Math.round(
+              dist
+            )} m dari lokasi customer. Jarak maksimal ${allowed} m.\n\nLanjutkan check-${type}?`,
+            [
+              { text: "Batal", style: "cancel" },
+              {
+                text: "Lanjutkan",
+                // JIKA LANJUTKAN, BUKA KAMERA
+                onPress: () => setCameraVisible(true),
+              },
+            ]
+          );
+          return; // Hentikan eksekusi di sini, kelanjutan tergantung pada pilihan user di Alert
         }
       }
 
-      // Jika sudah punya fasmap atau checkout, langsung buka kamera
+      // 4. Lanjutkan ke Kamera (Jika jarak OK atau Checkout tanpa FasMap)
       setCameraVisible(true);
     } catch (error) {
       console.error("Error in checkFasMapAndProceed:", error);
