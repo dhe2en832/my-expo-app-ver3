@@ -712,8 +712,6 @@ export default function RKSPage() {
 
   // ✅ Handler untuk main FAB press
   const handleMainFABPress = () => {
-    console.log("canCheckIn:", isAnyCheckedIn);
-
     if (isAnyCheckedIn) {
       Alert.alert(
         "Kunjungan Sedang Berlangsung",
@@ -1631,7 +1629,7 @@ export default function RKSPage() {
         status: "pending" as const,
         is_unscheduled: currentCustomer.isUnscheduled || "N", // ✅ FLAG penting!
       };
-      console.log("payload ", payload.is_unscheduled);
+      console.log('payload ', payload);
       const createRes = await rksAPI.createMobileRKS(payload);
 
       if (!createRes.success || !createRes.data?.id) {
@@ -1803,8 +1801,6 @@ export default function RKSPage() {
   };
 
   const renderItem = ({ item }: { item: RKSItem }) => {
-    // console.log("renderItem", renderItem);
-
     const isHighlighted = highlightedItemId === item.id;
     if (isHighlighted) {
       console.log("🎨 RENDERING HIGHLIGHTED ITEM:", item.id);
@@ -1816,14 +1812,6 @@ export default function RKSPage() {
     const isAnotherCheckedIn = rksList.some(
       (r) => r.checkIn && !r.checkOut && r.id !== item.id
     );
-    const today = new Date().toISOString().split("T")[0];
-
-    // console.log("item.status:", item.status);
-    // console.log("item.scheduledDate:", item.scheduledDate);
-    // console.log("today:", today);
-    // console.log("isToday:", isToday);
-    // console.log("canCheckIn:", canCheckIn);
-
     const isGettingLocation = gettingLocation === item.id;
     let statusText = "";
     let statusColor = "#666";

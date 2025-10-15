@@ -133,12 +133,33 @@ export const rksAPI = {
     }
   },
 
+  // getRKSHeaders: async (kode_sales: string) => {
+  //   try {
+  //     const res = await apiClient.get<{ success: boolean; data?: RKSHeader }>(
+  //       `/rks/headers/${kode_sales}`
+  //     );
+  //     return { success: true, data: res.data.data || [] };
+  //   } catch (err: any) {
+  //     return {
+  //       success: false,
+  //       error: err.message || "Gagal mengambil RKS header",
+  //     };
+  //   }
+  // },
+
   getRKSHeaders: async (kode_sales: string) => {
     try {
-      const res = await apiClient.get<{ success: boolean; data?: RKSHeader[] }>(
-        `/rks/headers/${kode_sales}`
-      );
-      return { success: true, data: res.data.data || [] };
+      const res = await apiClient.get<{
+        success: boolean;
+        data?: RKSHeader | RKSHeader[];
+      }>(`/rks/headers/${kode_sales}`);
+
+      // pastikan ambil satu objek
+      const header = Array.isArray(res.data.data)
+        ? res.data.data[0] ?? null
+        : res.data.data ?? null;
+
+      return { success: true, data: header };
     } catch (err: any) {
       return {
         success: false,
@@ -237,6 +258,36 @@ export const rksAPI = {
       return { success: true, message: res.data.message || "Sync berhasil" };
     } catch (err: any) {
       return { success: false, error: err.message || "Gagal sync kunjungan" };
+    }
+  },
+
+  // services.ts - Dalam rksAPI object, tambahkan:
+
+  // ✅ FUNCTION BARU: Get max rowid dari RKS details
+  getMaxRowId: async (
+    kode_rks: string
+  ): Promise<{ success: boolean; maxRowId?: number; error?: string }> => {
+    try {
+      const res = await apiClient.get<{ success: boolean; data?: RKSDetail[] }>(
+        `/rks/details/${kode_rks}`
+      );
+
+      if (res.data.success && res.data.data && res.data.data.length > 0) {
+        // Cari rowid maksimum dari array RKSDetail
+        const maxRowId = Math.max(
+          ...res.data.data.map((detail) => detail.rowid || 0)
+        );
+        return { success: true, maxRowId };
+      } else {
+        // Jika tidak ada data, return 0 sebagai default
+        return { success: true, maxRowId: 0 };
+      }
+    } catch (err: any) {
+      console.error("Error getting max rowid:", err);
+      return {
+        success: false,
+        error: err.message || "Gagal mengambil max rowid",
+      };
     }
   },
 };
@@ -342,14 +393,14 @@ export const customerAPI = {
   },
 
   getCustomer: async (
-    kode_cust: string
+    kode_sales: string
   ): Promise<{
     success: boolean;
     data?: Customer;
     message?: string;
   }> => {
     try {
-      const response = await apiClient.get(`/customer/${kode_cust}`);
+      const response = await apiClient.get(`/customer/list/${kode_sales}`);
       return {
         success: true,
         data: response.data.data,
