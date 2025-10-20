@@ -25,6 +25,8 @@ import * as FileSystem from "expo-file-system";
 import { TabView, SceneMap, TabBar } from "react-native-tab-view";
 import { useWindowDimensions } from "react-native";
 import { Camera, CameraView, useCameraPermissions } from "expo-camera";
+import { useLocalSearchParams } from "expo-router";
+import dayjs from "dayjs";
 
 // --- API & Interfaces ---
 import { rksAPI, customerAPI, fasmapAPI, salesAPI } from "../../api/services";
@@ -49,7 +51,7 @@ import {
 } from "../../utils/database";
 import { getLocationWithRetry } from "@/utils/location";
 import * as Notifications from "expo-notifications";
-import { calculateDistance } from "@/utils/helpers";
+import { calculateDistance, removeDuplicates } from "@/utils/helpers";
 
 // --- Components ---
 import EnhancedFAB from "../../components/EnhancedFAB";
@@ -89,8 +91,8 @@ const SimpleLocationMap = ({
     </TouchableOpacity>
   );
 };
-
 // ✅ Custom Camera Component dengan Real-time Location Tracking dan Simple Map
+
 const CustomCameraWithOverlay = ({
   visible,
   onClose,
@@ -485,6 +487,7 @@ const FasMapConfirmationModal = ({
 
 export default function RKSPage() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const { user } = useAuth();
   const { addToQueue } = useOfflineQueue();
   const layout = useWindowDimensions();
@@ -558,6 +561,15 @@ export default function RKSPage() {
   const [scrollOffset, setScrollOffset] = useState(0);
   const [itemHeight, setItemHeight] = useState(0);
 
+  const [newCustomerModalVisible, setNewCustomerModalVisible] = useState(false);
+  const [tempNooCustomer, setTempNooCustomer] = useState<{
+    kode_cust: string;
+    nama_cust: string;
+    alamat_kirim1: string;
+    kota_kirim: string;
+    phone?: string;
+  } | null>(null);
+
   const handleScroll = (event: any) => {
     setScrollOffset(event.nativeEvent.contentOffset.y);
   };
@@ -612,32 +624,6 @@ export default function RKSPage() {
     }
   };
 
-  // const highlightRKSItem = (itemId: string) => {
-  //   console.log("🎯 START Highlighting item:", itemId);
-  //   setHighlightedItemId(itemId);
-
-  //   setTimeout(() => {
-  //     const filtered = filterByRange(rksList);
-  //     const itemIndex = filtered.findIndex((item) => item.id === itemId);
-
-  //     if (itemIndex !== -1 && flatListRef.current) {
-  //       console.log("🔄 Scroll to index with getItemLayout:", itemIndex);
-
-  //       flatListRef.current.scrollToIndex({
-  //         index: itemIndex,
-  //         animated: true,
-  //         viewPosition: 0.1, // 10% dari atas
-  //       });
-  //     }
-  //   }, 100);
-
-  //   setTimeout(() => {
-  //     setHighlightedItemId(null);
-  //   }, 8000);
-  // };
-
-  const ITEM_HEIGHT = 120;
-
   const highlightRKSItem = (itemId: string) => {
     console.log("🎯 START Highlighting item:", itemId);
     setHighlightedItemId(itemId);
@@ -684,7 +670,7 @@ export default function RKSPage() {
 
       // 2. Ambil header terbaru
       const latestHeader = headersRes.data;
-      console.log("latest Header ", latestHeader);
+      // console.log("latest Header ", latestHeader);
       // 3. Ambil max rowid dari details header terbaru
       const maxRowIdRes = await rksAPI.getMaxRowId(latestHeader.kode_rks);
 
@@ -791,12 +777,85 @@ export default function RKSPage() {
       return;
     }
     setFabOpen(false);
-    Alert.alert("Customer Baru", "Fitur tambah customer baru akan datang", [
-      { text: "OK" },
-    ]);
+    // ✅ NAVIGATE KE CREATE CUSTOMER DENGAN PARAMS RKS NOO
+    router.push({
+      pathname: "/customers/create",
+      params: {
+        forRKS: "true",
+      },
+    });
   };
 
+  // const handleNewCustomerCreated = async (customerData: {
+  //   kode_relasi: string; // ✅ HARUS ADA dari server
+  //   kode_cust: string; // ✅ HARUS ADA dari server
+  //   no_cust: string; // ✅ HARUS ADA dari server
+  //   nama_cust: string;
+  //   alamat_kirim1: string;
+  //   kota_kirim: string;
+  //   phone?: string;
+  //   kode_sales: string;
+  //   mobile_created?: string;
+  // }) => {
+  //   // ✅ VALIDASI: Pastikan data persistent ada
+  //   if (!customerData.kode_cust || !customerData.no_cust) {
+  //     console.error("❌ Invalid customer data from server");
+  //     // Alert.alert("Error", "Data customer tidak valid dari server");
+  //     await Notifications.scheduleNotificationAsync({
+  //       content: {
+  //         title: "❌ Error handleNewCustomerCreated",
+  //         body: "Data customer tidak valid dari server",
+  //         sound: "new-notification.mp3",
+  //       },
+  //       trigger: null,
+  //     });
+  //     return;
+  //   }
+
+  //   try {
+  //     // Generate next rowid untuk RKS NOO
+  //     const nextRowId = await generateNextRowId();
+
+  //     // Generate kode_rks untuk NOO
+  //     const generateNooRKSCode = () => {
+  //       const timestamp = Date.now().toString().slice(-9);
+  //       return `N${timestamp}`; // Format: "N" + timestamp (9 digit)
+  //     };
+
+  //     // Buat RKS item untuk NOO dengan PERSISTENT DATA
+  //     const nooItem: RKSItem = {
+  //       id: `noo_${Date.now()}`,
+  //       kode_rks: generateNooRKSCode(),
+  //       kode_cust: customerData.kode_cust, // ✅ PERSISTENT KODE_CUST
+  //       no_cust: customerData.no_cust, // ✅ PERSISTENT NO_CUST
+  //       customerName: customerData.nama_cust,
+  //       customerAddress: customerData.alamat_kirim1,
+  //       scheduledDate: new Date().toISOString().split("T")[0],
+  //       status: "scheduled",
+  //       isUnscheduled: "Y",
+  //       baru: "Y",
+  //       namaSales: namaSales,
+  //       rowid: nextRowId,
+  //       mobile_created: customerData.mobile_created || "Y",
+  //     };
+
+  //     console.log("🎯 Creating RKS for persistent NOO customer:", nooItem);
+
+  //     // Tambahkan ke list RKS
+  //     setRksList((prev) => [nooItem, ...prev]);
+
+  //     // Langsung buka check-in setelah 500ms
+  //     setTimeout(() => {
+  //       handleCheckIn(nooItem);
+  //     }, 500);
+  //   } catch (error) {
+  //     console.error("Error creating NOO RKS:", error);
+  //     Alert.alert("Error", "Gagal membuat kunjungan customer baru");
+  //   }
+  // };
+
   // ✅ Fungsi Sync Data
+
   const handleSyncData = async () => {
     try {
       setIsLoading(true);
@@ -851,8 +910,6 @@ export default function RKSPage() {
     const toValue = fabOpen ? 0 : 1;
 
     if (!fabOpen) {
-      console.log("BUKA");
-
       // 💠 Buka FAB
       Animated.parallel([
         // Animasi utama FAB (ikon + posisi)
@@ -862,7 +919,6 @@ export default function RKSPage() {
           friction: 6,
           tension: 80,
         }),
-
         // Efek scale halus
         Animated.sequence([
           Animated.timing(scaleAnim, {
@@ -876,27 +932,10 @@ export default function RKSPage() {
             useNativeDriver: true,
           }),
         ]),
-
         // Tooltip animasi (fade-in lalu hilang)
-        Animated.sequence([
-          Animated.delay(150),
-          // Animated.timing(tooltipAnim, {
-          //   toValue: 1,
-          //   duration: 250,
-          //   easing: Easing.out(Easing.quad),
-          //   useNativeDriver: true,
-          // }),
-          Animated.delay(1200),
-          // Animated.timing(tooltipAnim, {
-          //   toValue: 0,
-          //   duration: 250,
-          //   easing: Easing.in(Easing.quad),
-          //   useNativeDriver: true,
-          // }),
-        ]),
+        Animated.sequence([Animated.delay(150), Animated.delay(1200)]),
       ]).start();
     } else {
-      console.log("TUTUP");
       // 💠 Tutup FAB
       Animated.parallel([
         Animated.spring(fabAnim, {
@@ -905,12 +944,6 @@ export default function RKSPage() {
           friction: 7,
           tension: 100,
         }),
-        // Animated.timing(tooltipAnim, {
-        //   toValue: 0,
-        //   duration: 150,
-        //   easing: Easing.inOut(Easing.ease),
-        //   useNativeDriver: true,
-        // }),
         Animated.timing(scaleAnim, {
           toValue: 0.95,
           duration: 100,
@@ -957,7 +990,9 @@ export default function RKSPage() {
 
     setLoadingCustomers(true);
     try {
-      const customersRes = await customerAPI.getCustomer(user.kodeSales);
+      const customersRes = await rksAPI.getCustomerListRksUnschedule(
+        user.kodeSales
+      );
       if (customersRes.success && customersRes.data) {
         setCustomerList(
           Array.isArray(customersRes.data)
@@ -971,11 +1006,6 @@ export default function RKSPage() {
       setLoadingCustomers(false);
     }
   };
-
-  // ✅ UPDATE: Handle customer selection untuk RKS tidak terjadwal
-  // rks.tsx - Update handleCustomerSelect:
-
-  // rks.tsx - Update handleCustomerSelect dengan validasi:
 
   const handleCustomerSelect = async (customer: Customer) => {
     setSelectedCustomerForUnscheduled(customer);
@@ -1028,17 +1058,114 @@ export default function RKSPage() {
   };
 
   // ✅ FUNCTION BARU: Proses lanjutan setelah validasi
+  // const proceedWithUnscheduledVisit = async (customer: Customer) => {
+  //   setUnscheduledModalVisible(false);
+
+  //   try {
+  //     // Generate next rowid
+  //     const nextRowId = await generateNextRowId();
+
+  //     const generateUnscheduledRKSCode = () => {
+  //       const timestamp = Date.now().toString().slice(-9);
+  //       return `U${timestamp}`; // Contoh: "U176045976"
+  //     };
+  //     // Buat RKS item temporary untuk tidak terjadwal
+  //     const unscheduledItem: RKSItem = {
+  //       id: `unscheduled_${Date.now()}`,
+  //       kode_rks: generateUnscheduledRKSCode(),
+  //       kode_cust: customer.kode_cust,
+  //       no_cust: customer.no_cust,
+  //       customerName: customer.nama_cust,
+  //       customerAddress: customer.alamat_kirim1 || "Alamat tidak tersedia",
+  //       scheduledDate: new Date().toISOString().split("T")[0],
+  //       status: "scheduled",
+  //       isUnscheduled: "Y",
+  //       namaSales: namaSales,
+  //       rowid: nextRowId,
+  //     };
+
+  //     // Tambahkan ke list RKS
+  //     setRksList((prev) => [unscheduledItem, ...prev]);
+
+  //     // Langsung buka check-in setelah 500ms
+  //     setTimeout(() => {
+  //       handleCheckIn(unscheduledItem);
+  //     }, 500);
+  //   } catch (error) {
+  //     console.error("Error creating unscheduled RKS:", error);
+  //     Alert.alert("Error", "Gagal membuat kunjungan tidak terjadwal");
+  //   }
+  // };
+
   const proceedWithUnscheduledVisit = async (customer: Customer) => {
     setUnscheduledModalVisible(false);
 
     try {
-      // Generate next rowid
-      const nextRowId = await generateNextRowId();
+      const salesCode = user?.kodeSales;
+      if (!salesCode) {
+        Alert.alert("Error", "Kode sales tidak ditemukan");
+        return;
+      }
+      let selectedKodeRKS = "";
+      let nextRowId = 1;
 
-      // Buat RKS item temporary untuk tidak terjadwal
+      // 1️⃣ Cek apakah hari ini sudah ada RKS master
+      const masterRes = await rksAPI.getTodayRKSHeader(salesCode);
+      const masterKodeRKS = masterRes?.data?.kode_rks;
+
+      if (masterKodeRKS) {
+        // Ada RKS master hari ini
+        selectedKodeRKS = masterKodeRKS;
+
+        // Ambil MAX rowid dari detail +1
+        const maxRowRes = await rksAPI.getMaxRowId2(selectedKodeRKS);
+        nextRowId = (maxRowRes?.data || 0) + 1;
+
+        console.log(
+          "🟢 Menggunakan RKS master:",
+          selectedKodeRKS,
+          "RowID:",
+          nextRowId
+        );
+      } else {
+        // 2️⃣ Tidak ada master, cek RKS unscheduled hari ini
+        const unschedRes = await rksAPI.getTodayUnscheduledRKS(salesCode);
+        const unschedKodeRKS = unschedRes?.data?.kode_rks;
+
+        if (unschedKodeRKS) {
+          selectedKodeRKS = unschedKodeRKS;
+
+          const maxRowRes = await rksAPI.getMaxRowId2(selectedKodeRKS);
+          nextRowId = (maxRowRes?.data || 0) + 1;
+
+          console.log(
+            "🟠 Menggunakan RKS unscheduled:",
+            selectedKodeRKS,
+            "RowID:",
+            nextRowId
+          );
+        } else {
+          // 3️⃣ Tidak ada RKS apapun hari ini — buat baru
+          const timestamp = Date.now().toString().slice(-9);
+          selectedKodeRKS = `U${timestamp}`;
+          nextRowId = 1;
+
+          console.log(
+            "🔵 Membuat RKS baru:",
+            selectedKodeRKS,
+            "RowID:",
+            nextRowId
+          );
+        }
+      }
+      const uniqueId = `${Date.now()}_${Math.random()
+        .toString(36)
+        .substring(2, 9)}`;
+      const id = `unscheduled_${uniqueId}`;
+      // Buat RKS item temporary
       const unscheduledItem: RKSItem = {
-        id: `unscheduled_${Date.now()}`,
-        kode_rks: generateUnscheduledRKSCode(),
+        id: id, //`unscheduled_${Date.now()}`,
+        kode_rks: selectedKodeRKS,
         kode_cust: customer.kode_cust,
         no_cust: customer.no_cust,
         customerName: customer.nama_cust,
@@ -1055,11 +1182,126 @@ export default function RKSPage() {
 
       // Langsung buka check-in setelah 500ms
       setTimeout(() => {
-        handleCheckIn(unscheduledItem);
+        handleCheckIn(unscheduledItem, "unscheduled");
       }, 500);
     } catch (error) {
-      console.error("Error creating unscheduled RKS:", error);
+      console.error("❌ Error creating unscheduled RKS:", error);
       Alert.alert("Error", "Gagal membuat kunjungan tidak terjadwal");
+    }
+  };
+
+  const handleNewCustomerCreated = async (customerData: {
+    kode_relasi: string;
+    kode_cust: string;
+    no_cust: string;
+    nama_cust: string;
+    alamat_kirim1: string;
+    kota_kirim: string;
+    phone?: string;
+    kode_sales: string;
+    mobile_created?: string;
+  }) => {
+    if (!customerData.kode_cust || !customerData.no_cust) {
+      console.error("❌ Invalid customer data from server");
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "❌ Error handleNewCustomerCreated",
+          body: "Data customer tidak valid dari server",
+          sound: "new-notification.mp3",
+        },
+        trigger: null,
+      });
+      return;
+    }
+
+    try {
+      const salesCode = user?.kodeSales ?? "";
+      if (!salesCode) {
+        Alert.alert("Error", "Kode sales tidak ditemukan");
+        return;
+      }
+
+      let selectedKodeRKS = "";
+      let nextRowId = 1;
+
+      // 1️⃣ Cek apakah hari ini sudah ada RKS master
+      const masterRes = await rksAPI.getTodayRKSHeader(salesCode);
+      const masterKodeRKS = masterRes?.data?.kode_rks;
+
+      if (masterKodeRKS) {
+        selectedKodeRKS = masterKodeRKS;
+        const maxRowRes = await rksAPI.getMaxRowId2(selectedKodeRKS);
+        nextRowId = (maxRowRes?.data || 0) + 1;
+
+        console.log(
+          "🟢 Menggunakan RKS master:",
+          selectedKodeRKS,
+          "RowID:",
+          nextRowId
+        );
+      } else {
+        // 2️⃣ Cek apakah ada RKS unscheduled hari ini
+        const unschedRes = await rksAPI.getTodayNooRKS(salesCode);
+        const unschedKodeRKS = unschedRes?.data?.kode_rks;
+
+        if (unschedKodeRKS) {
+          selectedKodeRKS = unschedKodeRKS;
+          const maxRowRes = await rksAPI.getMaxRowId2(selectedKodeRKS);
+          nextRowId = (maxRowRes?.data || 0) + 1;
+
+          console.log(
+            "🟠 Menggunakan RKS NOO:",
+            selectedKodeRKS,
+            "RowID:",
+            nextRowId
+          );
+        } else {
+          // 3️⃣ Tidak ada apapun → buat kode NOO baru
+          const timestamp = Date.now().toString().slice(-9);
+          selectedKodeRKS = `N${timestamp}`;
+          nextRowId = 1;
+
+          console.log(
+            "🔵 Membuat RKS NOO baru:",
+            selectedKodeRKS,
+            "RowID:",
+            nextRowId
+          );
+        }
+      }
+      const uniqueId = `${Date.now()}_${Math.random()
+        .toString(36)
+        .substring(2, 9)}`;
+      const id = `noo_${uniqueId}`;
+      // 🧱 Buat RKS item NOO
+      const nooItem: RKSItem = {
+        id: id, //`noo_${Date.now()}`,
+        kode_rks: selectedKodeRKS,
+        kode_cust: customerData.kode_cust,
+        no_cust: customerData.no_cust,
+        customerName: customerData.nama_cust,
+        customerAddress: customerData.alamat_kirim1,
+        scheduledDate: new Date().toISOString().split("T")[0],
+        status: "scheduled",
+        isUnscheduled: "Y",
+        baru: "Y", // FLAG khusus NOO
+        namaSales: namaSales,
+        rowid: nextRowId,
+        mobile_created: customerData.mobile_created || "Y",
+      };
+
+      console.log("🎯 Creating RKS NOO item:", nooItem);
+
+      // Tambahkan ke daftar RKS aktif
+      setRksList((prev) => [nooItem, ...prev]);
+
+      // Langsung arahkan ke check-in setelah delay 0.5s
+      setTimeout(() => {
+        handleCheckIn(nooItem, "noo");
+      }, 500);
+    } catch (error) {
+      console.error("❌ Error creating NOO RKS:", error);
+      Alert.alert("Error", "Gagal membuat kunjungan customer baru (NOO)");
     }
   };
 
@@ -1134,16 +1376,21 @@ export default function RKSPage() {
       setGpsStatus("error");
     }
   };
-  useEffect(() => {
-    console.log("🎯 Highlighted item changed:", highlightedItemId);
-  }, [highlightedItemId]);
 
   useEffect(() => {
-    console.log(
-      "📜 FlatList ref status:",
-      flatListRef.current ? "SET" : "NULL"
-    );
-  }, [flatListRef.current]);
+    if (params.newNooCustomer) {
+      try {
+        const customerData = JSON.parse(params.newNooCustomer as string);
+        console.log("🎯 Received new NOO customer:", customerData);
+        handleNewCustomerCreated(customerData);
+
+        // Clear params setelah diproses
+        router.setParams({ newNooCustomer: undefined });
+      } catch (error) {
+        console.error("Error parsing NOO customer data:", error);
+      }
+    }
+  }, [params.newNooCustomer]);
 
   useEffect(() => {
     checkGPSStatus();
@@ -1187,6 +1434,104 @@ export default function RKSPage() {
     return user.name || "Sales";
   };
 
+  // const loadRKS = async () => {
+  //   if (!user?.kodeSales) return;
+  //   console.log("🚀 Mulai loadRKS...");
+  //   setLoading(true);
+  //   try {
+  //     // ✅ Ambil nama sales terlebih dahulu
+  //     const salesName = await getNamaSales();
+  //     setNamaSales(salesName);
+
+  //     const listRes = await rksAPI.getRKSListCombined(user.kodeSales);
+  //     if (!listRes.success) {
+  //       // console.log("❌ Gagal ambil data");
+  //       await Notifications.scheduleNotificationAsync({
+  //         content: {
+  //           title: "❌ Gagal ambil data",
+  //           body: "Gagal ambil data",
+  //           sound: "new-notification.mp3",
+  //         },
+  //         trigger: null,
+  //       });
+  //       setRksList([]);
+  //       return;
+  //     }
+
+  //     const rawData = listRes.data;
+  //     let rksArray: RKSList[] = [];
+  //     if (Array.isArray(rawData)) {
+  //       rksArray = rawData;
+  //     } else if (rawData && typeof rawData === "object") {
+  //       rksArray = [rawData];
+  //     }
+
+  //     if (rksArray.length === 0) {
+  //       console.log("ℹ️ Tidak ada data RKS");
+  //       setRksList([]);
+  //       return;
+  //     }
+
+  //     const localVisits = await getAllLocalRKS();
+  //     console.log("📁 Local visits:", localVisits);
+
+  //     const items: RKSItem[] = rksArray.map((item) => {
+  //       const scheduledDate = item.rks_tanggal.split(" ")[0];
+
+  //       const localMatch = localVisits.find(
+  //         (r) =>
+  //           r.kode_rks === item.rks_kode_rks &&
+  //           r.kode_cust === item.detail_kode_cust
+  //       );
+
+  //       if (localMatch) {
+  //         return {
+  //           id: localMatch.id,
+  //           kode_rks: item.rks_kode_rks,
+  //           kode_cust: item.detail_kode_cust,
+  //           no_cust: item.no_cust,
+  //           customerName: item.nama_cust,
+  //           customerAddress: item.alamat || "Alamat tidak tersedia",
+  //           scheduledDate,
+  //           status: localMatch.checkout_time ? "completed" : "checked-in",
+  //           checkIn: localMatch,
+  //           checkOut: localMatch.checkout_time ? localMatch : undefined,
+  //           fasmap: undefined,
+  //           radius: 150,
+  //           namaSales: salesName, // ✅ Gunakan nama sales dari API
+  //           rowid: item.detail_rowid,
+  //         };
+  //       }
+
+  //       const status = item.kunjung === "Y" ? "completed" : "scheduled";
+
+  //       return {
+  //         id: `master_${item.detail_rowid}_${item.rks_kode_rks}_${item.detail_kode_cust}`,
+  //         kode_rks: item.rks_kode_rks,
+  //         kode_cust: item.detail_kode_cust,
+  //         no_cust: item.no_cust,
+  //         customerName: item.nama_cust,
+  //         customerAddress: item.alamat || "Alamat tidak tersedia",
+  //         scheduledDate,
+  //         status,
+  //         fasmap: undefined,
+  //         radius: 150,
+  //         namaSales: salesName, // ✅ Gunakan nama sales dari API
+  //         rowid: item.detail_rowid,
+  //       };
+  //     });
+
+  //     console.log("✅ Items siap tampil:", items.length);
+  //     setRksList(items);
+  //   } catch (err) {
+  //     console.error("Error loading RKS:", err);
+  //     setRksList([]);
+  //   } finally {
+  //     setLoading(false);
+  //     console.log("⏹️ loadRKS selesai");
+  //   }
+  // };
+
   const loadRKS = async () => {
     if (!user?.kodeSales) return;
     console.log("🚀 Mulai loadRKS...");
@@ -1196,9 +1541,8 @@ export default function RKSPage() {
       const salesName = await getNamaSales();
       setNamaSales(salesName);
 
-      const listRes = await rksAPI.getRKSList(user.kodeSales);
+      const listRes = await rksAPI.getRKSListCombined(user.kodeSales);
       if (!listRes.success) {
-        // console.log("❌ Gagal ambil data");
         await Notifications.scheduleNotificationAsync({
           content: {
             title: "❌ Gagal ambil data",
@@ -1216,6 +1560,7 @@ export default function RKSPage() {
       if (Array.isArray(rawData)) {
         rksArray = rawData;
       } else if (rawData && typeof rawData === "object") {
+        // Penanganan jika API mengembalikan satu objek, diubah menjadi array
         rksArray = [rawData];
       }
 
@@ -1225,10 +1570,29 @@ export default function RKSPage() {
         return;
       }
 
+      // --- START REVISI UNTUK MENGATASI DUPLIKASI KEYS ---
+
+      // 1. Tambahkan key komposit ke setiap item RKS Master
+      const mappedRKSArray = rksArray.map((item) => ({
+        ...item,
+        // Buat key yang sama dengan logika yang akan digunakan untuk id RKSItem
+        temp_key: `master_${item.detail_rowid}_${item.rks_kode_rks}_${item.detail_kode_cust}`,
+      }));
+
+      // 2. Filter duplikat berdasarkan temp_key
+      const uniqueRKSArray = removeDuplicates(mappedRKSArray, "temp_key");
+
+      console.log(
+        `🧹 Data API: ${rksArray.length} items. Setelah filter duplikat: ${uniqueRKSArray.length} items.`
+      );
+
+      // --- END REVISI ---
+
       const localVisits = await getAllLocalRKS();
       console.log("📁 Local visits:", localVisits);
 
-      const items: RKSItem[] = rksArray.map((item) => {
+      // Gunakan uniqueRKSArray untuk mapping ke RKSItem
+      const items: RKSItem[] = uniqueRKSArray.map((item) => {
         const scheduledDate = item.rks_tanggal.split(" ")[0];
 
         const localMatch = localVisits.find(
@@ -1239,6 +1603,7 @@ export default function RKSPage() {
 
         if (localMatch) {
           return {
+            // Jika ada localMatch, gunakan ID dari data lokal (diasumsikan unik)
             id: localMatch.id,
             kode_rks: item.rks_kode_rks,
             kode_cust: item.detail_kode_cust,
@@ -1259,7 +1624,8 @@ export default function RKSPage() {
         const status = item.kunjung === "Y" ? "completed" : "scheduled";
 
         return {
-          id: `master_${item.detail_rowid}_${item.rks_kode_rks}_${item.detail_kode_cust}`,
+          // Jika tidak ada localMatch, gunakan temp_key yang sudah dijamin unik
+          id: item.temp_key,
           kode_rks: item.rks_kode_rks,
           kode_cust: item.detail_kode_cust,
           no_cust: item.no_cust,
@@ -1353,7 +1719,8 @@ export default function RKSPage() {
 
   const checkFasMapAndProceed = async (
     item: RKSItem,
-    type: "checkin" | "checkout"
+    type: "checkin" | "checkout",
+    sumber: any
   ) => {
     setCheckingInId(item.id);
     setGettingLocation(item.id);
@@ -1418,7 +1785,11 @@ export default function RKSPage() {
       const customerLocData = fasmapRes.data;
 
       // 2. CEK: Jika Check-in tapi FasMap tidak ada
-      if (type === "checkin" && (!fasmapRes.success || !customerLocData)) {
+      if (
+        type === "checkin" &&
+        (!fasmapRes.success || !customerLocData) &&
+        sumber != "noo"
+      ) {
         // Customer belum punya fasmap, tampilkan modal konfirmasi
         setFasmapModalVisible(true);
         return;
@@ -1521,89 +1892,6 @@ export default function RKSPage() {
     }
   };
 
-  // ✅ Process check-in setelah foto diambil dengan proper accuracy handling
-  // const processCheckIn = async (
-  //   photoBase64: string,
-  //   locationData: Location.LocationObject
-  // ) => {
-  //   if (!user?.id || !currentCustomer || !currentLocation) return;
-
-  //   try {
-  //     const accuracy = locationData.coords.accuracy || currentLocation.accuracy;
-
-  //     const createRes = await rksAPI.createMobileRKS({
-  //       kode_rks: currentCustomer.kode_rks,
-  //       kode_cust: currentCustomer.kode_cust,
-  //       userid: user.id,
-  //       checkin_time: new Date().toISOString(),
-  //       latitude_in: currentLocation.latitude.toString(),
-  //       longitude_in: currentLocation.longitude.toString(),
-  //       accuracy_in: accuracy,
-  //       photo_in: photoBase64,
-  //       rowid: currentCustomer.rowid,
-  //       customer_name: currentCustomer.customerName,
-  //       kode_sales: user.kodeSales,
-  //       nama_sales: namaSales, // ✅ Gunakan nama sales dari state
-  //       status: "pending",
-  //     });
-
-  //     if (!createRes.success || !createRes.data?.id) {
-  //       await Notifications.scheduleNotificationAsync({
-  //         content: {
-  //           title: "❌ Error Check-in",
-  //           body: createRes.error || "Gagal membuat kunjungan",
-  //           sound: "new-notification.mp3",
-  //         },
-  //         trigger: null,
-  //       });
-  //       return;
-  //     }
-
-  //     const newCheckIn = createRes.data;
-  //     await insertRKSLocal(newCheckIn);
-
-  //     const updatedItem: RKSItem = {
-  //       ...currentCustomer,
-  //       id: newCheckIn.id,
-  //       status: "checked-in",
-  //       checkIn: newCheckIn,
-  //       fasmap: {
-  //         latitude: currentLocation.latitude.toString(),
-  //         longitude: currentLocation.longitude.toString(),
-  //       },
-  //     };
-
-  //     setRksList((prev) =>
-  //       prev.map((x) => (x.id === currentCustomer.id ? updatedItem : x))
-  //     );
-
-  //     addToQueue("rks_checkin");
-
-  //     await Notifications.scheduleNotificationAsync({
-  //       content: {
-  //         title: "✅ Check In Berhasil",
-  //         body: `Kunjungan telah dimulai. Akurasi: ${accuracy.toFixed(1)}m`,
-  //         sound: "new-notification.mp3",
-  //       },
-  //       trigger: null,
-  //     });
-  //     // ✅ TAMPILKAN MODAL ACTION SETELAH BERHASIL
-  //     handleSuccessfulCheckIn(currentCustomer.customerName);
-  //   } catch (err: any) {
-  //     console.error("Check-in error:", err);
-  //     await Notifications.scheduleNotificationAsync({
-  //       content: {
-  //         title: "❌ Gagal Check-in",
-  //         body: "Gagal melakukan check-in: " + err.message,
-  //         sound: "new-notification.mp3",
-  //       },
-  //       trigger: null,
-  //     });
-  //   } finally {
-  //     handleCameraClose(); // Reset semua state
-  //   }
-  // };
-
   // ✅ UPDATE: Process check-in dengan support RKS tidak terjadwal
   const processCheckIn = async (
     photoBase64: string,
@@ -1652,6 +1940,7 @@ export default function RKSPage() {
       await insertRKSLocal({
         ...newCheckIn,
         is_unscheduled: currentCustomer.isUnscheduled || "N", // ✅ PENTING!
+        baru: currentCustomer.baru || "N",
       });
 
       const updatedItem: RKSItem = {
@@ -1791,15 +2080,15 @@ export default function RKSPage() {
   };
 
   // --- Check-in Logic (Updated) ---
-  const handleCheckIn = async (item: RKSItem) => {
-    await checkFasMapAndProceed(item, "checkin");
+  const handleCheckIn = async (item: RKSItem, sumber: any) => {
+    await checkFasMapAndProceed(item, "checkin", sumber);
   };
 
   // --- Check-out Logic (Updated) ---
   const handleCheckOut = async (item: RKSItem) => {
     if (!item.checkIn) return;
     setIsLoading(true);
-    await checkFasMapAndProceed(item, "checkout");
+    await checkFasMapAndProceed(item, "checkout", "");
   };
 
   const renderItem = ({ item }: { item: RKSItem }) => {
@@ -1809,8 +2098,10 @@ export default function RKSPage() {
     if (isHighlighted) {
       console.log("🎨 RENDERING HIGHLIGHTED ITEM:", item.id);
     }
-    const isToday =
-      item.scheduledDate === new Date().toISOString().split("T")[0];
+    // const isToday =
+    //   item.scheduledDate === new Date().toISOString().split("T")[0];
+    const isToday = item.scheduledDate === dayjs().format("YYYY-MM-DD"); //todayLocal;
+
     const canCheckIn = item.status === "scheduled" && isToday;
     const canCheckOut = item.status === "checked-in";
     const isAnotherCheckedIn = rksList.some(
@@ -1839,7 +2130,7 @@ export default function RKSPage() {
 
     return (
       <Animated.View
-        key={`${item.id}_${highlightVersion}`}
+        // key={`${item.id}_${highlightVersion}`}
         style={[
           styles.card,
           isHighlighted && styles.highlightedCard, // ✅ STYLE HIGHLIGHT
@@ -1908,7 +2199,7 @@ export default function RKSPage() {
                   opacity: 0.5,
                 },
               ]}
-              onPress={() => handleCheckIn(item)}
+              onPress={() => handleCheckIn(item, "rks")}
               disabled={checkingInId !== null || isAnotherCheckedIn}
             >
               {checkingInId === item.id ? (
@@ -1979,14 +2270,14 @@ export default function RKSPage() {
     }
     return (
       <FlatList
-        key={listKey}
+        // key={listKey}
         ref={flatListRef}
         data={filtered}
         keyExtractor={(i) => i.id}
         renderItem={renderItem}
         contentContainerStyle={{ padding: 12 }}
         onScrollToIndexFailed={handleScrollToIndexFailed}
-        extraData={highlightedItemId}
+        // extraData={highlightedItemId}
         // getItemLayout={(_, index) => ({
         //   length: ITEM_HEIGHT,
         //   offset: ITEM_HEIGHT * index,

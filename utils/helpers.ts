@@ -300,32 +300,35 @@ export const validateRequiredFields = (
   requiredFields: string[]
 ): { isValid: boolean; errors: Record<string, string> } => {
   const errors: Record<string, string> = {};
-  
-  requiredFields.forEach(field => {
-    if (!data[field] || (typeof data[field] === 'string' && !data[field].trim())) {
+
+  requiredFields.forEach((field) => {
+    if (
+      !data[field] ||
+      (typeof data[field] === "string" && !data[field].trim())
+    ) {
       errors[field] = `${field} is required`;
     }
   });
 
   return {
     isValid: Object.keys(errors).length === 0,
-    errors
+    errors,
   };
 };
 
 // Format number with thousand separators
 export const formatNumber = (num: number): string => {
-  return new Intl.NumberFormat('id-ID').format(num);
+  return new Intl.NumberFormat("id-ID").format(num);
 };
 
 // Get platform-specific styles
 export const getPlatformStyle = (webStyle: any, nativeStyle: any) => {
-  return Platform.OS === 'web' ? webStyle : nativeStyle;
+  return Platform.OS === "web" ? webStyle : nativeStyle;
 };
 
 // Check if running on web
 export const isWeb = (): boolean => {
-  return Platform.OS === 'web';
+  return Platform.OS === "web";
 };
 
 // Safe JSON parse
@@ -338,28 +341,31 @@ export const safeJsonParse = <T>(jsonString: string, defaultValue: T): T => {
 };
 
 // Generate order number
-export const generateOrderNumber = (prefix: string = 'SO'): string => {
+export const generateOrderNumber = (prefix: string = "SO"): string => {
   const date = new Date();
   const year = date.getFullYear().toString().slice(-2);
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const day = date.getDate().toString().padStart(2, "0");
   const timestamp = Date.now().toString().slice(-4);
-  
+
   return `${prefix}-${year}${month}${day}-${timestamp}`;
 };
 
 // Calculate tax
-export const calculateTax = (amount: number, taxRate: number = 0.11): number => {
+export const calculateTax = (
+  amount: number,
+  taxRate: number = 0.11
+): number => {
   return Math.round(amount * taxRate);
 };
 
 // Calculate discount
 export const calculateDiscount = (
   amount: number,
-  discountType: 'percentage' | 'fixed',
+  discountType: "percentage" | "fixed",
   discountValue: number
 ): number => {
-  if (discountType === 'percentage') {
+  if (discountType === "percentage") {
     return Math.round(amount * (discountValue / 100));
   }
   return discountValue;
@@ -379,10 +385,12 @@ export const isOverdue = (dueDate: string): boolean => {
 };
 
 // utils/helper.ts
-export const calculateSalesRealization = (orders: SalesOrder[]): { nominal: number; units: number } => {
+export const calculateSalesRealization = (
+  orders: SalesOrder[]
+): { nominal: number; units: number } => {
   return orders.reduce(
     (acc, order) => {
-      if (['approved', 'processed'].includes(order.status)) {
+      if (["approved", "processed"].includes(order.status)) {
         acc.nominal += order.total;
         acc.units += order.items.reduce((sum, item) => sum + item.quantity, 0);
       }
@@ -399,22 +407,22 @@ export const calculateSalesRealization = (orders: SalesOrder[]): { nominal: numb
  * Contoh: encryptPass("12345") → "Kdof#"
  */
 export function encryptPass(plainPassword: string): string {
-  if (!plainPassword || typeof plainPassword !== 'string') {
-    return '';
+  if (!plainPassword || typeof plainPassword !== "string") {
+    return "";
   }
 
   const len = plainPassword.length;
 
   // Langkah 1: Tambahkan `len` ke setiap karakter
-  let shifted = '';
+  let shifted = "";
   for (let i = 0; i < len; i++) {
     const newCharCode = plainPassword.charCodeAt(i) + len;
     shifted += String.fromCharCode(newCharCode);
   }
 
   // Langkah 2: Pisahkan karakter di posisi ganjil (0,2,4...) dan genap (1,3,5...)
-  let odd = ''; // posisi 0, 2, 4, ...
-  let even = ''; // posisi 1, 3, 5, ...
+  let odd = ""; // posisi 0, 2, 4, ...
+  let even = ""; // posisi 1, 3, 5, ...
 
   for (let i = 0; i < len; i++) {
     if (i % 2 === 0) {
@@ -427,3 +435,22 @@ export function encryptPass(plainPassword: string): string {
   // Langkah 3: Gabungkan odd + even
   return odd + even;
 }
+
+/**
+ * Menghapus objek duplikat dari sebuah array berdasarkan nilai field tertentu.
+ * @param list Array data yang mungkin mengandung duplikasi.
+ * @param keyField Nama field yang digunakan sebagai penentu keunikan (misalnya: 'id').
+ * @returns Array baru tanpa objek duplikat.
+ */
+export const removeDuplicates = (list: any[], keyField: string) => {
+  const seen = new Set();
+  return list.filter((item) => {
+    // Ambil nilai dari keyField
+    const keyValue = item[keyField];
+    if (seen.has(keyValue)) {
+      return false; // Duplikat, buang item ini
+    }
+    seen.add(keyValue);
+    return true; // Item unik, pertahankan
+  });
+};

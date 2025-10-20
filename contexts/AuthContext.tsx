@@ -1,18 +1,18 @@
 // contexts/AuthContext.tsx
 // untuk mengelola autentikasi user,splashscreen, dan penyimpanan token aman
-import createContextHook from '@nkzw/create-context-hook';
-import * as SecureStore from 'expo-secure-store';
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { loginAPI, type User as ApiUser } from '@/api/services';
+import createContextHook from "@nkzw/create-context-hook";
+import * as SecureStore from "expo-secure-store";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { loginAPI, salesAPI, type User as ApiUser } from "@/api/services";
 
 interface User {
   id: string;
   name: string;
   username: string;
   role: string;
-  territory: string;
-  kodeSales: string;
-  namaSales?: string; // ← tambahkan properti namaSales (opsional)
+  territory: string | "";
+  kodeSales: string | "";
+  namaSales?: string | ""; // ← tambahkan properti namaSales (opsional)
 }
 
 interface AuthContextType {
@@ -55,7 +55,7 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
             kodeSales: apiUser.kode_sales || "",
             namaSales: apiUser.nama_sales || "", // ← inisialisasi namaSales
           };
-          console.log("Loaded stored user:", frontendUser);
+          console.log("Loaded stored user auth:", frontendUser);
           setUser(frontendUser);
         }
       } catch (error) {
@@ -73,9 +73,12 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
       ): Promise<boolean> => {
         try {
           const result = await loginAPI.login({ userid, password, kodecabang });
+
           // console.log("Login result:", result);
           if (result.success && result.data) {
             const { user: apiUser } = result.data;
+            const salesRes = await salesAPI.getSalesList(apiUser.kode_sales);
+            // console.log("salesRes:", salesRes.data[0]?.nama_sales);
             const frontendUser: User = {
               id: apiUser.userid,
               name: apiUser.nama_user,
@@ -83,8 +86,12 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
               role: "Sales",
               territory: apiUser.kodecabang,
               kodeSales: apiUser.kode_sales || "",
-              namaSales: apiUser.nama_sales || "", // ← inisialisasi namaSales
+              namaSales: salesRes.data[0]?.nama_sales || "",
+              // salesRes.success && salesRes.data.length > 0
+              //   ? salesRes.data[0]?.nama_sales
+              //   : "", // ← inisialisasi namaSales
             };
+
             setUser(frontendUser);
             return true;
           } else {
@@ -110,4 +117,3 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
     );
   }
 );
-

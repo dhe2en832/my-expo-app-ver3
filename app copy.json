@@ -90,6 +90,23 @@
           "color": "#ffffff",
           "sounds": ["./assets/sounds/new-notification.mp3"]
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 33,
+            "targetSdkVersion": 33,
+            "buildToolsVersion": "33.0.0",
+            "enableProguardInReleaseBuilds": true,
+            "extraMavenRepos": [
+              "../../node_modules/react-native-thermal-receipt-printer/android"
+            ]
+          },
+          "ios": {
+            "deploymentTarget": "13.0"
+          }
+        }
       ]
     ],
     "extra": {

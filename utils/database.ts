@@ -38,7 +38,8 @@ export const resetRKSLocalTable = async (): Promise<void> => {
         fasmap_longitude TEXT,
         kode_sales TEXT NOT NULL,
         nama_sales TEXT NOT NULL,
-        is_unscheduled TEXT DEFAULT 'N'
+        is_unscheduled TEXT DEFAULT 'N',
+        baru TEXT DEFAULT 'N'
       );
     `);
 
@@ -119,6 +120,7 @@ export const insertRKSLocal = async (
     fasmap_longitude?: string;
     rowid?: number;
     is_unscheduled?: "Y" | "N";
+    baru?: "Y" | "N";
   }
 ): Promise<void> => {
   await db.runAsync(
@@ -127,8 +129,8 @@ export const insertRKSLocal = async (
       latitude_in, longitude_in, latitude_out, longitude_out,
       accuracy_in, accuracy_out, photo_in, photo_out, duration, status,
       customer_name, fasmap_latitude, fasmap_longitude, kode_sales, nama_sales,
-      is_unscheduled
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      is_unscheduled, baru
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)`,
     [
       rks.id,
       rks.kode_rks,
@@ -153,6 +155,7 @@ export const insertRKSLocal = async (
       rks.kode_sales, // ✅ Tambahan field kode_sales
       rks.nama_sales, // ✅ Tambahan field nama_sales
       rks.is_unscheduled ?? "N",
+      rks.baru ?? "N",
     ]
   );
 };
@@ -230,7 +233,10 @@ export const updateRKSLocal = async (
     fields.push("is_unscheduled = ?");
     values.push(updates.is_unscheduled);
   }
-
+  if (updates.baru !== undefined) {
+    fields.push("baru = ?");
+    values.push(updates.baru);
+  }
   if (fields.length === 0) return;
 
   values.push(id);

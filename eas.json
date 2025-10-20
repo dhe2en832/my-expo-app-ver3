@@ -6,15 +6,39 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleDebug"
+      },
+      "env": {
+        "IS_PRODUCTION": "false",
+        "BLUETOOTH_ENABLED": "false",
+        "APP_ENV": "development"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleDebug"
+      },
+      "env": {
+        "IS_PRODUCTION": "false",
+        "BLUETOOTH_ENABLED": "false",
+        "APP_ENV": "preview"
+      }
     },
     "production": {
       "autoIncrement": true,
+      "distribution": "store",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "IS_PRODUCTION": "true",
+        "BLUETOOTH_ENABLED": "true",
+        "APP_ENV": "production"
       }
     }
   },
