@@ -1415,24 +1415,24 @@ export default function RKSPage() {
   };
 
   // ✅ Fungsi untuk mendapatkan nama sales dari API
-  const getNamaSales = async () => {
-    if (!user?.kodeSales) return "";
+  // const getNamaSales = async () => {
+  //   if (!user?.kodeSales) return "";
 
-    try {
-      const salesRes = await salesAPI.getSalesList(user.kodeSales);
-      console.log("📋 Sales data:", salesRes);
+  //   try {
+  //     const salesRes = await salesAPI.getSalesList(user.kodeSales);
+  //     console.log("📋 Sales data:", salesRes);
 
-      if (salesRes.success && salesRes.data && salesRes.data.length > 0) {
-        // Ambil nama sales dari data pertama
-        const salesData = salesRes.data[0];
-        return salesData.nama_sales || user.name || "Sales";
-      }
-    } catch (error) {
-      console.error("Error getting sales data:", error);
-    }
+  //     if (salesRes.success && salesRes.data && salesRes.data.length > 0) {
+  //       // Ambil nama sales dari data pertama
+  //       const salesData = salesRes.data[0];
+  //       return salesData.nama_sales || user.name || "Sales";
+  //     }
+  //   } catch (error) {
+  //     console.error("Error getting sales data:", error);
+  //   }
 
-    return user.name || "Sales";
-  };
+  //   return user.name || "Sales";
+  // };
 
   // const loadRKS = async () => {
   //   if (!user?.kodeSales) return;
@@ -1538,8 +1538,8 @@ export default function RKSPage() {
     setLoading(true);
     try {
       // ✅ Ambil nama sales terlebih dahulu
-      const salesName = await getNamaSales();
-      setNamaSales(salesName);
+      // const salesName = await getNamaSales();
+      // setNamaSales(salesName);
 
       const listRes = await rksAPI.getRKSListCombined(user.kodeSales);
       if (!listRes.success) {
@@ -1616,7 +1616,7 @@ export default function RKSPage() {
             checkOut: localMatch.checkout_time ? localMatch : undefined,
             fasmap: undefined,
             radius: 150,
-            namaSales: salesName, // ✅ Gunakan nama sales dari API
+            namaSales: user.namaSales, // ✅ Gunakan nama sales dari API
             rowid: item.detail_rowid,
           };
         }
@@ -1635,7 +1635,7 @@ export default function RKSPage() {
           status,
           fasmap: undefined,
           radius: 150,
-          namaSales: salesName, // ✅ Gunakan nama sales dari API
+          namaSales: user.namaSales, // ✅ Gunakan nama sales dari API
           rowid: item.detail_rowid,
         };
       });
@@ -1897,7 +1897,7 @@ export default function RKSPage() {
     photoBase64: string,
     locationData: Location.LocationObject
   ) => {
-    if (!user?.id || !currentCustomer || !currentLocation) return;
+    if (!user?.userid || !currentCustomer || !currentLocation) return;
 
     try {
       const accuracy = locationData.coords.accuracy || currentLocation.accuracy;
@@ -1906,7 +1906,7 @@ export default function RKSPage() {
       const payload = {
         kode_rks: currentCustomer.kode_rks,
         kode_cust: currentCustomer.kode_cust,
-        userid: user.id,
+        userid: user.userid,
         checkin_time: new Date().toISOString(),
         latitude_in: currentLocation.latitude.toString(),
         longitude_in: currentLocation.longitude.toString(),

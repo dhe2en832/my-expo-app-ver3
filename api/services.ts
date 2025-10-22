@@ -12,12 +12,14 @@ export type LoginCredentials = {
 };
 
 export type User = {
-  userid: string;
   kode_user: string;
+  userid: string;
   nama_user: string;
-  kodecabang: string;
-  kode_sales: string;
-  nama_sales: string;
+  kodeCabang: string | "";
+  kodeSales: string | "";
+  namaSales: string | ""; // ← tambahkan properti namaSales (opsional)
+  salesRole: string | "";
+  anakBuah: string[];
 };
 
 export type LoginResponse = {
@@ -50,6 +52,7 @@ import {
   StockItem,
   ProductListResponse,
   ProductList,
+  TerminList,
 } from "./interface";
 import apiClient from "./axiosConfig";
 
@@ -610,16 +613,16 @@ export const customerAPI = {
     }
   },
 
-  getPendingMobileCustomers: async (
-    kode_sales: string
-  ): Promise<APIResponse<any[]>> => {
+  getPendingMobileCustomers: async (): // kode_sales: string
+  Promise<APIResponse<any[]>> => {
     try {
       console.log("📤 Mengambil data customer pending...");
 
       // const res = await apiClient.get<{ success: boolean; data?: any[] }>(
       //   `/${kode_sales}`
       // );
-      const res = await apiClient.get(`/${kode_sales}`);
+      // const res = await apiClient.get(`/${kode_sales}`);
+      const res = await apiClient.get(`/pending`);
 
       console.log("✅ Response getPendingMobileCustomers:", res.data);
 
@@ -706,7 +709,7 @@ export const customerAPI = {
   },
 
   getCombinedCustomerList: async (
-    kode_sales: string,
+    // kode_sales: string,
     page: number = 1,
     limit: number = 50
   ): Promise<APIResponse<CustomerList[]>> => {
@@ -716,7 +719,8 @@ export const customerAPI = {
         data?: CustomerList[];
         meta?: { total: number; page: number; limit: number };
         message?: string;
-      }>(`/customer-mobile/combined-list/${kode_sales}`, {
+        // }>(`/customer-mobile/combined-list/${kode_sales}`, {
+      }>(`/customer-mobile/combined-list`, {
         params: { page, limit },
       });
 
@@ -908,7 +912,8 @@ export const salesAPI = {
   getSalesList: async (kode_sales: string) => {
     try {
       const res = await apiClient.get<{ success: boolean; data?: salesList[] }>(
-        `/sales/list/${kode_sales}`
+        // `/sales/list/${kode_sales}`
+        `/sales/list`
       );
       return { success: true, data: res.data.data || [] };
     } catch (err: any) {
@@ -920,12 +925,14 @@ export const salesAPI = {
     }
   },
 
-  getSalesDetail: async (kode_sales: string) => {
+  getSalesDetail: async () => {
     try {
       const res = await apiClient.get<{
         success: boolean;
         data?: SalesDetail[];
-      }>(`/sales/details/${kode_sales}`);
+        // }>(`/sales/details/${kode_sales}`);
+      }>(`/sales/list-by-kode`);
+
       return { success: true, data: res.data.data || [] };
     } catch (err: any) {
       return {
@@ -1114,13 +1121,14 @@ export const salesOrderAPI = {
 
   // ✅ SYNC: Get Ready to Sync Sales Orders
   getReadyToSyncSalesOrders: async (
-    kodeSales: string,
+    // kodeSales: string,
     page: number = 1,
     limit: number = 50
   ): Promise<APIResponse<any>> => {
     try {
       const response = await apiClient.get(
-        `/sales-order/sync/ready/${kodeSales}`,
+        // `/sales-order/sync/ready/${kodeSales}`,
+        `/sales-order/sync/ready`,
         {
           params: { page, limit },
         }
@@ -1244,14 +1252,15 @@ export const salesOrderAPI = {
 
   // ✅ Get Sales Order List Combined
   getSalesOrderListCombined: async (
-    kodeSales: string,
+    // kodeSales: string,
     page: number = 1,
     limit: number = 50,
     filter?: string
   ): Promise<APIResponse<any>> => {
     try {
       const response = await apiClient.get(
-        `/sales-order/combined-list/${kodeSales}`,
+        // `/sales-order/combined-list/${kodeSales}`,
+        `/sales-order/combined-list`,
         {
           params: {
             page,
@@ -1437,8 +1446,6 @@ export const dataBarangAPI = {
           },
         }
       );
-      console.log("responce ", response);
-
       return {
         success: response.data.success,
         message: response.data.message,
@@ -1479,6 +1486,47 @@ export const dataBarangAPI = {
   },
 };
 
+// ===================
+// Data Umum API Module
+// ===================
+export const dataUmumAPI = {
+  // Get Product by Kode
+  getTerminList: async (kodeItem: string): Promise<APIResponse<TerminList>> => {
+    try {
+      const response = await apiClient.get(`/umum/termin`);
+      return {
+        success: response.data.success,
+        message: response.data.message,
+        data: response.data.data,
+      };
+    } catch (error: any) {
+      console.error("Termin List API Error:", error);
+      return {
+        success: false,
+        message: error.response?.data?.message || "Gagal mengambil termin List",
+        data: null,
+      };
+    }
+  },
+  getTerminByKode: async (kodeTermin: string): Promise<APIResponse<any>> => {
+    try {
+      const response = await apiClient.get(`/umum/termin/${kodeTermin}`);
+      return {
+        success: response.data.success,
+        message: response.data.message,
+        data: response.data.data,
+      };
+    } catch (error: any) {
+      console.error("Termin API Error:", error);
+      return {
+        success: false,
+        message: error.response?.data?.message || "Gagal mengambil termin",
+        data: null,
+      };
+    }
+  },
+};
+
 export default {
   loginAPI,
   rksAPI,
@@ -1487,4 +1535,5 @@ export default {
   salesAPI,
   salesOrderAPI,
   dataBarangAPI,
+  dataUmumAPI,
 };

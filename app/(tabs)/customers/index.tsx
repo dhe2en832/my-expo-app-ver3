@@ -91,24 +91,24 @@ export default function CustomerList() {
 
       // ✅ Type assertion untuk handle response dengan benar
       const res = await customerAPI.getCombinedCustomerList(
-        user.kodeSales,
+        // user.kodeSales,
         pageNumber,
         limit
       );
 
-      console.log("📊 API Response:", {
-        success: res.success,
-        dataLength: res.data?.length,
-        meta: res.meta,
-        message: res.message
-      });
+      // console.log("📊 API Response:", {
+      //   success: res.success,
+      //   dataLength: res.data?.length,
+      //   meta: res.meta,
+      //   message: res.message
+      // });
 
       // ✅ Handle response dengan type safety
       if (res.success && res.data && Array.isArray(res.data)) {
         const customerData = res.data; // Type sudah CustomerListType[]
 
         if (append) {
-          setCustomers(prev => [...prev, ...customerData]);
+          setCustomers((prev) => [...prev, ...customerData]);
         } else {
           setCustomers(customerData);
         }

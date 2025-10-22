@@ -10,52 +10,48 @@ import {
   ActivityIndicator,
   RefreshControl,
   TextInput,
+  useWindowDimensions,
 } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useAuth } from "@/contexts/AuthContext";
 import { salesOrderAPI } from "@/api/services";
-import { SafeAreaView } from "react-native-safe-area-context";
-// import { SalesOrderList } from "@/api/interface";
+import { salesAPI } from "@/api/services";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import DropDownPicker from "react-native-dropdown-picker"; // Import library yang benar
 import { SalesOrderListType } from "@/api/interface";
+import { TabBar, TabView, Route } from "react-native-tab-view";
 
+// --- CUSTOM HOOKS ---
+// Custom hook untuk debounce
 const useDebounce = <T,>(value: T, delay: number): T => {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
 
   useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
   }, [value, delay]);
 
   return debouncedValue;
 };
 
-// Status badge colors
-// ✅ Helper functions untuk status
-const getStatusColor = (status: string): string => {
+// --- HELPER FUNCTIONS ---
+const getStatusColor = (status: string) => {
   switch (status?.toLowerCase()) {
     case "tertutup":
-       return "#ff0000ff";
     case "approved":
     case "disetujui":
       return "#4CAF50";
     case "terbuka":
-    case "menunggu":
     case "pending":
-      return "#ffa726";
-    case "approved":
-    case "disetujui":
-      return "#4caf50";
-    case "rejected":
+    case "menunggu":
+      return "#FF9800";
     case "ditolak":
-      return "#f44336";
-    case "synced":
-      return "#2196f3";
+    case "rejected":
+      return "#F44336";
     case "draft":
       return "#9E9E9E";
     case "dikirim":
@@ -66,25 +62,24 @@ const getStatusColor = (status: string): string => {
   }
 };
 
-const getStatusText = (status: string): string => {
+const getStatusText = (status: string) => {
   switch (status?.toLowerCase()) {
     case "tertutup":
       return "Tertutup";
     case "terbuka":
       return "Terbuka";
-    case "draft":
-      return "Draft";
-    case "pending":
-    case "menunggu":
-      return "Menunggu";
     case "approved":
     case "disetujui":
       return "Disetujui";
+    case "pending":
+    case "menunggu":
+      return "Menunggu";
     case "rejected":
     case "ditolak":
       return "Ditolak";
-    case "synced":
-      return "Tersinkron";
+    case "draft":
+      return "Draft";
+    case "submitted":
     case "dikirim":
       return "Dikirim";
     default:
@@ -92,60 +87,289 @@ const getStatusText = (status: string): string => {
   }
 };
 
+// --- KOMPONEN UNTUK KONTEN SETIAP TAB (Memoized) ---
+interface SalesOrderListContentProps {
+  filter: string; // Key tab
+  baseFilteredOrders: SalesOrderListType[]; // Data yang sudah difilter (search/sales)
+  searchQuery: string;
+  onSalesOrderPress: (order: SalesOrderListType) => void;
+  onPrintPress: (order: SalesOrderListType) => void;
+  onApprovePress: (order: SalesOrderListType) => void;
+  onRefresh: () => void;
+  refreshing: boolean;
+  salesDropdownOpen: boolean;
+}
+
+const SalesOrderListContent: React.FC<SalesOrderListContentProps> = React.memo(
+  ({
+    filter,
+    baseFilteredOrders,
+    searchQuery,
+    onSalesOrderPress,
+    onPrintPress,
+    onApprovePress,
+    onRefresh,
+    refreshing,
+    salesDropdownOpen,
+  }) => {
+    const { user } = useAuth();
+
+    // Filter data HANYA berdasarkan tab (status)
+    const filteredSalesOrders = useMemo(() => {
+      let filtered = baseFilteredOrders;
+
+      // Apply status filter berdasarkan tab
+      if (filter !== "all") {
+        filtered = filtered.filter((order) => {
+          switch (filter) {
+            case "today":
+              const today = new Date().toDateString();
+              const orderDate = new Date(
+                order.tgl_so || order.created_at
+              ).toDateString();
+              return orderDate === today;
+            case "draft":
+              return order.status?.toLowerCase() === "draft";
+            case "pending":
+              return ["pending", "menunggu"].includes(
+                order.status?.toLowerCase()
+              );
+            case "approved":
+              return ["approved", "disetujui"].includes(
+                order.status?.toLowerCase()
+              );
+            default:
+              return true;
+          }
+        });
+      }
+      return filtered;
+    }, [baseFilteredOrders, filter]);
+
+    const formatDate = useCallback((dateString: string) => {
+      try {
+        const date = new Date(dateString);
+        return date.toLocaleDateString("id-ID", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        });
+      } catch {
+        return dateString;
+      }
+    }, []);
+
+    const formatCurrency = useCallback((amount: number) => {
+      return new Intl.NumberFormat("id-ID", {
+        style: "currency",
+        currency: "IDR",
+        minimumFractionDigits: 0,
+      }).format(amount);
+    }, []);
+
+    const renderSalesOrderItem = useCallback(
+      ({ item }: { item: SalesOrderListType }) => (
+        <TouchableOpacity
+          style={styles.orderItem}
+          onPress={() => onSalesOrderPress(item)}
+        >
+          <View style={styles.orderHeader}>
+            <View style={styles.orderTitle}>
+              <Text style={styles.orderNumber} numberOfLines={1}>
+                {item.no_so || `SO-${item.id}`}
+              </Text>
+              <View
+                style={[
+                  styles.statusBadge,
+                  { backgroundColor: getStatusColor(item.status) },
+                ]}
+              >
+                <Text style={styles.statusText}>
+                  {getStatusText(item.status)}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.orderDate}>
+              {formatDate(item.tgl_so || item.created_at)}
+            </Text>
+          </View>
+
+          <View style={styles.customerInfo}>
+            <MaterialIcons name="person" size={14} color="#666" />
+            <Text style={styles.customerName} numberOfLines={1}>
+              {item.nama_cust}
+            </Text>
+          </View>
+
+          {item.kode_cust && (
+            <View style={styles.customerInfo}>
+              <MaterialIcons name="badge" size={14} color="#666" />
+              <Text style={styles.customerCode}>{item.kode_cust}</Text>
+            </View>
+          )}
+
+          <View style={styles.orderDetails}>
+            <View style={styles.detailItem}>
+              <MaterialIcons name="inventory" size={14} color="#666" />
+              <Text style={styles.detailText}>
+                {item.jumlah_item || 0} items
+              </Text>
+            </View>
+
+            {item.total && (
+              <View style={styles.detailItem}>
+                <MaterialIcons name="attach-money" size={14} color="#666" />
+                <Text style={styles.detailText}>
+                  {formatCurrency(item.total)}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.orderFooter}>
+            <Text style={styles.salesName}>
+              {item.nama_sales || user?.namaSales}
+            </Text>
+
+            <View style={styles.actions}>
+              {item.status !== "draft" && (
+                <TouchableOpacity
+                  style={styles.printButton}
+                  onPress={() => onPrintPress(item)}
+                >
+                  <MaterialIcons name="print" size={16} color="#667eea" />
+                </TouchableOpacity>
+              )}
+
+              {user?.salesRole === "Sales Supervisor" &&
+                ["pending", "menunggu"].includes(
+                  item.status?.toLowerCase()
+                ) && (
+                  <TouchableOpacity
+                    style={styles.approveButton}
+                    onPress={() => onApprovePress(item)}
+                  >
+                    <MaterialIcons
+                      name="check-circle"
+                      size={16}
+                      color="#4CAF50"
+                    />
+                  </TouchableOpacity>
+                )}
+
+              <MaterialIcons name="chevron-right" size={20} color="#999" />
+            </View>
+          </View>
+        </TouchableOpacity>
+      ),
+      [
+        formatDate,
+        formatCurrency,
+        user,
+        onSalesOrderPress,
+        onPrintPress,
+        onApprovePress,
+      ]
+    );
+
+    const renderEmptyState = useCallback(
+      () => (
+        <View style={styles.emptyState}>
+          <MaterialIcons name="receipt-long" size={64} color="#ccc" />
+          <Text style={styles.emptyStateTitle}>
+            {searchQuery
+              ? "Tidak Ada Hasil Pencarian"
+              : "Tidak Ada Sales Order"}
+          </Text>
+          <Text style={styles.emptyStateText}>
+            {searchQuery
+              ? "Tidak ada sales order yang sesuai dengan pencarian Anda"
+              : `Belum ada sales order dengan status ${getStatusText(filter)}.`}
+          </Text>
+        </View>
+      ),
+      [searchQuery, filter]
+    );
+
+    return (
+      <View style={{ flex: 1 }}>
+        <FlatList
+          data={filteredSalesOrders}
+          renderItem={renderSalesOrderItem}
+          keyExtractor={(item) => `${item.id}-${item.no_so}-${filter}`}
+          contentContainerStyle={[
+            styles.listContainer,
+            filteredSalesOrders.length === 0 && styles.emptyListContainer,
+          ]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={["#667eea"]}
+              tintColor="#667eea"
+            />
+          }
+          ListEmptyComponent={renderEmptyState}
+          initialNumToRender={10}
+          maxToRenderPerBatch={5}
+          windowSize={5}
+          scrollEnabled={!salesDropdownOpen}
+        />
+      </View>
+    );
+  }
+);
+
+// --- KOMPONEN UTAMA ---
 export default function SalesOrderList() {
   const router = useRouter();
   const { user } = useAuth();
   const params = useLocalSearchParams<{ successMessage?: string }>();
+  const insets = useSafeAreaInsets();
 
-  const [salesOrders, setSalesOrders] = useState<SalesOrderListType[]>([]);
+  // State utama
+  const [allSalesOrders, setAllSalesOrders] = useState<SalesOrderListType[]>(
+    []
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<string>("all"); // all, today, week, month, draft, pending
 
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const limit = 50;
+  // Sales filter state
+  type SalesDropdownItem = {
+    label: string;
+    value: string;
+  };
+  const [salesList, setSalesList] = useState<SalesDropdownItem[]>([]);
+  const [salesFilter, setSalesFilter] = useState<string>("");
+  const [salesDropdownOpen, setSalesDropdownOpen] = useState(false);
 
+  // Tab View state
+  const layout = useWindowDimensions();
+  const [index, setIndex] = useState(0);
+  const routes: Route[] = [
+    { key: "all", title: "Semua" },
+    { key: "today", title: "Hari Ini" },
+    { key: "draft", title: "Draft" },
+    { key: "pending", title: "Menunggu" },
+    { key: "approved", title: "Disetujui" },
+  ];
+
+  // --- LOGIKA FILTER UTAMA (Dibawa ke Induk) ---
   const debouncedSearchQuery = useDebounce(searchQuery, 400);
 
-  // ✅ Filter sales orders
-  const filteredSalesOrders = useMemo(() => {
-    let filtered = salesOrders;
+  const baseFilteredOrders = useMemo(() => {
+    let filtered = allSalesOrders;
 
-    // Apply status filter
-    if (filter !== "all") {
-      filtered = filtered.filter((order) => {
-        switch (filter) {
-          case "today":
-            const today = new Date().toDateString();
-            const orderDate = new Date(
-              order.tgl_so || order.created_at
-            ).toDateString();
-            return orderDate === today;
-          case "draft":
-            return order.status?.toLowerCase() === "draft";
-          case "pending":
-            return (
-              order.status?.toLowerCase() === "pending" ||
-              order.status?.toLowerCase() === "menunggu"
-            );
-          case "approved":
-            return (
-              order.status?.toLowerCase() === "approved" ||
-              order.status?.toLowerCase() === "disetujui"
-            );
-          default:
-            return true;
-        }
-      });
+    // Filter by sales jika supervisor
+    if (user?.salesRole === "Sales Supervisor" && salesFilter) {
+      filtered = filtered.filter((order) => order.kode_sales === salesFilter);
     }
 
-    // Apply search filter
+    // Apply search
     if (!debouncedSearchQuery.trim()) return filtered;
-
     const query = debouncedSearchQuery.toLowerCase();
     return filtered.filter(
       (order) =>
@@ -154,112 +378,21 @@ export default function SalesOrderList() {
         order.kode_cust?.toLowerCase().includes(query) ||
         order.nama_sales?.toLowerCase().includes(query)
     );
-  }, [salesOrders, debouncedSearchQuery, filter]);
+  }, [allSalesOrders, debouncedSearchQuery, salesFilter, user?.salesRole]);
 
-  // ✅ Show success message
-  useEffect(() => {
-    if (params.successMessage) {
-      Alert.alert("Sukses", params.successMessage);
-      router.setParams({ successMessage: undefined });
-    }
-  }, [params.successMessage]);
-
-  // ✅ Fetch sales orders
-  const fetchSalesOrders = useCallback(
-    async (pageNumber = 1, append = false) => {
-      if (!user?.kodeSales) {
-        setError("Data sales tidak ditemukan");
-        setLoading(false);
-        return;
-      }
-
-      try {
-        append ? setLoadingMore(true) : setLoading(true);
-        setError(null);
-
-        const res = await salesOrderAPI.getSalesOrderListCombined(
-          user.kodeSales,
-          pageNumber,
-          limit
-        );
-
-        if (res.success && res.data && Array.isArray(res.data)) {
-          const orderData: SalesOrderListType[] = res.data.map((order) => ({
-            ...order,
-            id: order.kode_so, // menggunakan kode_so sebagai ID
-            no_so: order.no_so,
-            tanggal: order.tgl_so,
-            nama_cust: order.nama_cust,
-            kode_cust: order.kode_cust,
-            no_cust: order.no_cust,
-            created_at: order.sort_date,
-            // Field tambahan untuk kompatibilitas
-            jumlah_item: order.jumlah_item, // bisa diisi dari API detail nanti
-            total: order.total, // bisa diisi dari API detail nanti
-          }));
-
-          if (append) {
-            setSalesOrders((prev) => [...prev, ...orderData]);
-          } else {
-            setSalesOrders(orderData);
-          }
-          setPage(pageNumber);
-          setTotal(res.meta?.total || orderData.length);
-        } else {
-          if (!append) {
-            setSalesOrders([]);
-          }
-          setError(res.message || "Gagal mengambil data sales order");
-        }
-      } catch (err: any) {
-        console.error("Error fetching sales orders:", err);
-        setError(err.message || "Gagal memuat data sales order");
-        if (!append) setSalesOrders([]);
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-        setLoadingMore(false);
-      }
-    },
-    [user?.kodeSales]
+  // Hitung total untuk stats (berdasarkan baseFilteredOrders)
+  const totalFiltered = useMemo(
+    () => baseFilteredOrders.length,
+    [baseFilteredOrders]
   );
 
-  // ✅ Initial load
-  useEffect(() => {
-    fetchSalesOrders();
-  }, [fetchSalesOrders]);
-
-  // ✅ Pull-to-refresh
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchSalesOrders(1, false);
-  }, [fetchSalesOrders]);
-
-  // ✅ Infinite scroll load more
-  const handleLoadMore = useCallback(() => {
-    if (
-      !loadingMore &&
-      salesOrders.length < total &&
-      filteredSalesOrders.length > 0
-    ) {
-      fetchSalesOrders(page + 1, true);
-    }
-  }, [
-    loadingMore,
-    salesOrders.length,
-    total,
-    filteredSalesOrders.length,
-    page,
-    fetchSalesOrders,
-  ]);
-
-  // ✅ Handle sales order press
+  // --- HANDLERS ---
   const handleSalesOrderPress = useCallback(
     (order: SalesOrderListType) => {
       router.push({
         pathname: `/sales-order/${order.id}`,
         params: {
-          id: order.kode_so,
+          id: order.id,
           no_so: order.no_so,
           status: order.status,
           isEditable: order.status === "draft" ? "true" : "false",
@@ -286,194 +419,154 @@ export default function SalesOrderList() {
     [router]
   );
 
-  // ✅ Format date untuk display
-  const formatDate = useCallback((dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString("id-ID", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
+  const handleApproveSalesOrder = useCallback(
+    (order: SalesOrderListType) => {
+      router.push({
+        pathname: `/sales-order/approve/${order.id}`,
+        params: {
+          id: order.id,
+          no_so: order.no_so,
+        },
       });
-    } catch {
-      return dateString;
-    }
-  }, []);
-
-  // ✅ Format currency
-  const formatCurrency = useCallback((amount: number) => {
-    return new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      minimumFractionDigits: 0,
-    }).format(amount);
-  }, []);
-
-  // ✅ Render sales order item
-  const renderSalesOrderItem = useCallback(
-    ({ item }: { item: SalesOrderListType }) => (
-      <TouchableOpacity
-        style={styles.orderItem}
-        onPress={() => handleSalesOrderPress(item)}
-      >
-        <View style={styles.orderHeader}>
-          <View style={styles.orderTitle}>
-            <Text style={styles.orderNumber} numberOfLines={1}>
-              {item.no_so || `SO-${item.id}`}
-            </Text>
-            <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: getStatusColor(item.status) },
-              ]}
-            >
-              <Text style={styles.statusText}>
-                {getStatusText(item.status)}
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.orderDate}>
-            {formatDate(item.tgl_so || item.created_at)}
-          </Text>
-        </View>
-
-        <View style={styles.customerInfo}>
-          <MaterialIcons name="person" size={14} color="#666" />
-          <Text style={styles.customerName} numberOfLines={1}>
-            {item.nama_cust || "Nama tidak tersedia"}
-          </Text>
-        </View>
-
-        {item.no_cust && (
-          <View style={styles.customerInfo}>
-            <MaterialIcons name="badge" size={14} color="#666" />
-            <Text style={styles.customerCode}>{item.no_cust}</Text>
-          </View>
-        )}
-
-        <View style={styles.orderDetails}>
-          <View style={styles.detailItem}>
-            <MaterialIcons name="inventory" size={14} color="#666" />
-            <Text style={styles.detailText}>{item.jumlah_item || 0} items</Text>
-          </View>
-
-          {item.total && (
-            <View style={styles.detailItem}>
-              <MaterialIcons name="payments" size={14} color="#666" />
-              <Text style={styles.detailText}>
-                {formatCurrency(item.total)}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.orderFooter}>
-          <Text style={styles.salesName}>
-            {item.nama_sales || user?.namaSales || "Sales tidak tersedia"}
-          </Text>
-
-          <View style={styles.actions}>
-            {item.status !== "draft" && (
-              <TouchableOpacity
-                style={styles.printButton}
-                onPress={() => handlePrintSalesOrder(item)}
-              >
-                <MaterialIcons name="print" size={16} color="#667eea" />
-              </TouchableOpacity>
-            )}
-            <MaterialIcons name="chevron-right" size={20} color="#999" />
-          </View>
-        </View>
-      </TouchableOpacity>
-    ),
-    [
-      handleSalesOrderPress,
-      handlePrintSalesOrder,
-      formatDate,
-      formatCurrency,
-      user?.namaSales,
-    ]
+    },
+    [router]
   );
 
-  // ✅ Footer untuk loading more
-  const renderFooter = useCallback(
-    () =>
-      loadingMore ? (
-        <View style={styles.footerContainer}>
-          <ActivityIndicator size="small" color="#667eea" />
-          <Text style={styles.footerText}>Memuat data...</Text>
-        </View>
-      ) : salesOrders.length < total ? (
-        <View style={styles.footerContainer}>
-          <Text style={styles.footerText}>
-            Geser ke bawah untuk memuat lebih banyak
-          </Text>
-        </View>
-      ) : null,
-    [loadingMore, salesOrders.length, total]
-  );
-
-  // ✅ Empty state
-  const renderEmptyState = useCallback(
-    () => (
-      <View style={styles.emptyState}>
-        <MaterialIcons name="receipt-long" size={64} color="#ccc" />
-        <Text style={styles.emptyStateTitle}>
-          {searchQuery ? "Tidak Ada Hasil Pencarian" : "Tidak Ada Sales Order"}
-        </Text>
-        <Text style={styles.emptyStateText}>
-          {searchQuery
-            ? "Tidak ada sales order yang sesuai dengan pencarian Anda"
-            : "Belum ada sales order yang dibuat. Mulai dengan membuat sales order baru."}
-        </Text>
-        {!searchQuery && (
-          <TouchableOpacity
-            style={styles.emptyStateButton}
-            onPress={handleCreateSalesOrder}
-          >
-            <MaterialIcons name="add" size={20} color="#fff" />
-            <Text style={styles.emptyStateButtonText}>Buat Sales Order</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    ),
-    [searchQuery, handleCreateSalesOrder]
-  );
-
-  // ✅ Clear search
   const handleClearSearch = useCallback(() => {
     setSearchQuery("");
   }, []);
 
-  // ✅ Filter buttons
-  // ✅ Filter buttons - pastikan semua teks dalam <Text>
-  const FilterButton = useCallback(
-    ({
-      title,
-      value,
-      isActive,
-    }: {
-      title: string;
-      value: string;
-      isActive: boolean;
-    }) => (
-      <TouchableOpacity
-        style={[styles.filterButton, isActive && styles.filterButtonActive]}
-        onPress={() => setFilter(value)}
-      >
-        <Text
-          style={[
-            styles.filterButtonText,
-            isActive && styles.filterButtonTextActive,
-          ]}
-        >
-          {title}
-        </Text>
-      </TouchableOpacity>
-    ),
-    []
+  // --- DATA FETCHING ---
+  const loadSalesList = async () => {
+    try {
+      const resSalesList = await salesAPI.getSalesDetail();
+      if (resSalesList.success && Array.isArray(resSalesList.data)) {
+        const dropdownItems: SalesDropdownItem[] = [
+          { label: "Semua Sales", value: "" },
+          ...resSalesList.data.map((item) => ({
+            label: item.nama_sales,
+            value: item.kode_sales,
+          })),
+        ];
+        setSalesList(dropdownItems);
+      }
+    } catch (err) {
+      console.error("Error loading sales list:", err);
+    }
+  };
+
+  const fetchAllSalesOrders = async () => {
+    if (!user?.kodeSales && user?.salesRole !== "Sales Supervisor") {
+      setError("Data sales tidak ditemukan");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await salesOrderAPI.getSalesOrderListCombined(1, 1000);
+
+      if (res.success && res.data && Array.isArray(res.data)) {
+        const orderData: SalesOrderListType[] = res.data.map((order) => ({
+          ...order,
+          id: order.kode_so,
+          no_so: order.no_so,
+          tanggal: order.tgl_so,
+          nama_cust: order.nama_cust,
+          kode_cust: order.kode_cust,
+          created_at: order.sort_date,
+          jumlah_item: order.jumlah_item,
+          total: order.total,
+        }));
+        setAllSalesOrders(orderData);
+      } else {
+        setAllSalesOrders([]);
+        setError(res.message || "Gagal mengambil data sales order");
+      }
+    } catch (err: any) {
+      console.error("Error fetching sales orders:", err);
+      setError(err.message || "Gagal memuat data sales order");
+      setAllSalesOrders([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchAllSalesOrders();
+  }, []);
+
+  // --- USE EFFECTS ---
+  // Success message
+  useEffect(() => {
+    if (params.successMessage) {
+      Alert.alert("Sukses", params.successMessage);
+      router.setParams({ successMessage: undefined });
+    }
+  }, [params.successMessage]);
+
+  // Load sales list jika supervisor
+  useEffect(() => {
+    if (user?.salesRole === "Sales Supervisor") {
+      loadSalesList();
+    }
+  }, [user?.salesRole]);
+
+  // Fetch data utama
+  useEffect(() => {
+    fetchAllSalesOrders();
+  }, []);
+
+  // --- TABVIEW RENDERING ---
+  interface RenderSceneProps {
+    route: Route;
+    jumpTo: (key: string) => void;
+  }
+
+  const renderScene = ({ route }: RenderSceneProps) => (
+    <SalesOrderListContent
+      filter={route.key}
+      baseFilteredOrders={baseFilteredOrders} // Mengirim data yang sudah difilter
+      searchQuery={searchQuery} // Hanya untuk empty state
+      onSalesOrderPress={handleSalesOrderPress}
+      onPrintPress={handlePrintSalesOrder}
+      onApprovePress={handleApproveSalesOrder}
+      onRefresh={onRefresh}
+      refreshing={refreshing}
+      salesDropdownOpen={salesDropdownOpen}
+    />
   );
 
+  const renderTabBar = (props: any) => (
+    <TabBar
+      {...props}
+      indicatorStyle={{ backgroundColor: "#667eea" }}
+      style={styles.tabBar}
+      labelStyle={styles.tabLabel}
+      activeColor="#667eea"
+      inactiveColor="#666"
+      pressColor="transparent"
+      getLabelText={({ route }: { route: Route }) => route.title}
+      tabStyle={styles.tabStyle}
+      contentContainerStyle={styles.tabContentContainer}
+      scrollEnabled={true}
+    />
+  );
+
+  // --- INITIAL LOADING STATE ---
+  if (loading) {
+    return (
+      <View style={styles.loadingContainerFull}>
+        <ActivityIndicator size="large" color="#667eea" />
+        <Text style={styles.loadingText}>Memuat sales order...</Text>
+      </View>
+    );
+  }
+
+  // --- MAIN RENDER ---
   return (
     <SafeAreaView style={styles.container}>
       <Stack.Screen
@@ -490,116 +583,105 @@ export default function SalesOrderList() {
         }}
       />
 
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <MaterialIcons name="search" size={20} color="#999" />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Cari nomor SO, customer, atau sales..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          clearButtonMode="while-editing"
-          returnKeyType="search"
-        />
-        {searchQuery ? (
-          <TouchableOpacity onPress={handleClearSearch}>
-            <MaterialIcons name="close" size={20} color="#999" />
-          </TouchableOpacity>
-        ) : null}
-      </View>
-
-      {/* Filter Buttons */}
-      <View style={styles.filterContainer}>
-        <FilterButton title="Semua" value="all" isActive={filter === "all"} />
-        <FilterButton
-          title="Hari Ini"
-          value="today"
-          isActive={filter === "today"}
-        />
-        <FilterButton
-          title="Draft"
-          value="draft"
-          isActive={filter === "draft"}
-        />
-        <FilterButton
-          title="Menunggu"
-          value="pending"
-          isActive={filter === "pending"}
-        />
-        <FilterButton
-          title="Disetujui"
-          value="approved"
-          isActive={filter === "approved"}
-        />
-      </View>
-
-      {/* Stats Bar */}
-      <View style={styles.statsContainer}>
-        <Text style={styles.statsText}>
-          {searchQuery || filter !== "all"
-            ? `${filteredSalesOrders.length} dari ${salesOrders.length} SO`
-            : `Total: ${salesOrders.length} sales order`}
-          {total > salesOrders.length && ` dari ${total}`}
-        </Text>
-        <TouchableOpacity onPress={onRefresh} disabled={refreshing}>
-          <MaterialIcons
-            name="refresh"
-            size={20}
-            color={refreshing ? "#ccc" : "#667eea"}
+      {/* Kontainer Wrapper untuk Pencarian, Dropdown, dan Stats Bar */}
+      <View style={styles.headerContentWrapper}>
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <MaterialIcons name="search" size={20} color="#999" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Cari nomor SO, customer, atau sales..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            clearButtonMode="while-editing"
+            returnKeyType="search"
           />
-        </TouchableOpacity>
+          {searchQuery ? (
+            <TouchableOpacity onPress={handleClearSearch}>
+              <MaterialIcons name="close" size={20} color="#999" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {/* Sales Filter Dropdown */}
+        {user?.salesRole === "Sales Supervisor" && (
+          <View
+            style={[
+              styles.dropdownContainer,
+              { zIndex: salesDropdownOpen ? 3000 : 2000 },
+            ]}
+          >
+            <DropDownPicker
+              open={salesDropdownOpen}
+              value={salesFilter}
+              items={salesList}
+              setOpen={setSalesDropdownOpen}
+              setValue={setSalesFilter}
+              placeholder="Pilih Sales..."
+              searchable
+              searchPlaceholder="Cari sales..."
+              style={styles.dropdown}
+              textStyle={styles.dropdownText}
+              dropDownContainerStyle={styles.dropdownContainerStyle}
+              listItemContainerStyle={styles.dropdownItem}
+              listMode="SCROLLVIEW" // Membuat dropdown bisa di-scroll
+              scrollViewProps={{
+                nestedScrollEnabled: true,
+                contentContainerStyle: {
+                  paddingVertical: 4,
+                },
+              }}
+              modalProps={{
+                animationType: "fade",
+              }}
+              // ✅ OPSIONAL: Auto scroll ke item yang dipilih
+              autoScroll
+              // ✅ OPSIONAL: Close ketika select item
+              closeAfterSelecting={true}
+            />
+          </View>
+        )}
+
+        {/* Stats Bar */}
+        <View style={styles.statsContainer}>
+          <Text style={styles.statsText}>
+            {`Total: ${totalFiltered} sales order`}
+          </Text>
+          <TouchableOpacity onPress={onRefresh} disabled={refreshing}>
+            <MaterialIcons
+              name="refresh"
+              size={20}
+              color={refreshing ? "#ccc" : "#667eea"}
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Error Message */}
+      {/* Tab View */}
+      <TabView
+        navigationState={{ index, routes }}
+        renderScene={renderScene}
+        onIndexChange={setIndex}
+        initialLayout={{ width: layout.width }}
+        renderTabBar={renderTabBar}
+        style={styles.tabView}
+        swipeEnabled={true}
+      />
+
+      {/* Error */}
       {error && (
         <View style={styles.errorContainer}>
           <MaterialIcons name="error-outline" size={20} color="#f44336" />
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity onPress={() => fetchSalesOrders(1, false)}>
+          <TouchableOpacity onPress={fetchAllSalesOrders}>
             <Text style={styles.retryText}>Coba Lagi</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Loading State */}
-      {loading && !refreshing ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#667eea" />
-          <Text style={styles.loadingText}>Memuat sales order...</Text>
-        </View>
-      ) : (
-        /* Sales Order List */
-        <FlatList
-          data={filteredSalesOrders}
-          renderItem={renderSalesOrderItem}
-          keyExtractor={(item) => `${item.id}-${item.no_so}`}
-          contentContainerStyle={[
-            styles.listContainer,
-            filteredSalesOrders.length === 0 && styles.emptyListContainer,
-          ]}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={["#667eea"]}
-              tintColor="#667eea"
-            />
-          }
-          ListEmptyComponent={renderEmptyState}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.2}
-          ListFooterComponent={renderFooter}
-          initialNumToRender={15}
-          maxToRenderPerBatch={10}
-          windowSize={5}
-          removeClippedSubviews={true}
-        />
-      )}
-
-      {/* Floating Action Button */}
+      {/* FAB */}
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { bottom: 16 + insets.bottom }]}
         onPress={handleCreateSalesOrder}
         activeOpacity={0.8}
       >
@@ -609,18 +691,38 @@ export default function SalesOrderList() {
   );
 }
 
+// --- STYLES ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f5f7fb",
   },
+  loadingContainerFull: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f5f7fb",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#666",
+  },
+
+  // Wrapper untuk Search, Dropdown, dan Stats agar memiliki padding luar yang sama
+  headerContentWrapper: {
+    backgroundColor: "white",
+    paddingHorizontal: 0, // <--- Perbaikan 1: Hapus padding di wrapper
+    paddingBottom: 8,
+  },
+
+  // Search Bar Disesuaikan
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "white",
-    margin: 16,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "#e0e0e0",
@@ -629,6 +731,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
+    marginTop: 8,
+    marginHorizontal: 16, // <--- Perbaikan 1: Tambah margin di sini
   },
   searchInput: {
     flex: 1,
@@ -637,43 +741,90 @@ const styles = StyleSheet.create({
     color: "#333",
     padding: 0,
   },
-  filterContainer: {
-    flexDirection: "row",
-    paddingHorizontal: 16,
-    marginBottom: 12,
-    gap: 8,
+
+  // Dropdown Disesuaikan
+  dropdownContainer: {
+    marginTop: 8,
+    marginHorizontal: 16, // <--- Perbaikan 1: Tambah margin di sini
+    zIndex: 3000,
   },
-  filterButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: "#f0f0f0",
+  dropdown: {
+    borderColor: "#e0e0e0",
+    backgroundColor: "white",
+    borderRadius: 10,
+    height: 44,
+    zIndex: 3001,
   },
-  filterButtonActive: {
-    backgroundColor: "#667eea",
+  dropdownText: {
+    fontSize: 16,
+    color: "#333",
   },
-  filterButtonText: {
-    fontSize: 12,
-    color: "#666",
-    fontWeight: "500",
+  dropdownContainerStyle: {
+    backgroundColor: "white",
+    borderColor: "#e0e0e0",
+    borderRadius: 10,
+    borderWidth: 1,
+    maxHeight: 250, // Memastikan scroll berfungsi
+    // minHeight: 100, // ✅ Minimum height untuk memastikan scroll
+    zIndex: 9999, // ✅ Sangat tinggi untuk berada di atas semua elemen
+    elevation: 20, // ✅ Untuk Android
+    // marginTop: 4, // ✅ Beri jarak dari input
+    top: 44, // ✅ Posisikan tepat di bawah input
+    width: "100%", // ✅ Full width
   },
-  filterButtonTextActive: {
-    color: "#fff",
+  // Perbaikan 2: Sesuaikan padding untuk mencegah teks terpotong dan menambah kerapihan horizontal
+  dropdownItem: {
+    // paddingVertical: 12,
+    paddingHorizontal: 16, // <--- Tambahkan paddingHorizontal untuk kerapihan
   },
+
+  // Stats Container Disesuaikan
   statsContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 12,
     backgroundColor: "white",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    paddingHorizontal: 16, // <--- Perbaikan 1: Tambah padding di sini
   },
+
   statsText: {
     fontSize: 14,
     color: "#666",
     fontWeight: "500",
+  },
+  tabView: {
+    flex: 1,
+  },
+  tabBar: {
+    backgroundColor: "white",
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  tabStyle: {
+    height: 48, // ✅ Tinggi yang cukup untuk teks
+    paddingVertical: 8, // ✅ Padding vertikal
+    minHeight: 48, // ✅ Minimum height
+  },
+
+  // ✅ CONTENT CONTAINER STYLE
+  tabContentContainer: {
+    alignItems: "center", // ✅ Pusatkan konten
+    justifyContent: "center",
+  },
+  tabLabel: {
+    fontWeight: "600",
+    textTransform: "capitalize",
+    fontSize: 12, // ✅ Lebih kecil lagi
+    textAlign: "center",
+    includeFontPadding: false,
+    padding: 0,
+    margin: 0,
+    lineHeight: 14,
   },
   listContainer: {
     flexGrow: 1,
@@ -782,18 +933,46 @@ const styles = StyleSheet.create({
   printButton: {
     padding: 4,
   },
+  approveButton: {
+    padding: 4,
+  },
   headerButton: {
     padding: 4,
   },
-  loadingContainer: {
+  errorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fdecea",
+    padding: 12,
+    margin: 16,
+    borderRadius: 8,
+  },
+  errorText: {
     flex: 1,
+    color: "#f44336",
+    fontSize: 14,
+    marginLeft: 8,
+  },
+  retryText: {
+    color: "#667eea",
+    fontWeight: "600",
+    marginLeft: 8,
+  },
+  fab: {
+    position: "absolute",
+    right: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#667eea",
     justifyContent: "center",
     alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: "#666",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 6,
+    zIndex: 1000,
   },
   emptyState: {
     flex: 1,
@@ -815,65 +994,5 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     paddingHorizontal: 40,
     lineHeight: 20,
-  },
-  emptyStateButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#667eea",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  emptyStateButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-    marginLeft: 8,
-  },
-  errorContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fdecea",
-    padding: 12,
-    margin: 16,
-    borderRadius: 8,
-  },
-  errorText: {
-    flex: 1,
-    color: "#f44336",
-    fontSize: 14,
-    marginLeft: 8,
-  },
-  retryText: {
-    color: "#667eea",
-    fontWeight: "600",
-    marginLeft: 8,
-  },
-  footerContainer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: 16,
-    gap: 8,
-  },
-  footerText: {
-    fontSize: 14,
-    color: "#666",
-    textAlign: "center",
-  },
-  fab: {
-    position: "absolute",
-    right: 16,
-    bottom: 16,
-    backgroundColor: "#667eea",
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 6,
   },
 });

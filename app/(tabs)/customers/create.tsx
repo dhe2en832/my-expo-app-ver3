@@ -48,30 +48,30 @@ export default function CreateCustomer() {
     null
   );
   const [locationLoading, setLocationLoading] = useState(true);
-  const [namaSales, setNamaSales] = useState<string>("");
+  // const [namaSales, setNamaSales] = useState<string>("");
   const [photos, setPhotos] = useState<CustomerPhoto[]>([]);
   const [cameraVisible, setCameraVisible] = useState(false);
   const [photoSessionActive, setPhotoSessionActive] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isUploading, setIsUploading] = useState<boolean>(false);
 
-  const getNamaSales = async () => {
-    if (!user?.kodeSales) return "";
+  // const getNamaSales = async () => {
+  //   if (!user?.kodeSales) return "";
 
-    try {
-      const salesRes = await salesAPI.getSalesList(user.kodeSales);
-      // console.log("📋 Sales data:", salesRes);
+  //   try {
+  //     const salesRes = await salesAPI.getSalesList(user.kodeSales);
+  //     // console.log("📋 Sales data:", salesRes);
 
-      if (salesRes.success && salesRes.data && salesRes.data.length > 0) {
-        const salesData = salesRes.data[0];
-        return salesData.nama_sales || user.name || "Sales";
-      }
-    } catch (error) {
-      console.error("Error getting sales data:", error);
-    }
+  //     if (salesRes.success && salesRes.data && salesRes.data.length > 0) {
+  //       const salesData = salesRes.data[0];
+  //       return salesData.nama_sales || user.name || "Sales";
+  //     }
+  //   } catch (error) {
+  //     console.error("Error getting sales data:", error);
+  //   }
 
-    return user.name || "Sales";
-  };
+  //   return user.name || "Sales";
+  // };
 
   // ✅ Default photo types untuk customer baru
   const defaultPhotoTypes: CustomerPhoto["type"][] = [
@@ -84,13 +84,13 @@ export default function CreateCustomer() {
   // ✅ Get current location saat component mount
   useEffect(() => {
     getCurrentLocation();
-    loadRKS();
+    // loadRKS();
   }, []);
 
-  const loadRKS = async () => {
-    const salesName = await getNamaSales();
-    setNamaSales(salesName);
-  };
+  // const loadRKS = async () => {
+  //   const salesName = user?.namaSales; //await getNamaSales();
+  //   setNamaSales(salesName);
+  // };
 
   const getCurrentLocation = async () => {
     try {
@@ -269,7 +269,7 @@ export default function CreateCustomer() {
         kode_sales: user.kodeSales,
         alamat_kirim1: formData.alamat,
         kota_kirim: formData.kota || "",
-        userid: user.id || "MOBILE_USER",
+        userid: user.userid || "MOBILE_USER",
         // ✅ Photos sementara dikosongkan - akan diupload sebagai ZIP terpisah
         photos: [],
         // ✅ GPS data - handle null accuracy
@@ -311,7 +311,7 @@ export default function CreateCustomer() {
         console.log("📤 Step 2: Upload photos sebagai ZIP ke FTP...");
 
         // ✅ FIX: Handle kodeCabang yang mungkin undefined dengan fallback yang aman
-        const kode_cabang = user.territory;
+        const kode_cabang = user.kodeCabang;
         // (user as any).kodeCabang || user.kodeSales?.substring(0, 3) || "DEF";
         // Siapkan location data untuk watermark
         const locationData = location
@@ -329,7 +329,7 @@ export default function CreateCustomer() {
             // ✅ Pastikan watermarkData ada
             watermarkData: photo.watermarkData || {
               customerName: formData.namaPemilik,
-              salesName: user.namaSales || user.name || "Sales",
+              salesName: user.namaSales || user.nama_user || "Sales",
               locationText: location
                 ? `📍 ${location.coords.latitude.toFixed(
                     6
@@ -356,7 +356,7 @@ export default function CreateCustomer() {
             kode_cust,
             kode_cabang,
             formData.namaToko,
-            user.namaSales || user.name || "Sales",
+            user.namaSales || user.nama_user || "Sales",
             location
               ? {
                   latitude: location.coords.latitude,
@@ -548,7 +548,7 @@ export default function CreateCustomer() {
           <View style={styles.salesInfo}>
             <Text style={styles.salesLabel}>Sales:</Text>
             <Text style={styles.salesName}>
-              {user?.namaSales || namaSales || user?.name || "Sales"}
+              {user?.namaSales || user?.nama_user || "Sales"}
             </Text>
           </View>
 
@@ -758,7 +758,7 @@ export default function CreateCustomer() {
           onClose={() => setCameraVisible(false)}
           onPhotosCapture={handlePhotosCapture}
           customerName={formData.namaPemilik || "Customer Baru"}
-          salesName={user?.namaSales || user?.name || "Sales"}
+          salesName={user?.namaSales || user?.nama_user || "Sales"}
           photoTypes={defaultPhotoTypes}
           initialPhotos={photos}
         />

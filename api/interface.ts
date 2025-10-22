@@ -125,7 +125,7 @@ export interface Customer {
 export interface CustomerList {
   kode_relasi: string;
   kode_cust: string;
-  no_cust?: string;
+  no_cust: string;
   nama_cust: string;
   hp: string;
   alamat: string;
@@ -142,6 +142,7 @@ export interface CustomerList {
   created_at: string;
   sort_order: number;
   kode_termin: string;
+  nama_termin: string;
 }
 
 export interface FasMap {
@@ -556,6 +557,20 @@ export interface CustomerPhotoCameraProps {
 // ===================
 
 // ✅ Sales Order List Interface dari API
+
+export interface SalesList {
+  kode_sales: string;
+  no_sales: string;
+  nama_sales: string;
+  alamat: string;
+  jabatan: string;
+  aktif: string;
+  userid: string;
+  komisi: string;
+  opname: string;
+  internal: string;
+}
+
 export interface SalesOrderList {
   id: string;
   kode_so: string;
@@ -571,6 +586,7 @@ export interface SalesOrderList {
   sort_date: string;
   sort_order: number;
 }
+
 export interface SalesOrderListType extends SalesOrderList {
   // Field dari API
   kode_so: string;
@@ -641,8 +657,8 @@ export interface SalesOrderHeader {
   kode_sales: string;
   nama_sales: string;
   kode_cust: string;
-  customer_name: string;
-  customer_address?: string;
+  nama_cust: string;
+  alamat?: string;
   kode_termin?: string;
   kode_kirim?: string;
   cara_kirim?: "KG" | "KP" | "AG" | "AP";
@@ -779,6 +795,7 @@ interface EditSalesOrderForm {
 
   // Customer Info
   kode_cust: string;
+  no_cust: string;
   nama_cust: string;
   alamat: string;
   kota_kirim?: string;
@@ -840,6 +857,18 @@ export interface ProductList {
   kelompok: string;
   satuan: string;
   berat: number;
+}
+
+export interface TerminList {
+  kode_termin: string;
+  nama_termin: string;
+  hari: string;
+  persen: string;
+  tempo: string;
+  cod: string;
+  catatan: string;
+  userid: string;
+  tgl_update: string;
 }
 
 export interface StockItem {
@@ -944,4 +973,3 @@ export interface UserPermissions {
   can_view_reports: boolean;
   can_export_data: boolean;
 }
-
