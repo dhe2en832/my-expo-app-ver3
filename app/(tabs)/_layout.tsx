@@ -10,9 +10,12 @@ import {
   CalendarCheck,
   MapPin,
 } from "lucide-react-native";
-import { Platform } from "react-native";
+import { Platform, View, Text, StyleSheet } from "react-native";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function TabsLayout() {
+  const { user } = useAuth();
+  // console.log("user auth ", user);
   return (
     <Tabs
       screenOptions={{
@@ -40,6 +43,14 @@ export default function TabsLayout() {
         options={{
           title: "Beranda",
           tabBarIcon: ({ color, size }) => <House color={color} size={22} />,
+          headerRight: () => (
+            <View style={{ paddingRight: 20 }}>
+              {/* <Text style={styles.entitasLabel}>{user?.keterangan}</Text> */}
+              <Text style={styles.entitasLabel}>
+                [{user?.kodeCabang}] {user?.namaCabang}
+              </Text>
+            </View>
+          ),
         }}
       />
 
@@ -132,3 +143,13 @@ export default function TabsLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  entitasLabel: {
+    fontSize: 14,
+    color: "#666",
+    fontWeight: "600",
+    // marginLeft: "auto",
+    flexShrink: 1,
+  },
+});

@@ -90,7 +90,7 @@ export default function LoginScreen() {
             await new Promise((resolve) => setTimeout(resolve, 500));
             setIsSyncing(false); // HIDE OVERLAY
 
-        } catch (error) {
+        } catch (error:any) {
             console.error("[App] Error initializing DB/Sync:", error);
             // Handling error, pastikan overlay tetap hilang
             setSyncProgress(100);
@@ -100,6 +100,7 @@ export default function LoginScreen() {
 
             await new Promise((resolve) => setTimeout(resolve, 1000));
             setIsSyncing(false);
+            Alert.alert("Error during Sync", error.message);
             throw error; // Re-throw error agar handleLogin tahu ada masalah
         }
     };

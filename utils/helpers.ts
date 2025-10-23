@@ -11,6 +11,18 @@ export const delay = (ms: number): Promise<void> => {
   return new Promise((resolve) => setTimeout(resolve, ms));
 };
 
+export const formatCurrencyInput = (value: number): string => {
+  return new Intl.NumberFormat("id-ID", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+};
+
+export const parseCurrencyInput = (text: string): number => {
+  // Hapus semua karakter non-digit kecuali titik
+  const cleanText = text.replace(/[^\d]/g, "");
+  return parseInt(cleanText) || 0;
+};
 
 // Format currency in Indonesian Rupiah
 export const formatCurrency = (amount: number): string => {

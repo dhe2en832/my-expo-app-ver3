@@ -4,6 +4,7 @@ import createContextHook from "@nkzw/create-context-hook";
 import * as SecureStore from "expo-secure-store";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { loginAPI, salesAPI, User, type User as ApiUser } from "@/api/services";
+import { Alert } from "react-native";
 
 // interface User {
 //   id: string;
@@ -48,21 +49,25 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
         if (token && userData) {
           const apiUser = JSON.parse(userData) as ApiUser;
           const frontendUser: User = {
+            kodeCabang: apiUser.kodeCabang,
+            namaCabang: apiUser.namaCabang,
+            keterangan: apiUser.keterangan,
+            pusat: apiUser.pusat,
             kode_user: apiUser.kode_user,
             userid: apiUser.userid,
             nama_user: apiUser.nama_user,
-            kodeCabang: apiUser.kodeCabang,
             kodeSales: apiUser.kodeSales || "",
             namaSales: apiUser.namaSales || "", // ← inisialisasi namaSales
             salesRole: apiUser.salesRole || "",
             anakBuah: apiUser.anakBuah,
             // jabatan: apiUser.jabatan,
           };
-          console.log("Loaded stored user auth:", frontendUser);
+          // console.log("Loaded stored user auth:", frontendUser);
           setUser(frontendUser);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error loading auth ", error);
+        Alert.alert("Error fungsi loadStoredAuth : ", error.message);
       } finally {
         setIsLoading(false); // ← setelah delay + load, baru selesai loading
       }
@@ -82,24 +87,30 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
             // const salesRes = await salesAPI.getSalesList(apiUser.kode_sales);
 
             const frontendUser: User = {
+              kodeCabang: apiUser.kodeCabang,
+              namaCabang: apiUser.namaCabang,
+              keterangan: apiUser.keterangan,
+              pusat: apiUser.pusat,
               kode_user: apiUser.kode_user,
               userid: apiUser.userid,
-              nama_user: apiUser.nama_user,
-              kodeCabang: apiUser.kodeCabang,
+              nama_user: apiUser.nama_user || "",
               kodeSales: apiUser.kodeSales || "",
               namaSales: apiUser.namaSales || "", // ← inisialisasi namaSales
               salesRole: apiUser.salesRole || "",
               anakBuah: apiUser.anakBuah,
             };
-
+            // console.log("frontendUser : ", frontendUser);
             setUser(frontendUser);
             return true;
           } else {
             console.warn("Login API failed:", result.message);
+            Alert.alert("Error result login : ", result.message);
+
             return false; // ← pastikan return false!
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error("Login exception:", error);
+          Alert.alert("Error fungsi auth async login: ", error.message);
           return false; // ← jangan throw, return false!
         }
       },

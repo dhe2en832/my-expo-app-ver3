@@ -29,6 +29,11 @@ import {
 } from "react-native-safe-area-context";
 import { CustomerList, ProductList, StockItem } from "@/api/interface";
 import moment from "moment";
+import {
+  formatCurrency,
+  formatCurrencyInput,
+  parseCurrencyInput,
+} from "@/utils/helpers";
 
 const now = moment();
 
@@ -39,6 +44,8 @@ interface CartItem {
   no_item: string;
   nama_item: string;
   harga: number;
+  harga_original: number; // ✅ Harga default dari product
+  is_harga_edited: boolean; // ✅ Flag untuk track edit
   quantity: number;
   subtotal: number;
   stok: number;
@@ -95,7 +102,6 @@ export default function SalesOrderForm({
   const [terminList, setTerminList] = useState<any[]>([]);
   const [showTerminModal, setShowTerminModal] = useState(false);
   const [ppnRupiah, setPpnRupiah] = useState(0);
-  // ✅ State untuk form (SAMA PERSIS dengan create.tsx)
   const [form, setForm] = useState<SalesOrderForm>({
     kode_cust: "",
     no_cust: "",
@@ -114,8 +120,6 @@ export default function SalesOrderForm({
     uang_muka: 0,
     items: [],
   });
-
-  // ✅ State untuk existing order data (edit mode)
   const [existingOrder, setExistingOrder] = useState<any>(null);
 
   // ✅ State untuk modals (SAMA dengan create.tsx)
@@ -133,6 +137,53 @@ export default function SalesOrderForm({
 
   const [searchCustomer, setSearchCustomer] = useState("");
   const [searchProduct, setSearchProduct] = useState("");
+
+  useEffect(() => {
+    return () => {
+      // Cleanup function - akan dijalankan ketika component unmount
+      resetForm();
+    };
+  }, []);
+  // ✅ DI DALAM COMPONENT
+  const resetForm = useCallback(() => {
+    console.log("🔄 Resetting form...");
+
+    setForm({
+      kode_cust: "",
+      no_cust: "",
+      nama_cust: "",
+      alamat: "",
+      tanggal_so: new Date().toISOString().split("T")[0],
+      keterangan: "",
+      kode_termin: "",
+      nama_termin: "",
+      kode_kirim: "",
+      cara_kirim: undefined,
+      pajak: "N",
+      ppn_percent: 0, //11,
+      diskon_header: 0,
+      diskon_header_percent: 0,
+      uang_muka: 0,
+      items: [],
+    });
+
+    setExistingOrder(null);
+    setPpnRupiah(0);
+    setSearchCustomer("");
+    setSearchProduct("");
+    setShowCustomerModal(false);
+    setShowProductModal(false);
+    setShowPaymentModal(false);
+    setShowTerminModal(false);
+    setError(null);
+  }, []);
+
+  useEffect(() => {
+    // Reset ketika mode berubah dari edit ke create
+    if (mode === "create" && !orderId) {
+      resetForm();
+    }
+  }, [mode, orderId, resetForm]);
 
   // ✅ Load existing data untuk edit mode
   useEffect(() => {
@@ -173,15 +224,51 @@ export default function SalesOrderForm({
     }
   };
 
-  // ✅ Panggil saat component mount
   useEffect(() => {
     loadTerminList();
   }, []);
 
+  // ✅ Function untuk update harga item
+  const updateItemPrice = (itemId: string, priceText: string) => {
+    const newPrice = parseCurrencyInput(priceText);
+    setForm((prev) => ({
+      ...prev,
+      items: prev.items.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              harga: newPrice,
+              is_harga_edited: newPrice !== item.harga_original, // ✅ Set flag edit
+              subtotal: newPrice * item.quantity, // ✅ Update subtotal
+            }
+          : item
+      ),
+    }));
+  };
+
+  // ✅ Function untuk reset harga ke original
+  const resetItemPrice = (itemId: string) => {
+    const item = form.items.find((item) => item.id === itemId);
+    if (!item) return;
+
+    setForm((prev) => ({
+      ...prev,
+      items: prev.items.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              harga: item.harga_original,
+              is_harga_edited: false, // ✅ Reset flag
+              subtotal: item.harga_original * item.quantity,
+            }
+          : item
+      ),
+    }));
+  };
+
   const populateFormFromData = (orderData: any) => {
     const header = orderData.header;
     const details = orderData.items;
-
     // Convert details to cart items
     const cartItems: CartItem[] = details.map((detail: any, index: number) => ({
       id: `existing-${index}`,
@@ -189,6 +276,8 @@ export default function SalesOrderForm({
       no_item: detail.no_item || "", // Will be populated when products are loaded
       nama_item: detail.nama_item,
       harga: detail.harga,
+      harga_original: detail.harga, // ✅ Simpan harga original
+      is_harga_edited: false, // ✅ Default, akan di-update nanti
       quantity: detail.qty,
       subtotal: detail.total,
       stok: 0, // Will be updated when products are loaded
@@ -218,11 +307,10 @@ export default function SalesOrderForm({
         new Date().toISOString().split("T")[0],
       keterangan: "", // Adjust based on your API
       kode_termin: header.kode_termin || "",
-      nama_termin: selectedTermin?.nama_termin || "",
+      nama_termin: selectedTermin?.nama_termin || header.nama_termin,
       kode_kirim: header.kode_kirim || "",
       cara_kirim: header.cara_kirim as "KG" | "KP" | "AG" | "AP" | undefined,
       pajak: header.pajak || "N", //
-      // ppn_percent: header.ppn_percent || 0,
       ppn_percent: ppnPercent,
       diskon_header: header.diskon_header || 0,
       diskon_header_percent: parseFloat(header.diskon_header_percent) || 0,
@@ -233,8 +321,6 @@ export default function SalesOrderForm({
     const calculatedPpn = subtotalAfterDiscount * (ppnPercent / 100);
     setPpnRupiah(calculatedPpn);
   };
-
-  // ✅ COPY SEMUA FUNGSI DARI create.tsx DI SINI:
 
   // ✅ Filter products
   useEffect(() => {
@@ -412,6 +498,8 @@ export default function SalesOrderForm({
         no_item: product.no_item,
         nama_item: product.nama_item,
         harga: product.harga1 || 0,
+        harga_original: product.harga1 || 0, // ✅ Simpan harga original
+        is_harga_edited: false, // ✅ Default belum di-edit
         quantity: 1,
         subtotal: product.harga1 || 0,
         stok: product.stok,
@@ -495,13 +583,20 @@ export default function SalesOrderForm({
   // ✅ Calculate totals
   const calculateSubtotal = () => {
     return form.items.reduce(
-      (total, item) => total + item.quantity * item.harga,
+      (total, item) => total + item.harga * item.quantity,
       0
     );
   };
 
   const calculateTotalDiscountDetail = () => {
-    return form.items.reduce((total, item) => total + item.diskon_value, 0);
+    return form.items.reduce((total, item) => {
+      const itemSubtotal = item.harga * item.quantity;
+      const itemDiscount =
+        item.diskon_percent > 0
+          ? itemSubtotal * (item.diskon_percent / 100)
+          : item.diskon_value;
+      return total + itemDiscount;
+    }, 0);
   };
 
   const calculateTotalAfterDetailDiscount = () => {
@@ -509,79 +604,74 @@ export default function SalesOrderForm({
   };
 
   const calculateDiscountHeader = () => {
+    const subtotal = calculateSubtotal();
+    const totalDiscountDetail = calculateTotalDiscountDetail();
+    const afterDetailDiscount = subtotal - totalDiscountDetail;
+
     if (form.diskon_header_percent > 0) {
-      return (
-        calculateTotalAfterDetailDiscount() * (form.diskon_header_percent / 100)
-      );
+      return afterDetailDiscount * (form.diskon_header_percent / 100);
     }
     return form.diskon_header;
   };
 
-  // const calculateSubtotalAfterDiscount = () => {
-  //   return calculateTotalAfterDetailDiscount() - calculateDiscountHeader();
-  // };
+  // ✅ UPDATE calculatePPN untuk support 3 mode pajak
+  const calculatePPN = useCallback(() => {
+    if (form.pajak === "N") return 0; // Non Pajak
 
-  // const calculatePPN = () => {
-  //   if (form.pajak === "N") {
-  //     return 0; // Tanpa Pajak
-  //   }
-
-  //   const subtotalAfterDiscount = calculateSubtotalAfterDiscount();
-  //   const ppnValue = subtotalAfterDiscount * (form.ppn_percent / 100);
-
-  //   // Update state nilai rupiah pajak
-  //   setPpnRupiah(ppnValue);
-
-  //   return ppnValue;
-  // };
-
-  // ✅ Update calculateGrandTotal untuk handle Include Pajak
-  const calculateGrandTotal = () => {
-    const subtotalAfterDiscount = calculateSubtotalAfterDiscount();
-    const ppnValue = calculatePPN();
-
-    if (form.pajak === "I") {
-      // Untuk Include, PPN sudah termasuk dalam subtotal
-      return subtotalAfterDiscount - form.uang_muka;
-    } else {
-      // Untuk Exclude dan Tanpa Pajak, PPN ditambahkan
-      return subtotalAfterDiscount + ppnValue - form.uang_muka;
-    }
-  };
-
-  // ✅ PERBAIKI: Gunakan useCallback untuk calculation functions
-  const calculateSubtotalAfterDiscount = useCallback(() => {
-    const totalAfterDetailDiscount = calculateTotalAfterDetailDiscount();
+    const subtotal = calculateSubtotal();
+    const totalDiscountDetail = calculateTotalDiscountDetail();
     const discountHeader = calculateDiscountHeader();
+    const afterDiscount = subtotal - totalDiscountDetail - discountHeader;
 
-    let subtotalAfterDiscount = totalAfterDetailDiscount - discountHeader;
-
-    if (form.pajak === "I") {
-      const ppnIncluded =
-        subtotalAfterDiscount * (form.ppn_percent / (100 + form.ppn_percent));
-      subtotalAfterDiscount -= ppnIncluded;
+    if (form.pajak === "E") {
+      // Exclude → PPN ditambahkan di akhir
+      return (afterDiscount * form.ppn_percent) / 100;
+    } else if (form.pajak === "I") {
+      // Include → PPN sudah termasuk, hitung berapa PPN-nya
+      return afterDiscount - afterDiscount / (1 + form.ppn_percent / 100);
     }
 
-    return subtotalAfterDiscount;
+    return 0;
   }, [
     form.pajak,
     form.ppn_percent,
-    form.items,
-    form.diskon_header,
-    form.diskon_header_percent,
+    calculateSubtotal,
+    calculateTotalDiscountDetail,
+    calculateDiscountHeader,
   ]);
 
-  const calculatePPN = useCallback(() => {
-    if (form.pajak === "N") {
-      return 0;
+  // ✅ UPDATE calculateGrandTotal untuk support 3 mode pajak
+  const calculateGrandTotal = () => {
+    const subtotal = calculateSubtotal();
+    const totalDiscountDetail = calculateTotalDiscountDetail();
+    const discountHeader = calculateDiscountHeader();
+    const afterDiscount = subtotal - totalDiscountDetail - discountHeader;
+    const ppnValue = calculatePPN();
+
+    if (form.pajak === "E") {
+      // Exclude → tambahkan PPN
+      return afterDiscount + ppnValue - form.uang_muka;
+    } else if (form.pajak === "I") {
+      // Include → PPN sudah termasuk, tidak perlu ditambahkan
+      return afterDiscount - form.uang_muka;
+    } else {
+      // Non Pajak
+      return afterDiscount - form.uang_muka;
     }
+  };
 
-    const subtotalAfterDiscount = calculateSubtotalAfterDiscount();
-    const ppnValue = subtotalAfterDiscount * (form.ppn_percent / 100);
+  // ✅ UPDATE calculateSubtotalAfterDiscount (jika masih dipakai untuk display)
+  const calculateSubtotalAfterDiscount = useCallback(() => {
+    const subtotal = calculateSubtotal();
+    const totalDiscountDetail = calculateTotalDiscountDetail();
+    const discountHeader = calculateDiscountHeader();
 
-    // ✅ Pindahkan setPpnRupiah ke handler khusus
-    return ppnValue;
-  }, [form.pajak, form.ppn_percent, calculateSubtotalAfterDiscount]);
+    return subtotal - totalDiscountDetail - discountHeader;
+  }, [
+    calculateSubtotal,
+    calculateTotalDiscountDetail,
+    calculateDiscountHeader,
+  ]);
 
   // ✅ PERBAIKI: useEffect dengan dependencies minimal
   useEffect(() => {
@@ -609,56 +699,54 @@ export default function SalesOrderForm({
     const subtotal = calculateSubtotal();
     const totalDiscountDetail = calculateTotalDiscountDetail();
     const discountHeader = calculateDiscountHeader();
-    const subtotalAfterDiscount = calculateSubtotalAfterDiscount();
+    const afterDiscount = subtotal - totalDiscountDetail - discountHeader;
     const ppnValue = calculatePPN();
     const grandTotal = calculateGrandTotal();
-
     return {
       header: {
-        kode_so: existingOrder?.header.kode_so, // Untuk update
-        no_so: existingOrder?.header.no_so, // Untuk update
+        kode_so: existingOrder?.header.kode_so || null, // Untuk update, null kalau create
+        no_so: existingOrder?.header.no_so || null, // Boleh null untuk create
         kode_sales: user?.kodeSales,
-        nama_sales: user?.namaSales || "",
         kode_cust: form.kode_cust,
-        customer_name: form.nama_cust,
-        customer_address: form.alamat,
-        kode_termin: form.kode_termin,
-        nama_termin: form.nama_termin,
-        kode_kirim: form.kode_kirim,
-        cara_kirim: form.cara_kirim,
-        pajak: form.pajak,
-        ppn_percent: form.ppn_percent,
-        ppn_value: ppnValue,
-        diskon_header_value: discountHeader,
-        diskon_header_percent: form.diskon_header_percent,
-        uang_muka: form.uang_muka,
-        // subtotal: subtotal,
-        total: grandTotal,
+        franco: "N",
+        alamat_pengiriman: form.alamat || "",
+        kode_termin: form.kode_termin || null,
+        cara_kirim: form.cara_kirim || null,
+        kena_pajak: form.pajak || "N", // enum('I','E','N')
+        ppn_percent: form.ppn_percent || 0,
+        ppn_value: ppnValue || 0,
+        diskon_header_percent: form.diskon_header_percent || 0,
+        diskon_header_value: discountHeader || 0,
+        uang_muka: form.uang_muka || 0,
+        harga_pengiriman: 0,
+        total: grandTotal || 0,
         status: existingOrder?.header.status || "pending",
-        is_unscheduled: "N",
-        tgl_so: form.tanggal_so,
-        diskripsi: form.keterangan,
       },
-      details: form.items.map((item, index) => ({
-        kode_item: item.kode_item,
-        nama_item: item.nama_item,
-        diskripsi: item.diskripsi,
-        qty_std: item.quantity,
-        harga: item.harga,
-        diskon: item.diskon_value,
-        diskon_percent: item.diskon_percent,
-        diskon_value: item.diskon_value,
-        total: item.subtotal,
-        subtotal: item.quantity * item.harga,
-        satuan: item.satuan,
-        berat: item.berat,
-        franco: item.franco,
-        id_so: index + 1,
-      })),
+
+      details: form.items.map((item) => {
+        const itemSubtotal = item.harga * item.quantity;
+        const itemDiscount =
+          item.diskon_percent > 0
+            ? itemSubtotal * (item.diskon_percent / 100)
+            : item.diskon_value;
+        const itemTotal = itemSubtotal - itemDiscount;
+
+        return {
+          kode_item: item.kode_item,
+          diskripsi: item.diskripsi || item.nama_item,
+          satuan: item.satuan,
+          berat: item.berat,
+          qty_std: item.quantity,
+          harga: item.harga,
+          diskon_percent: item.diskon_percent,
+          diskon_value: item.diskon_value,
+          total: itemTotal, // ✅ Total setelah diskon item
+        };
+      }),
     };
   };
 
-  // ✅ MODIFIED: Save as draft - handle both create dan edit
+  // ✅ Update handleSaveDraft dan handleSubmitOrder
   const handleSaveDraft = async () => {
     if (!validateForm()) return;
 
@@ -667,7 +755,7 @@ export default function SalesOrderForm({
       setError(null);
 
       const orderData = prepareOrderData();
-      orderData.header.status = "draft";
+      orderData.header.status = "draft"; // ✅ Sesuai backend: "draft"
 
       let res;
       if (mode === "edit") {
@@ -704,7 +792,6 @@ export default function SalesOrderForm({
     }
   };
 
-  // ✅ MODIFIED: Submit order - handle both create dan edit
   const handleSubmitOrder = async () => {
     if (!validateForm()) return;
 
@@ -723,11 +810,12 @@ export default function SalesOrderForm({
               setError(null);
 
               const orderData = prepareOrderData();
+
               // Untuk edit, pertahankan status yang ada kecuali dari draft
               if (mode === "edit" && existingOrder?.header.status !== "draft") {
                 orderData.header.status = existingOrder!.header.status;
               } else {
-                orderData.header.status = "pending";
+                orderData.header.status = "pending"; // ✅ Sesuai backend: "pending"
               }
 
               let res;
@@ -763,15 +851,6 @@ export default function SalesOrderForm({
     );
   };
 
-  // ✅ Format currency
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
-
   // ✅ Render cart item
   const renderCartItem = ({ item }: { item: CartItem }) => (
     <View style={styles.cartItem}>
@@ -795,7 +874,44 @@ export default function SalesOrderForm({
       <Text style={styles.productCategory}>
         {item.kategori} • {item.kelompok}
       </Text>
-      <Text style={styles.productPrice}>{formatCurrency(item.harga)}</Text>
+      {/* ✅ HARGA EDITABLE */}
+      <View style={styles.priceContainer}>
+        <View style={styles.priceLeft}>
+          <Text style={styles.priceLabel}>Harga:</Text>
+          {item.is_harga_edited && (
+            <Text style={styles.originalPrice}>
+              {formatCurrency(item.harga_original)}
+            </Text>
+          )}
+        </View>
+
+        {isEditable ? (
+          <View style={styles.priceInputContainer}>
+            <TextInput
+              style={[
+                styles.priceInput,
+                item.is_harga_edited && styles.editedPriceInput,
+              ]}
+              value={formatCurrencyInput(item.harga)} // ✅ Format ke 1.200
+              onChangeText={(text) => {
+                updateItemPrice(item.id, text); // ✅ Langsung parse
+              }}
+              keyboardType="numeric"
+              placeholder="0"
+            />
+            {item.is_harga_edited && (
+              <TouchableOpacity
+                onPress={() => resetItemPrice(item.id)}
+                style={styles.resetPriceButton}
+              >
+                <MaterialIcons name="refresh" size={16} color="#667eea" />
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (
+          <Text style={styles.productPrice}>{formatCurrency(item.harga)}</Text>
+        )}
+      </View>
 
       {/* Discount Input */}
       {isEditable && (
@@ -920,90 +1036,114 @@ export default function SalesOrderForm({
     </TouchableOpacity>
   );
 
-  // ✅ Render payment summary
-  const renderPaymentSummary = () => (
-    <View style={styles.paymentSummary}>
-      <Text style={styles.summaryTitle}>Ringkasan Pembayaran</Text>
+  const renderPaymentSummary = () => {
+    const subtotal = calculateSubtotal();
+    const totalDiscountDetail = calculateTotalDiscountDetail();
+    const discountHeader = calculateDiscountHeader();
+    const afterDiscount = calculateSubtotalAfterDiscount();
+    const ppnValue = calculatePPN();
+    const grandTotal = calculateGrandTotal();
 
-      <View style={styles.summaryRow}>
-        <Text style={styles.summaryLabel}>Subtotal:</Text>
-        <Text style={styles.summaryValue}>
-          {formatCurrency(calculateSubtotal())}
-        </Text>
-      </View>
+    return (
+      <View style={styles.paymentSummary}>
+        <Text style={styles.summaryTitle}>Ringkasan Pembayaran</Text>
 
-      <View style={styles.summaryRow}>
-        <Text style={styles.summaryLabel}>Diskon Detail:</Text>
-        <Text style={styles.summaryValue}>
-          -{formatCurrency(calculateTotalDiscountDetail())}
-        </Text>
-      </View>
-
-      <View style={styles.summaryRow}>
-        <Text style={styles.summaryLabel}>Subtotal setelah diskon detail:</Text>
-        <Text style={styles.summaryValue}>
-          {formatCurrency(calculateTotalAfterDetailDiscount())}
-        </Text>
-      </View>
-
-      <View style={styles.summaryRow}>
-        <Text style={styles.summaryLabel}>Diskon Header:</Text>
-        <Text style={styles.summaryValue}>
-          -{formatCurrency(calculateDiscountHeader())}
-        </Text>
-      </View>
-
-      <View style={styles.summaryRow}>
-        <Text style={styles.summaryLabel}>Subtotal setelah diskon:</Text>
-        <Text style={styles.summaryValue}>
-          {formatCurrency(calculateSubtotalAfterDiscount())}
-        </Text>
-      </View>
-
-      {/* <View style={styles.summaryRow}>
-        <Text style={styles.summaryLabel}>PPN ({form.ppn_percent}%):</Text>
-        <Text style={styles.summaryValue}>
-          +{formatCurrency(calculatePPN())}
-        </Text>
-      </View> */}
-
-      <View style={styles.summaryRow}>
-        <Text style={styles.summaryLabel}>
-          {form.pajak === "I"
-            ? "Subtotal (Include PPN):"
-            : "Subtotal setelah diskon:"}
-        </Text>
-        <Text style={styles.summaryValue}>
-          {formatCurrency(calculateSubtotalAfterDiscount())}
-        </Text>
-      </View>
-
-      {form.pajak !== "N" && (
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>PPN ({form.ppn_percent}%):</Text>
+          <Text style={styles.summaryLabel}>Subtotal:</Text>
+          <Text style={styles.summaryValue}>{formatCurrency(subtotal)}</Text>
+        </View>
+
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Diskon Detail:</Text>
           <Text style={styles.summaryValue}>
-            {form.pajak === "I"
-              ? "(Include)"
-              : `+${formatCurrency(calculatePPN())}`}
+            -{formatCurrency(totalDiscountDetail)}
           </Text>
         </View>
-      )}
 
-      <View style={styles.summaryRow}>
-        <Text style={styles.summaryLabel}>Uang Muka:</Text>
-        <Text style={styles.summaryValue}>
-          -{formatCurrency(form.uang_muka)}
-        </Text>
-      </View>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Diskon Header:</Text>
+          <Text style={styles.summaryValue}>
+            -{formatCurrency(discountHeader)}
+          </Text>
+        </View>
 
-      <View style={[styles.summaryRow, styles.grandTotalRow]}>
-        <Text style={styles.grandTotalLabel}>Grand Total:</Text>
-        <Text style={styles.grandTotalValue}>
-          {formatCurrency(calculateGrandTotal())}
-        </Text>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>
+            {form.pajak === "I"
+              ? "Subtotal (Include PPN):"
+              : "Subtotal setelah diskon:"}
+          </Text>
+          <Text style={styles.summaryValue}>
+            {formatCurrency(afterDiscount)}
+          </Text>
+        </View>
+
+        {form.pajak !== "N" && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>
+              PPN ({form.ppn_percent}%):
+              {form.pajak === "I" ? " (Include)" : " (Exclude)"}
+            </Text>
+            <Text style={styles.summaryValue}>
+              {form.pajak === "I"
+                ? `(${formatCurrency(ppnValue)})`
+                : `+${formatCurrency(ppnValue)}`}
+            </Text>
+          </View>
+        )}
+
+        {form.uang_muka > 0 && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Uang Muka:</Text>
+            <Text style={styles.summaryValue}>
+              -{formatCurrency(form.uang_muka)}
+            </Text>
+          </View>
+        )}
+
+        <View style={[styles.summaryRow, styles.grandTotalRow]}>
+          <Text style={styles.grandTotalLabel}>Grand Total:</Text>
+          <Text style={styles.grandTotalValue}>
+            {formatCurrency(grandTotal)}
+          </Text>
+        </View>
+
+        {/* ✅ INFO STATUS PAJAK */}
+        <View style={styles.pajakInfo}>
+          <MaterialIcons
+            name="info"
+            size={14}
+            color={
+              form.pajak === "N"
+                ? "#666"
+                : form.pajak === "I"
+                ? "#4CAF50"
+                : "#FF9800"
+            }
+          />
+          <Text
+            style={[
+              styles.pajakInfoText,
+              {
+                color:
+                  form.pajak === "N"
+                    ? "#666"
+                    : form.pajak === "I"
+                    ? "#4CAF50"
+                    : "#FF9800",
+              },
+            ]}
+          >
+            {form.pajak === "N"
+              ? "Transaksi Non Pajak"
+              : form.pajak === "I"
+              ? "PPN termasuk dalam harga"
+              : "PPN akan ditambahkan di akhir"}
+          </Text>
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   // ✅ Render editable field wrapper
   const renderEditableField = (
@@ -1028,7 +1168,7 @@ export default function SalesOrderForm({
           <View>
             <Text style={styles.selectedCustomerName}>{form.nama_cust}</Text>
             <Text style={styles.selectedCustomerCode}>{form.no_cust}</Text>
-                {/* TAMPILKAN NO CUST */}
+            {/* TAMPILKAN NO CUST */}
 
             {form.alamat && (
               <Text style={styles.selectedCustomerAddress} numberOfLines={2}>
@@ -1056,12 +1196,57 @@ export default function SalesOrderForm({
 
   const handlePajakChange = useCallback(
     (pajakValue: "N" | "I" | "E") => {
-      let newPpnPercent = 0;
+      // Definisi status pajak untuk pesan notifikasi
+      const getPajakStatus = (value: "N" | "I" | "E") => {
+        switch (value) {
+          case "I":
+            return "Include PPN";
+          case "E":
+            return "Exclude PPN";
+          case "N":
+            return "Non-Pajak";
+          default:
+            return "Mode Pajak"; // Fallback
+        }
+      };
 
+      const pajakAwalStatus = getPajakStatus(form.pajak);
+      const pajakBaruStatus = getPajakStatus(pajakValue);
+      const isIEChange =
+        (form.pajak === "I" && pajakValue === "E") ||
+        (form.pajak === "E" && pajakValue === "I");
+
+      const isNPajakChange =
+        (form.pajak === "N" && (pajakValue === "I" || pajakValue === "E")) ||
+        ((form.pajak === "I" || form.pajak === "E") && pajakValue === "N");
+
+      if (isIEChange || isNPajakChange) {
+        const newPpnPercentAfterConfirm =
+          pajakValue === "N" ? 0 : DEFAULT_PPN_PERCENT;
+
+        Alert.alert(
+          "Ubah Mode Pajak",
+          `Mengubah dari ${pajakAwalStatus} ke ${pajakBaruStatus} akan mempengaruhi grand total. Lanjutkan?`,
+          [
+            { text: "Batal", style: "cancel" },
+            {
+              text: "Lanjutkan",
+              onPress: () => {
+                setForm((prev) => ({
+                  ...prev,
+                  pajak: pajakValue,
+                  ppn_percent: newPpnPercentAfterConfirm, // Menggunakan nilai yang dihitung
+                }));
+                setPpnRupiah(0);
+              },
+            },
+          ]
+        );
+        return;
+      }
+      let newPpnPercent = DEFAULT_PPN_PERCENT;
       if (pajakValue === "N") {
         newPpnPercent = 0;
-      } else {
-        newPpnPercent = DEFAULT_PPN_PERCENT;
       }
 
       setForm((prev) => ({
@@ -1069,8 +1254,9 @@ export default function SalesOrderForm({
         pajak: pajakValue,
         ppn_percent: newPpnPercent,
       }));
+      setPpnRupiah(0);
     },
-    [DEFAULT_PPN_PERCENT]
+    [form.pajak, DEFAULT_PPN_PERCENT]
   );
 
   // ✅ Loading state
@@ -1091,7 +1277,6 @@ export default function SalesOrderForm({
     );
   }
 
-  // ✅ Render UI - SAMA PERSIS dengan create.tsx dengan conditional edits
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -1134,7 +1319,6 @@ export default function SalesOrderForm({
           keyboardShouldPersistTaps="handled"
         >
           {/* Customer Selection */}
-          {/* <View style={[styles.section, styles.firstSection]}> */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Customer</Text>
             {renderCustomerSelector()}
@@ -1241,11 +1425,7 @@ export default function SalesOrderForm({
 
         {/* Action Buttons */}
         {isEditable && (
-          <View
-            style={[
-              styles.actionButtons,
-            ]}
-          >
+          <View style={[styles.actionButtons]}>
             <TouchableOpacity
               style={[styles.button, styles.draftButton]}
               onPress={handleSaveDraft}
@@ -1425,9 +1605,21 @@ export default function SalesOrderForm({
               <Text style={styles.label}>Status Pajak</Text>
               <View style={styles.pajakContainer}>
                 {[
-                  { value: "N", label: "Tanpa Pajak" },
-                  { value: "I", label: "Include Pajak" },
-                  { value: "E", label: "Exclude Pajak" },
+                  {
+                    value: "N",
+                    label: "Tanpa Pajak",
+                    description: "Tidak kena PPN",
+                  },
+                  {
+                    value: "I",
+                    label: "Include Pajak",
+                    description: "PPN sudah termasuk",
+                  },
+                  {
+                    value: "E",
+                    label: "Exclude Pajak",
+                    description: "PPN ditambahkan",
+                  },
                 ].map((pajak) => (
                   <TouchableOpacity
                     key={pajak.value}
@@ -1447,6 +1639,15 @@ export default function SalesOrderForm({
                       ]}
                     >
                       {pajak.label}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.pajakDescription,
+                        form.pajak === pajak.value &&
+                          styles.pajakDescriptionSelected,
+                      ]}
+                    >
+                      {pajak.description}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -1495,27 +1696,12 @@ export default function SalesOrderForm({
                   : "PPN ditambahkan di akhir"}
               </Text>
             </View>
-            {/* <View style={styles.paymentInputGroup}>
-              <Text style={styles.label}>PPN (%)</Text>
-              {renderEditableField(
-                <TextInput
-                  style={styles.input}
-                  value={form.ppn_percent.toString()}
-                  onChangeText={(text) => {
-                    const percent = parseFloat(text) || 0;
-                    setForm((prev) => ({ ...prev, ppn_percent: percent }));
-                  }}
-                  keyboardType="numeric"
-                  placeholder="11"
-                />
-              )}
-            </View> */}
             <View style={styles.paymentInputGroup}>
               <Text style={styles.label}>Diskon Header (%)</Text>
               {renderEditableField(
                 <TextInput
                   style={styles.input}
-                  value={form.diskon_header_percent.toString()}
+                  // value={form.diskon_header_percent.toString()}
                   onChangeText={(text) => {
                     const percent = parseFloat(text) || 0;
                     setForm((prev) => ({
@@ -1534,9 +1720,11 @@ export default function SalesOrderForm({
               {renderEditableField(
                 <TextInput
                   style={styles.input}
-                  value={form.diskon_header.toString()}
+                  // value={form.diskon_header.toString()}
+                  value={formatCurrencyInput(form.diskon_header)}
                   onChangeText={(text) => {
-                    const nominal = parseFloat(text) || 0;
+                    // const nominal = parseFloat(text) || 0;
+                    const nominal = parseCurrencyInput(text);
                     setForm((prev) => ({
                       ...prev,
                       diskon_header: nominal,
@@ -1553,9 +1741,11 @@ export default function SalesOrderForm({
               {renderEditableField(
                 <TextInput
                   style={styles.input}
-                  value={form.uang_muka.toString()}
+                  // value={form.uang_muka.toString()}
+                  value={formatCurrencyInput(form.uang_muka)}
                   onChangeText={(text) => {
-                    const uangMuka = parseFloat(text) || 0;
+                    // const uangMuka = parseFloat(text) || 0;
+                    const uangMuka = parseCurrencyInput(text);
                     setForm((prev) => ({ ...prev, uang_muka: uangMuka }));
                   }}
                   keyboardType="numeric"
@@ -1596,20 +1786,6 @@ export default function SalesOrderForm({
                 </View>
               )}
             </View>
-            {/* <View style={styles.paymentInputGroup}>
-              <Text style={styles.label}>Kode Kirim</Text>
-              {renderEditableField(
-                <TextInput
-                  style={styles.input}
-                  value={form.kode_kirim}
-                  onChangeText={(text) =>
-                    setForm((prev) => ({ ...prev, kode_kirim: text }))
-                  }
-                  placeholder="Kode pengiriman"
-                />
-              )}
-            </View> */}
-
             {renderPaymentSummary()}
           </ScrollView>
         </SafeAreaView>
@@ -1647,6 +1823,82 @@ export default function SalesOrderForm({
 
 // ✅ Styles - COPY SEMUA DARI create.tsx DAN TAMBAH YANG BARU
 const styles = StyleSheet.create({
+  pajakDescription: {
+    fontSize: 10,
+    color: "#888",
+    marginTop: 2,
+  },
+  pajakDescriptionSelected: {
+    color: "#fff",
+  },
+  pajakInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f8f9fa",
+    padding: 8,
+    borderRadius: 6,
+    marginTop: 8,
+    gap: 6,
+  },
+  pajakInfoText: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  priceContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  priceLeft: {
+    flex: 1,
+  },
+  priceLabel: {
+    fontSize: 12,
+    color: "#666",
+    marginBottom: 2,
+  },
+  originalPrice: {
+    fontSize: 10,
+    color: "#999",
+    textDecorationLine: "line-through",
+  },
+  priceInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  priceInput: {
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    // padding: 4,
+    width: 100,
+    textAlign: "right",
+    fontSize: 14,
+    backgroundColor: "#fff",
+    fontFamily: "monospace",
+  },
+  editedPriceInput: {
+    borderColor: "#667eea",
+    backgroundColor: "#f0f4ff",
+    fontWeight: "600",
+  },
+  currencySymbol: {
+    fontSize: 12,
+    color: "#666",
+    fontWeight: "600",
+  },
+  resetPriceButton: {
+    padding: 4,
+  },
+  productPrice: {
+    fontSize: 12,
+    color: "#667eea",
+    fontWeight: "600",
+  },
   paymentModalScrollContent: {
     flexGrow: 1,
     paddingBottom: 32, // ✅ Extra space
@@ -2050,7 +2302,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 16,
-    // paddingTop: 16 + insets.top,
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#f1f5f9",
@@ -2070,7 +2321,6 @@ const styles = StyleSheet.create({
   },
   modalList: {
     paddingHorizontal: 16,
-    // paddingBottom: insets.bottom + 16,
   },
   customerItem: {
     paddingVertical: 14,
@@ -2107,11 +2357,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#64748b",
   },
-  productPrice: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1e293b",
-  },
   loadingProducts: {
     padding: 20,
     alignItems: "center",
@@ -2121,8 +2366,6 @@ const styles = StyleSheet.create({
     padding: 20,
     color: "#94a3b8",
   },
-
-  // Tambahan styles untuk edit mode
   loadingText: {
     marginTop: 12,
     fontSize: 16,
@@ -2468,7 +2711,6 @@ const styles = StyleSheet.create({
   paymentModalContent: {
     flex: 1,
     padding: 16,
-    // paddingBottom: insets.bottom + 16,
   },
   paymentInputGroup: {
     marginBottom: 16,

@@ -12,7 +12,12 @@ import {
   TextInput,
   useWindowDimensions,
 } from "react-native";
-import { Stack, useRouter, useLocalSearchParams } from "expo-router";
+import {
+  Stack,
+  useRouter,
+  useLocalSearchParams,
+  useFocusEffect,
+} from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useAuth } from "@/contexts/AuthContext";
 import { salesOrderAPI } from "@/api/services";
@@ -204,7 +209,7 @@ const SalesOrderListContent: React.FC<SalesOrderListContentProps> = React.memo(
           {item.kode_cust && (
             <View style={styles.customerInfo}>
               <MaterialIcons name="badge" size={14} color="#666" />
-              <Text style={styles.customerCode}>{item.kode_cust}</Text>
+              <Text style={styles.customerCode}>{item.no_cust}</Text>
             </View>
           )}
 
@@ -218,7 +223,7 @@ const SalesOrderListContent: React.FC<SalesOrderListContentProps> = React.memo(
 
             {item.total && (
               <View style={styles.detailItem}>
-                <MaterialIcons name="attach-money" size={14} color="#666" />
+                <MaterialIcons name="request-quote" size={14} color="#666" />
                 <Text style={styles.detailText}>
                   {formatCurrency(item.total)}
                 </Text>
@@ -516,9 +521,14 @@ export default function SalesOrderList() {
   }, [user?.salesRole]);
 
   // Fetch data utama
-  useEffect(() => {
-    fetchAllSalesOrders();
-  }, []);
+  // useEffect(() => {
+  //   fetchAllSalesOrders();
+  // }, []);
+  useFocusEffect(
+    useCallback(() => {
+      fetchAllSalesOrders();
+    }, [])
+  );
 
   // --- TABVIEW RENDERING ---
   interface RenderSceneProps {
@@ -571,7 +581,7 @@ export default function SalesOrderList() {
     <SafeAreaView style={styles.container}>
       <Stack.Screen
         options={{
-          title: "Sales Order",
+          title: "Sales Order List",
           headerRight: () => (
             <TouchableOpacity
               style={styles.headerButton}

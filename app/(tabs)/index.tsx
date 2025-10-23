@@ -390,7 +390,7 @@ export default function HomeScreen() {
       amount: "Sisa 5 pcs",
     },
   ];
-
+  // console.log("user?.namaCabang ", user?.namaCabang);
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
@@ -400,6 +400,7 @@ export default function HomeScreen() {
         <View style={styles.headerMain}>
           {/* Bagian Kiri: Salam dan Nama Pengguna */}
           <View style={styles.headerLeft}>
+            {/* <Text style={styles.greeting}>{user?.namaCabang},</Text> */}
             <Text style={styles.greeting}>{getGreeting()},</Text>
             <Text style={styles.userName}>
               {namaUserSales}

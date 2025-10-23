@@ -12,10 +12,13 @@ export type LoginCredentials = {
 };
 
 export type User = {
+  kodeCabang: string;
+  namaCabang: string;
+  keterangan: string;
+  pusat: string;
   kode_user: string;
   userid: string;
   nama_user: string;
-  kodeCabang: string | "";
   kodeSales: string | "";
   namaSales: string | ""; // ← tambahkan properti namaSales (opsional)
   salesRole: string | "";
@@ -55,6 +58,7 @@ import {
   TerminList,
 } from "./interface";
 import apiClient from "./axiosConfig";
+import { Alert } from "react-native";
 
 // ==================
 // Login API Module
@@ -79,7 +83,9 @@ export const loginAPI = {
         };
       }
     } catch (error: any) {
-      console.error("Login API error:", error);
+      // console.error("Login API error:", error);
+      Alert.alert("Login API error : ", error.message);
+
       if (error.response) {
         const message =
           error.response.data?.message || "Terjadi kesalahan pada server";
@@ -1047,8 +1053,18 @@ export const salesOrderAPI = {
   // ✅ Create Sales Order
   createSalesOrder: async (
     orderData: any
-  ): Promise<APIResponse<{ kode_so: string }>> => {
+  ): Promise<
+    APIResponse<{
+      kode_so: string;
+      subtotal: number;
+      diskon_detail: number;
+      diskon_header: number;
+      ppn: number;
+      total: number;
+    }>
+  > => {
     try {
+      console.log;
       const response = await apiClient.post("/sales-order/create", orderData);
 
       return {

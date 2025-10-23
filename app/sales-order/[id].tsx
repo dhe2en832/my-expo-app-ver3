@@ -1,7 +1,7 @@
 // app/sales-order/[id].tsx
 import React from "react";
 import { useLocalSearchParams } from "expo-router";
-import SalesOrderForm from "@/components/components/SalesOrderForm";
+import SalesOrderForm from "@/components/sales-order/SalesOrderForm";
 
 export default function EditSalesOrder() {
   const params = useLocalSearchParams();

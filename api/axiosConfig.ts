@@ -1,11 +1,11 @@
 // api/axiosConfig.ts
 import axios, { AxiosError } from "axios";
 import * as SecureStore from "expo-secure-store";
+import { Alert } from "react-native";
 
 // const API_BASE_URL = "http://faspro.ddns.net:3000/api";
 const API_BASE_URL = "http://192.168.1.9:3000/api";
 // const API_BASE_URL = "http://192.168.1.9:3000";
-
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -29,6 +29,7 @@ apiClient.interceptors.request.use(
     return config;
   },
   (error: AxiosError) => {
+    Alert.alert("Error : ", error.message);
     return Promise.reject(error);
   }
 );
@@ -43,6 +44,7 @@ apiClient.interceptors.response.use(
       await SecureStore.deleteItemAsync("auth_token");
       await SecureStore.deleteItemAsync("user_data");
     }
+    Alert.alert("Error : ", error.message);
     return Promise.reject(error);
   }
 );
