@@ -17,7 +17,7 @@ import {
   useRouter,
   useLocalSearchParams,
   useFocusEffect,
-} from "expo-router";
+} from "expo-router"; // ✅ TAMBAH useFocusEffect
 import { MaterialIcons } from "@expo/vector-icons";
 import { useAuth } from "@/contexts/AuthContext";
 import { salesOrderAPI } from "@/api/services";
@@ -26,9 +26,9 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import DropDownPicker from "react-native-dropdown-picker"; // Import library yang benar
 import { SalesOrderListType } from "@/api/interface";
 import { TabBar, TabView, Route } from "react-native-tab-view";
+import DropDownPicker from "react-native-dropdown-picker";
 
 // --- CUSTOM HOOKS ---
 // Custom hook untuk debounce
@@ -246,6 +246,7 @@ const SalesOrderListContent: React.FC<SalesOrderListContentProps> = React.memo(
                 </TouchableOpacity>
               )}
 
+              {/* ✅ UPDATE: TAMPILKAN APPROVAL BUTTON HANYA UNTUK SUPERVISOR DAN STATUS PENDING */}
               {user?.salesRole === "Sales Supervisor" &&
                 ["pending", "menunggu"].includes(
                   item.status?.toLowerCase()
@@ -394,17 +395,39 @@ export default function SalesOrderList() {
   // --- HANDLERS ---
   const handleSalesOrderPress = useCallback(
     (order: SalesOrderListType) => {
+      // ✅ TENTUKAN MODE BERDASARKAN STATUS DAN ROLE USER
+      let mode: "edit" | "view" | "approval" = "view";
+      let isEditable = false;
+
+      if (user?.salesRole === "Sales Supervisor") {
+        // Supervisor bisa view semua, approval untuk pending
+        if (["pending", "menunggu"].includes(order.status?.toLowerCase())) {
+          mode = "approval";
+        } else {
+          mode = "view";
+        }
+      } else {
+        // Sales biasa: edit hanya untuk draft milik sendiri
+        if (order.status === "draft" && order.kode_sales === user?.kodeSales) {
+          mode = "edit";
+          isEditable = true;
+        } else {
+          mode = "view";
+        }
+      }
+
       router.push({
         pathname: `/sales-order/${order.id}`,
         params: {
           id: order.id,
           no_so: order.no_so,
           status: order.status,
-          isEditable: order.status === "draft" ? "true" : "false",
+          mode: mode, // ✅ KIRIM MODE SEBAGAI PARAM
+          isEditable: isEditable ? "true" : "false",
         },
       });
     },
-    [router]
+    [router, user]
   );
 
   const handleCreateSalesOrder = useCallback(() => {
@@ -424,13 +447,17 @@ export default function SalesOrderList() {
     [router]
   );
 
+  // ✅ UPDATE: HANDLER APPROVAL - NAVIGASI KE FORM DENGAN MODE APPROVAL
   const handleApproveSalesOrder = useCallback(
     (order: SalesOrderListType) => {
       router.push({
-        pathname: `/sales-order/approve/${order.id}`,
+        pathname: `/sales-order/${order.id}`,
         params: {
           id: order.id,
           no_so: order.no_so,
+          status: order.status,
+          mode: "approval", // ✅ MODE APPROVAL
+          isEditable: "false",
         },
       });
     },
@@ -440,6 +467,51 @@ export default function SalesOrderList() {
   const handleClearSearch = useCallback(() => {
     setSearchQuery("");
   }, []);
+
+  // ✅ UPDATE: API FUNCTIONS UNTUK APPROVAL/REJECT
+  const handleApproveOrder = async (orderId: string, notes?: string) => {
+    try {
+      const res = await salesOrderAPI.approveSalesOrder(orderId, notes);
+      if (res.success) {
+        Alert.alert("Berhasil", "Sales Order berhasil disetujui", [
+          {
+            text: "OK",
+            onPress: () => {
+              // Refresh data setelah approval
+              fetchAllSalesOrders();
+              router.back(); // Kembali ke list
+            },
+          },
+        ]);
+      } else {
+        Alert.alert("Error", res.message || "Gagal menyetujui sales order");
+      }
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Gagal menyetujui sales order");
+    }
+  };
+
+  const handleRejectOrder = async (orderId: string, notes?: string) => {
+    try {
+      const res = await salesOrderAPI.rejectSalesOrder(orderId, notes);
+      if (res.success) {
+        Alert.alert("Berhasil", "Sales Order berhasil ditolak", [
+          {
+            text: "OK",
+            onPress: () => {
+              // Refresh data setelah reject
+              fetchAllSalesOrders();
+              router.back(); // Kembali ke list
+            },
+          },
+        ]);
+      } else {
+        Alert.alert("Error", res.message || "Gagal menolak sales order");
+      }
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Gagal menolak sales order");
+    }
+  };
 
   // --- DATA FETCHING ---
   const loadSalesList = async () => {
@@ -505,6 +577,13 @@ export default function SalesOrderList() {
   }, []);
 
   // --- USE EFFECTS ---
+  // ✅ STEP 1: TAMBAH useFocusEffect UNTUK AUTO-REFRESH
+  useFocusEffect(
+    useCallback(() => {
+      fetchAllSalesOrders();
+    }, [])
+  );
+
   // Success message
   useEffect(() => {
     if (params.successMessage) {
@@ -520,15 +599,10 @@ export default function SalesOrderList() {
     }
   }, [user?.salesRole]);
 
-  // Fetch data utama
-  // useEffect(() => {
-  //   fetchAllSalesOrders();
-  // }, []);
-  useFocusEffect(
-    useCallback(() => {
-      fetchAllSalesOrders();
-    }, [])
-  );
+  // Fetch data utama (initial load)
+  useEffect(() => {
+    fetchAllSalesOrders();
+  }, []);
 
   // --- TABVIEW RENDERING ---
   interface RenderSceneProps {

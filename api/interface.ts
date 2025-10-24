@@ -631,11 +631,36 @@ export interface SalesOrderListType extends SalesOrderList {
   approved_at?: string;
   approval_note?: string;
   waiting_approval_since?: string;
+  rejected_by?: string;
+  rejected_at?: string;
+  rejection_notes?: string;
+  submitted_by?: string;
+  submitted_at?: string;
 
   // Permissions flags
   can_approve?: boolean;
   can_edit?: boolean;
   can_delete?: boolean;
+}
+
+export interface ApprovalRequest {
+  orderId: string;
+  notes?: string;
+  approved_at?: string;
+  rejected_at?: string;
+}
+
+// ✅ INTERFACE UNTUK APPROVAL RESPONSE
+export interface ApprovalResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    orderId: string;
+    status: "approved" | "rejected";
+    updated_at: string;
+    approved_by?: string;
+    rejected_by?: string;
+  };
 }
 
 // ✅ Response untuk Sales Order List
@@ -678,6 +703,11 @@ export interface SalesOrderHeader {
   updated_at: string;
   keterangan?: string;
   tgl_so?: string;
+  approved_by?: string;
+  approved_at?: string;
+  rejected_by?: string;
+  rejected_at?: string;
+  rejection_notes?: string;
 }
 
 export interface SalesOrderItem {

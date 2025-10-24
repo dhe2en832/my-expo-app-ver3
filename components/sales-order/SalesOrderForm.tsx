@@ -79,10 +79,13 @@ interface SalesOrderForm {
 }
 
 interface SalesOrderFormProps {
-  mode: "create" | "edit";
+  mode: "create" | "edit" | "approval"; // ✅ TAMBAH MODE APPROVAL
   orderId?: string;
   initialData?: any;
   isEditable?: boolean;
+  // ✅ PROPS BARU UNTUK APPROVAL
+  onApprove?: (orderId: string, notes?: string) => Promise<void>;
+  onReject?: (orderId: string, notes?: string) => Promise<void>;
 }
 
 export default function SalesOrderForm({
@@ -90,18 +93,27 @@ export default function SalesOrderForm({
   orderId,
   initialData,
   isEditable = true,
+  onApprove,
+  onReject,
 }: SalesOrderFormProps) {
   const insets = useSafeAreaInsets();
   const DEFAULT_PPN_PERCENT = 11;
   const router = useRouter();
   const { user } = useAuth();
 
-  const [loading, setLoading] = useState(mode === "edit");
+  const [loading, setLoading] = useState(
+    mode === "edit" || mode === "approval"
+  );
   const [saving, setSaving] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [terminList, setTerminList] = useState<any[]>([]);
   const [showTerminModal, setShowTerminModal] = useState(false);
   const [ppnRupiah, setPpnRupiah] = useState(0);
+  const [rejectNotes, setRejectNotes] = useState(""); // ✅ NOTES UNTUK REJECT
+  const [showRejectModal, setShowRejectModal] = useState(false); // ✅ MODAL REJECT
+
   const [form, setForm] = useState<SalesOrderForm>({
     kode_cust: "",
     no_cust: "",
@@ -122,12 +134,12 @@ export default function SalesOrderForm({
   });
   const [existingOrder, setExistingOrder] = useState<any>(null);
 
-  // ✅ State untuk modals (SAMA dengan create.tsx)
+  // ✅ State untuk modals
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
-  // ✅ State untuk data (SAMA dengan create.tsx)
+  // ✅ State untuk data
   const [customers, setCustomers] = useState<CustomerList[]>([]);
   const [filteredCustomers, setFilteredCustomers] = useState<CustomerList[]>(
     []
@@ -138,16 +150,17 @@ export default function SalesOrderForm({
   const [searchCustomer, setSearchCustomer] = useState("");
   const [searchProduct, setSearchProduct] = useState("");
 
+  // ✅ DETERMINE READ-ONLY STATE BERDASARKAN MODE
+  const isReadOnly = mode === "approval" || !isEditable;
+
   useEffect(() => {
     return () => {
-      // Cleanup function - akan dijalankan ketika component unmount
       resetForm();
     };
   }, []);
-  // ✅ DI DALAM COMPONENT
-  const resetForm = useCallback(() => {
-    console.log("🔄 Resetting form...");
 
+  const resetForm = useCallback(() => {
+    // console.log("🔄 Resetting form...");
     setForm({
       kode_cust: "",
       no_cust: "",
@@ -160,13 +173,12 @@ export default function SalesOrderForm({
       kode_kirim: "",
       cara_kirim: undefined,
       pajak: "N",
-      ppn_percent: 0, //11,
+      ppn_percent: 0,
       diskon_header: 0,
       diskon_header_percent: 0,
       uang_muka: 0,
       items: [],
     });
-
     setExistingOrder(null);
     setPpnRupiah(0);
     setSearchCustomer("");
@@ -175,19 +187,20 @@ export default function SalesOrderForm({
     setShowProductModal(false);
     setShowPaymentModal(false);
     setShowTerminModal(false);
+    setShowRejectModal(false);
+    setRejectNotes("");
     setError(null);
   }, []);
 
   useEffect(() => {
-    // Reset ketika mode berubah dari edit ke create
     if (mode === "create" && !orderId) {
       resetForm();
     }
   }, [mode, orderId, resetForm]);
 
-  // ✅ Load existing data untuk edit mode
+  // ✅ Load existing data untuk edit dan approval mode
   useEffect(() => {
-    if (mode === "edit" && orderId) {
+    if ((mode === "edit" || mode === "approval") && orderId) {
       loadExistingOrder();
     } else if (initialData) {
       setExistingOrder(initialData);
@@ -215,7 +228,7 @@ export default function SalesOrderForm({
 
   const loadTerminList = async () => {
     try {
-      const res = await dataUmumAPI.getTerminByKode(""); // Kosongkan untuk get all
+      const res = await dataUmumAPI.getTerminByKode("");
       if (res.success && res.data) {
         setTerminList(res.data);
       }
@@ -228,8 +241,10 @@ export default function SalesOrderForm({
     loadTerminList();
   }, []);
 
-  // ✅ Function untuk update harga item
+  // ✅ Function untuk update harga item (DISABLE UNTUK APPROVAL)
   const updateItemPrice = (itemId: string, priceText: string) => {
+    if (isReadOnly) return;
+
     const newPrice = parseCurrencyInput(priceText);
     setForm((prev) => ({
       ...prev,
@@ -238,16 +253,18 @@ export default function SalesOrderForm({
           ? {
               ...item,
               harga: newPrice,
-              is_harga_edited: newPrice !== item.harga_original, // ✅ Set flag edit
-              subtotal: newPrice * item.quantity, // ✅ Update subtotal
+              is_harga_edited: newPrice !== item.harga_original,
+              subtotal: newPrice * item.quantity,
             }
           : item
       ),
     }));
   };
 
-  // ✅ Function untuk reset harga ke original
+  // ✅ Function untuk reset harga ke original (DISABLE UNTUK APPROVAL)
   const resetItemPrice = (itemId: string) => {
+    if (isReadOnly) return;
+
     const item = form.items.find((item) => item.id === itemId);
     if (!item) return;
 
@@ -258,7 +275,7 @@ export default function SalesOrderForm({
           ? {
               ...item,
               harga: item.harga_original,
-              is_harga_edited: false, // ✅ Reset flag
+              is_harga_edited: false,
               subtotal: item.harga_original * item.quantity,
             }
           : item
@@ -269,18 +286,18 @@ export default function SalesOrderForm({
   const populateFormFromData = (orderData: any) => {
     const header = orderData.header;
     const details = orderData.items;
-    // Convert details to cart items
+    // console.log("header xxx ", header);
     const cartItems: CartItem[] = details.map((detail: any, index: number) => ({
       id: `existing-${index}`,
       kode_item: detail.kode_item,
-      no_item: detail.no_item || "", // Will be populated when products are loaded
+      no_item: detail.no_item || "",
       nama_item: detail.nama_item,
       harga: detail.harga,
-      harga_original: detail.harga, // ✅ Simpan harga original
-      is_harga_edited: false, // ✅ Default, akan di-update nanti
+      harga_original: detail.harga,
+      is_harga_edited: false,
       quantity: detail.qty,
       subtotal: detail.total,
-      stok: 0, // Will be updated when products are loaded
+      stok: 0,
       satuan: detail.satuan,
       kategori: "",
       kelompok: "",
@@ -290,13 +307,16 @@ export default function SalesOrderForm({
       franco: detail.franco || "N",
       diskripsi: detail.diskripsi || "",
     }));
+
     const selectedTermin = terminList.find(
       (termin) => termin.kode_termin === header.kode_termin
     );
+
     let ppnPercent = header.ppn_percent || 0;
     if (header.pajak && header.pajak !== "N" && !header.ppn_percent) {
       ppnPercent = DEFAULT_PPN_PERCENT;
     }
+
     setForm({
       kode_cust: header.kode_cust,
       no_cust: header.no_cust,
@@ -305,18 +325,19 @@ export default function SalesOrderForm({
       tanggal_so:
         moment(header.tgl_so).format("YYYY-MM-DD") ||
         new Date().toISOString().split("T")[0],
-      keterangan: "", // Adjust based on your API
+      keterangan: header.keterangan,
       kode_termin: header.kode_termin || "",
       nama_termin: selectedTermin?.nama_termin || header.nama_termin,
       kode_kirim: header.kode_kirim || "",
       cara_kirim: header.cara_kirim as "KG" | "KP" | "AG" | "AP" | undefined,
-      pajak: header.pajak || "N", //
+      pajak: header.pajak || "N",
       ppn_percent: ppnPercent,
       diskon_header: header.diskon_header || 0,
       diskon_header_percent: parseFloat(header.diskon_header_percent) || 0,
       uang_muka: header.uang_muka || 0,
       items: cartItems,
     });
+
     const subtotalAfterDiscount = calculateSubtotalAfterDiscount();
     const calculatedPpn = subtotalAfterDiscount * (ppnPercent / 100);
     setPpnRupiah(calculatedPpn);
@@ -371,6 +392,8 @@ export default function SalesOrderForm({
 
   // ✅ Handler untuk pilih termin
   const handleSelectTermin = (termin: any) => {
+    if (isReadOnly) return;
+
     setForm((prev) => ({
       ...prev,
       kode_termin: termin.kode_termin,
@@ -449,6 +472,8 @@ export default function SalesOrderForm({
 
   // ✅ Select customer
   const handleSelectCustomer = (customer: CustomerList) => {
+    if (isReadOnly) return;
+
     setForm((prev) => ({
       ...prev,
       kode_cust: customer.kode_cust,
@@ -464,6 +489,8 @@ export default function SalesOrderForm({
 
   // ✅ Add product to cart
   const handleAddProduct = (product: ProductList) => {
+    if (isReadOnly) return;
+
     if (product.stok <= 0) {
       Alert.alert("Stok Habis", "Produk ini tidak tersedia di stok");
       return;
@@ -498,8 +525,8 @@ export default function SalesOrderForm({
         no_item: product.no_item,
         nama_item: product.nama_item,
         harga: product.harga1 || 0,
-        harga_original: product.harga1 || 0, // ✅ Simpan harga original
-        is_harga_edited: false, // ✅ Default belum di-edit
+        harga_original: product.harga1 || 0,
+        is_harga_edited: false,
         quantity: 1,
         subtotal: product.harga1 || 0,
         stok: product.stok,
@@ -525,6 +552,8 @@ export default function SalesOrderForm({
 
   // ✅ Update cart item quantity
   const updateQuantity = (itemId: string, newQuantity: number) => {
+    if (isReadOnly) return;
+
     if (newQuantity < 1) return;
 
     const item = form.items.find((item) => item.id === itemId);
@@ -551,6 +580,8 @@ export default function SalesOrderForm({
 
   // ✅ Update item discount
   const updateItemDiscount = (itemId: string, discountPercent: number) => {
+    if (isReadOnly) return;
+
     const item = form.items.find((item) => item.id === itemId);
     if (!item) return;
 
@@ -574,6 +605,8 @@ export default function SalesOrderForm({
 
   // ✅ Remove item from cart
   const removeItem = (itemId: string) => {
+    if (isReadOnly) return;
+
     setForm((prev) => ({
       ...prev,
       items: prev.items.filter((item) => item.id !== itemId),
@@ -614,9 +647,8 @@ export default function SalesOrderForm({
     return form.diskon_header;
   };
 
-  // ✅ UPDATE calculatePPN untuk support 3 mode pajak
   const calculatePPN = useCallback(() => {
-    if (form.pajak === "N") return 0; // Non Pajak
+    if (form.pajak === "N") return 0;
 
     const subtotal = calculateSubtotal();
     const totalDiscountDetail = calculateTotalDiscountDetail();
@@ -624,10 +656,8 @@ export default function SalesOrderForm({
     const afterDiscount = subtotal - totalDiscountDetail - discountHeader;
 
     if (form.pajak === "E") {
-      // Exclude → PPN ditambahkan di akhir
       return (afterDiscount * form.ppn_percent) / 100;
     } else if (form.pajak === "I") {
-      // Include → PPN sudah termasuk, hitung berapa PPN-nya
       return afterDiscount - afterDiscount / (1 + form.ppn_percent / 100);
     }
 
@@ -640,7 +670,6 @@ export default function SalesOrderForm({
     calculateDiscountHeader,
   ]);
 
-  // ✅ UPDATE calculateGrandTotal untuk support 3 mode pajak
   const calculateGrandTotal = () => {
     const subtotal = calculateSubtotal();
     const totalDiscountDetail = calculateTotalDiscountDetail();
@@ -649,18 +678,14 @@ export default function SalesOrderForm({
     const ppnValue = calculatePPN();
 
     if (form.pajak === "E") {
-      // Exclude → tambahkan PPN
       return afterDiscount + ppnValue - form.uang_muka;
     } else if (form.pajak === "I") {
-      // Include → PPN sudah termasuk, tidak perlu ditambahkan
       return afterDiscount - form.uang_muka;
     } else {
-      // Non Pajak
       return afterDiscount - form.uang_muka;
     }
   };
 
-  // ✅ UPDATE calculateSubtotalAfterDiscount (jika masih dipakai untuk display)
   const calculateSubtotalAfterDiscount = useCallback(() => {
     const subtotal = calculateSubtotal();
     const totalDiscountDetail = calculateTotalDiscountDetail();
@@ -673,11 +698,10 @@ export default function SalesOrderForm({
     calculateDiscountHeader,
   ]);
 
-  // ✅ PERBAIKI: useEffect dengan dependencies minimal
   useEffect(() => {
     const ppnValue = calculatePPN();
     setPpnRupiah(ppnValue);
-  }, [calculatePPN]); // Hanya depend on calculatePPN
+  }, [calculatePPN]);
 
   // ✅ Validate form
   const validateForm = (): boolean => {
@@ -704,15 +728,15 @@ export default function SalesOrderForm({
     const grandTotal = calculateGrandTotal();
     return {
       header: {
-        kode_so: existingOrder?.header.kode_so || null, // Untuk update, null kalau create
-        no_so: existingOrder?.header.no_so || null, // Boleh null untuk create
+        kode_so: existingOrder?.header.kode_so || null,
+        no_so: existingOrder?.header.no_so || null,
         kode_sales: user?.kodeSales,
         kode_cust: form.kode_cust,
         franco: "N",
         alamat_pengiriman: form.alamat || "",
         kode_termin: form.kode_termin || null,
         cara_kirim: form.cara_kirim || null,
-        kena_pajak: form.pajak || "N", // enum('I','E','N')
+        kena_pajak: form.pajak || "N",
         ppn_percent: form.ppn_percent || 0,
         ppn_value: ppnValue || 0,
         diskon_header_percent: form.diskon_header_percent || 0,
@@ -721,6 +745,8 @@ export default function SalesOrderForm({
         harga_pengiriman: 0,
         total: grandTotal || 0,
         status: existingOrder?.header.status || "pending",
+        created_by: user?.nama_user,
+        keterangan: form.keterangan,
       },
 
       details: form.items.map((item) => {
@@ -740,14 +766,76 @@ export default function SalesOrderForm({
           harga: item.harga,
           diskon_percent: item.diskon_percent,
           diskon_value: item.diskon_value,
-          total: itemTotal, // ✅ Total setelah diskon item
+          total: itemTotal,
         };
       }),
     };
   };
 
-  // ✅ Update handleSaveDraft dan handleSubmitOrder
+  // ✅ HANDLER APPROVAL & REJECTION
+  const handleApprove = async () => {
+    if (!orderId || !onApprove) return;
+
+    Alert.alert(
+      "Konfirmasi Approval",
+      "Apakah Anda yakin ingin menyetujui Sales Order ini?",
+      [
+        { text: "Batal", style: "cancel" },
+        {
+          text: "Setujui",
+          onPress: async () => {
+            try {
+              setApproving(true);
+              setError(null);
+              await onApprove(orderId);
+              // Success handling ada di parent component
+            } catch (err: any) {
+              setError(err.message || "Gagal menyetujui sales order");
+            } finally {
+              setApproving(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleReject = async () => {
+    if (!orderId || !onReject) return;
+
+    if (!rejectNotes.trim()) {
+      Alert.alert("Peringatan", "Harap berikan alasan penolakan");
+      return;
+    }
+
+    Alert.alert(
+      "Konfirmasi Penolakan",
+      "Apakah Anda yakin ingin menolak Sales Order ini?",
+      [
+        { text: "Batal", style: "cancel" },
+        {
+          text: "Tolak",
+          onPress: async () => {
+            try {
+              setRejecting(true);
+              setError(null);
+              await onReject(orderId, rejectNotes);
+              setShowRejectModal(false);
+              setRejectNotes("");
+              // Success handling ada di parent component
+            } catch (err: any) {
+              setError(err.message || "Gagal menolak sales order");
+            } finally {
+              setRejecting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleSaveDraft = async () => {
+    if (isReadOnly) return;
     if (!validateForm()) return;
 
     try {
@@ -755,7 +843,7 @@ export default function SalesOrderForm({
       setError(null);
 
       const orderData = prepareOrderData();
-      orderData.header.status = "draft"; // ✅ Sesuai backend: "draft"
+      orderData.header.status = "draft";
 
       let res;
       if (mode === "edit") {
@@ -793,13 +881,18 @@ export default function SalesOrderForm({
   };
 
   const handleSubmitOrder = async () => {
+    if (isReadOnly) return;
     if (!validateForm()) return;
 
-    const action = mode === "edit" ? "memperbarui" : "submit";
+    const isEditMode = mode === "edit";
+    const isFromDraft = existingOrder?.header.status === "draft";
+    const isNewOrder = mode === "create";
+
+    const confirmText = isFromDraft ? "submit" : "memperbarui";
 
     Alert.alert(
       "Konfirmasi",
-      `Apakah Anda yakin ingin ${action} Sales Order ini?`,
+      `Apakah Anda yakin ingin ${confirmText} Sales Order ini?`,
       [
         { text: "Batal", style: "cancel" },
         {
@@ -809,27 +902,106 @@ export default function SalesOrderForm({
               setSaving(true);
               setError(null);
 
+              console.log("🔍 DEBUG: Starting handleSubmitOrder");
+              console.log("- Mode:", mode);
+              console.log("- Order ID:", orderId);
+              console.log("- Current Status:", existingOrder?.header.status);
+
               const orderData = prepareOrderData();
-
-              // Untuk edit, pertahankan status yang ada kecuali dari draft
-              if (mode === "edit" && existingOrder?.header.status !== "draft") {
-                orderData.header.status = existingOrder!.header.status;
-              } else {
-                orderData.header.status = "pending"; // ✅ Sesuai backend: "pending"
-              }
-
               let res;
-              if (mode === "edit") {
-                res = await salesOrderAPI.updateSalesOrder(orderId!, orderData);
+              let targetOrderId = orderId;
+
+              console.log("🔄 Submit Flow Debug:");
+              console.log("- Mode:", mode);
+              console.log("- Current Status:", existingOrder?.header.status);
+              console.log("- Target Status:", "pending");
+
+              if (isEditMode) {
+                if (isFromDraft) {
+                  console.log("📝 Flow: EDIT DRAFT → PENDING");
+
+                  // ✅ STEP 1: Update data order (tetap sebagai draft)
+                  orderData.header.status = "draft"; // Tetap draft dulu
+                  console.log("📤 Calling updateSalesOrder...");
+                  res = await salesOrderAPI.updateSalesOrder(
+                    orderId!,
+                    orderData
+                  );
+
+                  if (res.success) {
+                    console.log(
+                      "✅ Update successful, now calling submitSalesOrder..."
+                    );
+
+                    // ✅ STEP 2: Submit untuk ubah status + buat history
+                    const submitRes = await salesOrderAPI.submitSalesOrder(
+                      orderId!,
+                      user?.nama_user
+                    );
+                    console.log("📝 submitSalesOrder response:", submitRes);
+                    if (!submitRes.success) {
+                      throw new Error(
+                        submitRes.message || "Gagal submit order"
+                      );
+                    }
+                  }
+                } else {
+                  console.log("📝 Flow: EDIT NON-DRAFT → BUAT HISTORY UPDATE");
+                  const statusBefore = existingOrder!.header.status;
+
+                  // ✅ UPDATE ORDER: Status tetap sama, tapi buat history
+                  orderData.header.status = statusBefore;
+                  console.log("📤 Calling updateSalesOrder...");
+                  res = await salesOrderAPI.updateSalesOrder(
+                    orderId!,
+                    orderData
+                  );
+
+                  if (res.success) {
+                    // ✅ BUAT HISTORY UNTUK EDIT/UPDATE
+                    await salesOrderAPI.createApprovalHistory({
+                      kode_so: orderId!,
+                      action: "updated",
+                      performed_by: user?.nama_user || "",
+                      status_before: statusBefore,
+                      status_after: statusBefore, // Status tetap sama
+                      notes: "Order diperbarui oleh sales",
+                    });
+                  }
+                }
               } else {
+                console.log("📝 Flow: CREATE NEW ORDER → PENDING");
+                // ✅ CREATE NEW: Langsung buat dengan status draft dulu
+                orderData.header.status = "draft";
+                console.log("📤 Calling createSalesOrder...");
                 res = await salesOrderAPI.createSalesOrder(orderData);
+
+                if (res.success && res.data?.kode_so) {
+                  targetOrderId = res.data.kode_so;
+                  console.log("✅ New order created, now submitting...");
+
+                  // ✅ Submit untuk ubah status + buat history
+                  const submitRes = await salesOrderAPI.submitSalesOrder(
+                    targetOrderId,
+                    user?.nama_user
+                  );
+                  console.log("📝 submitSalesOrder response:", submitRes);
+                  if (!submitRes.success) {
+                    throw new Error(
+                      submitRes.message || "Gagal submit order baru"
+                    );
+                  }
+                }
               }
 
               if (res.success) {
-                const message =
-                  mode === "edit"
-                    ? "Sales Order berhasil diperbarui"
-                    : "Sales Order berhasil disubmit";
+                const message = isEditMode
+                  ? isFromDraft
+                    ? "Sales Order berhasil disubmit"
+                    : "Sales Order berhasil diperbarui"
+                  : "Sales Order berhasil dibuat dan disubmit";
+
+                console.log("✅ Success:", message);
 
                 Alert.alert("Berhasil", message, [
                   {
@@ -838,10 +1010,11 @@ export default function SalesOrderForm({
                   },
                 ]);
               } else {
-                setError(res.message || `Gagal ${action} sales order`);
+                setError(res.message || `Gagal ${confirmText} sales order`);
               }
             } catch (err: any) {
-              setError(err.message || `Gagal ${action} sales order`);
+              console.error("❌ Error in handleSubmitOrder:", err);
+              setError(err.message || `Gagal ${confirmText} sales order`);
             } finally {
               setSaving(false);
             }
@@ -851,14 +1024,13 @@ export default function SalesOrderForm({
     );
   };
 
-  // ✅ Render cart item
   const renderCartItem = ({ item }: { item: CartItem }) => (
     <View style={styles.cartItem}>
       <View style={styles.cartItemHeader}>
         <Text style={styles.productName} numberOfLines={2}>
           {item.nama_item}
         </Text>
-        {isEditable && (
+        {!isReadOnly && (
           <TouchableOpacity
             onPress={() => removeItem(item.id)}
             style={styles.removeButton}
@@ -874,7 +1046,8 @@ export default function SalesOrderForm({
       <Text style={styles.productCategory}>
         {item.kategori} • {item.kelompok}
       </Text>
-      {/* ✅ HARGA EDITABLE */}
+
+      {/* ✅ HARGA - READONLY UNTUK APPROVAL */}
       <View style={styles.priceContainer}>
         <View style={styles.priceLeft}>
           <Text style={styles.priceLabel}>Harga:</Text>
@@ -885,16 +1058,16 @@ export default function SalesOrderForm({
           )}
         </View>
 
-        {isEditable ? (
+        {!isReadOnly ? (
           <View style={styles.priceInputContainer}>
             <TextInput
               style={[
                 styles.priceInput,
                 item.is_harga_edited && styles.editedPriceInput,
               ]}
-              value={formatCurrencyInput(item.harga)} // ✅ Format ke 1.200
+              value={formatCurrencyInput(item.harga)}
               onChangeText={(text) => {
-                updateItemPrice(item.id, text); // ✅ Langsung parse
+                updateItemPrice(item.id, text);
               }}
               keyboardType="numeric"
               placeholder="0"
@@ -913,8 +1086,8 @@ export default function SalesOrderForm({
         )}
       </View>
 
-      {/* Discount Input */}
-      {isEditable && (
+      {/* Discount Input - READONLY UNTUK APPROVAL */}
+      {!isReadOnly && (
         <View style={styles.discountContainer}>
           <Text style={styles.discountLabel}>Diskon Item:</Text>
           <View style={styles.discountInputContainer}>
@@ -929,12 +1102,22 @@ export default function SalesOrderForm({
               }}
               placeholder="0"
               keyboardType="numeric"
-              editable={isEditable}
+              editable={!isReadOnly}
             />
             <Text style={styles.discountPercent}>%</Text>
           </View>
           <Text style={styles.discountValue}>
             {formatCurrency(item.diskon_value)}
+          </Text>
+        </View>
+      )}
+
+      {/* TAMPILKAN DISCOUNT VALUE SAJA UNTUK APPROVAL */}
+      {isReadOnly && item.diskon_percent > 0 && (
+        <View style={styles.discountContainer}>
+          <Text style={styles.discountLabel}>Diskon Item:</Text>
+          <Text style={styles.discountValue}>
+            {item.diskon_percent}% ({formatCurrency(item.diskon_value)})
           </Text>
         </View>
       )}
@@ -945,7 +1128,7 @@ export default function SalesOrderForm({
           <Text style={styles.stockInfo}>Stok: {item.stok}</Text>
         </View>
 
-        {isEditable ? (
+        {!isReadOnly ? (
           <View style={styles.quantityControls}>
             <TouchableOpacity
               onPress={() => updateQuantity(item.id, item.quantity - 1)}
@@ -995,8 +1178,8 @@ export default function SalesOrderForm({
   const renderProductItem = ({ item }: { item: ProductList }) => (
     <TouchableOpacity
       style={[styles.productItem, item.stok <= 0 && styles.outOfStockItem]}
-      onPress={() => item.stok > 0 && isEditable && handleAddProduct(item)}
-      disabled={item.stok <= 0 || !isEditable}
+      onPress={() => item.stok > 0 && !isReadOnly && handleAddProduct(item)}
+      disabled={item.stok <= 0 || isReadOnly}
     >
       <View style={styles.productInfo}>
         <Text style={styles.productName} numberOfLines={2}>
@@ -1031,7 +1214,7 @@ export default function SalesOrderForm({
         {item.stok <= 0 && (
           <Text style={styles.outOfStockLabel}>Stok Habis</Text>
         )}
-        {!isEditable && <Text style={styles.readOnlyLabel}>View Only</Text>}
+        {isReadOnly && <Text style={styles.readOnlyLabel}>View Only</Text>}
       </View>
     </TouchableOpacity>
   );
@@ -1150,7 +1333,7 @@ export default function SalesOrderForm({
     content: React.ReactNode,
     fieldEditable: boolean = true
   ) => {
-    if (!isEditable || !fieldEditable) {
+    if (isReadOnly || !fieldEditable) {
       return <View style={styles.readOnlyContainer}>{content}</View>;
     }
     return content;
@@ -1160,16 +1343,14 @@ export default function SalesOrderForm({
   const renderCustomerSelector = () => {
     const content = (
       <TouchableOpacity
-        style={[styles.customerSelector, !isEditable && styles.readOnly]}
-        onPress={isEditable ? () => setShowCustomerModal(true) : undefined}
-        disabled={!isEditable}
+        style={[styles.customerSelector, isReadOnly && styles.readOnly]}
+        onPress={!isReadOnly ? () => setShowCustomerModal(true) : undefined}
+        disabled={isReadOnly}
       >
         {form.nama_cust ? (
           <View>
             <Text style={styles.selectedCustomerName}>{form.nama_cust}</Text>
             <Text style={styles.selectedCustomerCode}>{form.no_cust}</Text>
-            {/* TAMPILKAN NO CUST */}
-
             {form.alamat && (
               <Text style={styles.selectedCustomerAddress} numberOfLines={2}>
                 {form.alamat}
@@ -1178,14 +1359,13 @@ export default function SalesOrderForm({
             {form.kode_termin && (
               <Text style={styles.selectedCustomerTermin}>
                 Termin: {form.nama_termin}
-                {/* TAMPILKAN TERMIN */}
               </Text>
             )}
           </View>
         ) : (
           <Text style={styles.placeholderText}>Pilih Customer</Text>
         )}
-        {isEditable && (
+        {!isReadOnly && (
           <MaterialIcons name="arrow-drop-down" size={24} color="#666" />
         )}
       </TouchableOpacity>
@@ -1196,7 +1376,8 @@ export default function SalesOrderForm({
 
   const handlePajakChange = useCallback(
     (pajakValue: "N" | "I" | "E") => {
-      // Definisi status pajak untuk pesan notifikasi
+      if (isReadOnly) return;
+
       const getPajakStatus = (value: "N" | "I" | "E") => {
         switch (value) {
           case "I":
@@ -1206,7 +1387,7 @@ export default function SalesOrderForm({
           case "N":
             return "Non-Pajak";
           default:
-            return "Mode Pajak"; // Fallback
+            return "Mode Pajak";
         }
       };
 
@@ -1235,7 +1416,7 @@ export default function SalesOrderForm({
                 setForm((prev) => ({
                   ...prev,
                   pajak: pajakValue,
-                  ppn_percent: newPpnPercentAfterConfirm, // Menggunakan nilai yang dihitung
+                  ppn_percent: newPpnPercentAfterConfirm,
                 }));
                 setPpnRupiah(0);
               },
@@ -1256,7 +1437,7 @@ export default function SalesOrderForm({
       }));
       setPpnRupiah(0);
     },
-    [form.pajak, DEFAULT_PPN_PERCENT]
+    [form.pajak, DEFAULT_PPN_PERCENT, isReadOnly]
   );
 
   // ✅ Loading state
@@ -1270,6 +1451,8 @@ export default function SalesOrderForm({
           <Text style={styles.loadingText}>
             {mode === "edit"
               ? "Memuat data sales order..."
+              : mode === "approval"
+              ? "Memuat data untuk approval..."
               : "Mempersiapkan form..."}
           </Text>
         </View>
@@ -1286,13 +1469,18 @@ export default function SalesOrderForm({
       >
         <Stack.Screen
           options={{
-            title: mode === "edit" ? "Edit Sales Order" : "Buat Sales Order",
+            title:
+              mode === "edit"
+                ? "Edit Sales Order"
+                : mode === "approval"
+                ? "Approval Sales Order"
+                : "Buat Sales Order",
             headerBackTitle: "Kembali",
           }}
         />
 
-        {/* Status Header untuk Edit Mode */}
-        {mode === "edit" && existingOrder && (
+        {/* Status Header untuk Edit dan Approval Mode */}
+        {(mode === "edit" || mode === "approval") && existingOrder && (
           <View style={styles.statusHeader}>
             <Text style={styles.statusLabel}>Status:</Text>
             <View
@@ -1308,6 +1496,16 @@ export default function SalesOrderForm({
               </Text>
             </View>
             <Text style={styles.orderNumber}>{existingOrder.header.no_so}</Text>
+          </View>
+        )}
+
+        {/* ✅ BANNER APPROVAL MODE */}
+        {mode === "approval" && (
+          <View style={styles.approvalBanner}>
+            <MaterialIcons name="verified-user" size={20} color="#fff" />
+            <Text style={styles.approvalBannerText}>
+              Mode Approval - Sales Supervisor
+            </Text>
           </View>
         )}
 
@@ -1338,7 +1536,7 @@ export default function SalesOrderForm({
                     setForm((prev) => ({ ...prev, tanggal_so: text }))
                   }
                   placeholder="YYYY-MM-DD"
-                  editable={isEditable}
+                  editable={!isReadOnly}
                 />
               )}
             </View>
@@ -1356,13 +1554,13 @@ export default function SalesOrderForm({
                   multiline
                   numberOfLines={3}
                   textAlignVertical="top"
-                  editable={isEditable}
+                  editable={!isReadOnly}
                 />
               )}
             </View>
 
-            {/* Payment Settings */}
-            {isEditable && (
+            {/* Payment Settings - HIDDEN UNTUK APPROVAL */}
+            {!isReadOnly && (
               <TouchableOpacity
                 style={styles.paymentSettingsButton}
                 onPress={() => setShowPaymentModal(true)}
@@ -1380,7 +1578,7 @@ export default function SalesOrderForm({
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Produk</Text>
-              {isEditable && (
+              {!isReadOnly && (
                 <TouchableOpacity
                   style={styles.addButton}
                   onPress={() => setShowProductModal(true)}
@@ -1396,7 +1594,7 @@ export default function SalesOrderForm({
                 <MaterialIcons name="shopping-cart" size={48} color="#ccc" />
                 <Text style={styles.emptyCartText}>Belum ada produk</Text>
                 <Text style={styles.emptyCartSubtext}>
-                  {isEditable
+                  {!isReadOnly
                     ? 'Tap "Tambah Produk" untuk menambahkan item'
                     : "Tidak ada produk dalam order ini"}
                 </Text>
@@ -1423,8 +1621,36 @@ export default function SalesOrderForm({
           )}
         </ScrollView>
 
-        {/* Action Buttons */}
-        {isEditable && (
+        {/* ✅ ACTION BUTTONS BERDASARKAN MODE */}
+        {mode === "approval" ? (
+          // ✅ APPROVAL ACTIONS
+          <View style={[styles.actionButtons, styles.approvalActions]}>
+            <TouchableOpacity
+              style={[styles.button, styles.rejectButton]}
+              onPress={() => setShowRejectModal(true)}
+              disabled={rejecting}
+            >
+              {rejecting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.rejectButtonText}>Tolak</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.button, styles.approveButton]}
+              onPress={handleApprove}
+              disabled={approving}
+            >
+              {approving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.approveButtonText}>Setujui</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : isEditable ? (
+          // ✅ CREATE/EDIT ACTIONS
           <View style={[styles.actionButtons]}>
             <TouchableOpacity
               style={[styles.button, styles.draftButton]}
@@ -1435,7 +1661,10 @@ export default function SalesOrderForm({
                 <ActivityIndicator size="small" color="#666" />
               ) : (
                 <Text style={styles.draftButtonText}>
-                  {mode === "edit" ? "Update Draft" : "Simpan Draft"}
+                  {/* {mode === "edit" ? "Update Draft" : "Simpan Draft"} */}
+                  {existingOrder?.header.status === "draft"
+                    ? "Update Draft"
+                    : "Save as Draft"}
                 </Text>
               )}
             </TouchableOpacity>
@@ -1449,13 +1678,17 @@ export default function SalesOrderForm({
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={styles.submitButtonText}>
-                  {mode === "edit" ? "Update Order" : "Submit Order"}
+                  {/* {mode === "edit" ? "Update Order" : "Submit Order"} */}
+                  {existingOrder?.header.status === "draft"
+                    ? "Submit Order"
+                    : "Update Order"}
                 </Text>
               )}
             </TouchableOpacity>
           </View>
-        )}
+        ) : null}
       </KeyboardAvoidingView>
+
       {/* Customer Modal */}
       <Modal
         visible={showCustomerModal}
@@ -1570,11 +1803,11 @@ export default function SalesOrderForm({
             <View style={styles.paymentInputGroup}>
               <Text style={styles.label}>Termin Pembayaran</Text>
               <TouchableOpacity
-                style={[styles.terminSelector, !isEditable && styles.readOnly]}
+                style={[styles.terminSelector, isReadOnly && styles.readOnly]}
                 onPress={
-                  isEditable ? () => setShowTerminModal(true) : undefined
+                  !isReadOnly ? () => setShowTerminModal(true) : undefined
                 }
-                disabled={!isEditable}
+                disabled={isReadOnly}
               >
                 <View style={styles.terminContent}>
                   {form.nama_termin ? (
@@ -1589,7 +1822,7 @@ export default function SalesOrderForm({
                   ) : (
                     <Text style={styles.placeholderText}>Pilih Termin</Text>
                   )}
-                  {isEditable && (
+                  {!isReadOnly && (
                     <View>
                       <MaterialIcons
                         name="arrow-drop-down"
@@ -1630,7 +1863,7 @@ export default function SalesOrderForm({
                     onPress={() =>
                       handlePajakChange(pajak.value as "N" | "I" | "E")
                     }
-                    disabled={!isEditable}
+                    disabled={isReadOnly}
                   >
                     <Text
                       style={[
@@ -1666,10 +1899,11 @@ export default function SalesOrderForm({
                   style={[
                     styles.input,
                     styles.ppnInput,
-                    form.pajak === "N" && styles.disabledInput, // ✅ Disable jika Tanpa Pajak
+                    (form.pajak === "N" || isReadOnly) && styles.disabledInput,
                   ]}
                   value={form.ppn_percent.toString()}
                   onChangeText={(text) => {
+                    if (isReadOnly) return;
                     const percent = parseFloat(text) || 0;
                     if (percent >= 0 && percent <= 100) {
                       setForm((prev) => ({ ...prev, ppn_percent: percent }));
@@ -1682,12 +1916,11 @@ export default function SalesOrderForm({
                   }}
                   keyboardType="numeric"
                   placeholder={DEFAULT_PPN_PERCENT.toString()}
-                  editable={form.pajak !== "N"} // ✅ Disable jika Tanpa Pajak
+                  editable={form.pajak !== "N" && !isReadOnly}
                 />
                 <Text style={styles.ppnPercentLabel}>%</Text>
               </View>
 
-              {/* ✅ Status Info */}
               <Text style={styles.ppnStatusText}>
                 {form.pajak === "N"
                   ? "Transaksi tanpa PPN"
@@ -1701,7 +1934,6 @@ export default function SalesOrderForm({
               {renderEditableField(
                 <TextInput
                   style={styles.input}
-                  // value={form.diskon_header_percent.toString()}
                   onChangeText={(text) => {
                     const percent = parseFloat(text) || 0;
                     setForm((prev) => ({
@@ -1720,10 +1952,8 @@ export default function SalesOrderForm({
               {renderEditableField(
                 <TextInput
                   style={styles.input}
-                  // value={form.diskon_header.toString()}
                   value={formatCurrencyInput(form.diskon_header)}
                   onChangeText={(text) => {
-                    // const nominal = parseFloat(text) || 0;
                     const nominal = parseCurrencyInput(text);
                     setForm((prev) => ({
                       ...prev,
@@ -1741,10 +1971,8 @@ export default function SalesOrderForm({
               {renderEditableField(
                 <TextInput
                   style={styles.input}
-                  // value={form.uang_muka.toString()}
                   value={formatCurrencyInput(form.uang_muka)}
                   onChangeText={(text) => {
-                    // const uangMuka = parseFloat(text) || 0;
                     const uangMuka = parseCurrencyInput(text);
                     setForm((prev) => ({ ...prev, uang_muka: uangMuka }));
                   }}
@@ -1817,12 +2045,165 @@ export default function SalesOrderForm({
           />
         </SafeAreaView>
       </Modal>
+
+      {/* ✅ REJECT MODAL */}
+      <Modal
+        visible={showRejectModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowRejectModal(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Tolak Sales Order</Text>
+            <TouchableOpacity
+              onPress={() => setShowRejectModal(false)}
+              style={styles.closeButton}
+            >
+              <MaterialIcons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.rejectModalContent}>
+            <Text style={styles.rejectModalText}>
+              Berikan alasan penolakan untuk Sales Order:
+            </Text>
+            <Text style={styles.rejectOrderNumber}>
+              {existingOrder?.header.no_so}
+            </Text>
+
+            <TextInput
+              style={[styles.input, styles.textArea, styles.rejectTextInput]}
+              placeholder="Masukkan alasan penolakan..."
+              value={rejectNotes}
+              onChangeText={setRejectNotes}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+
+            <View style={styles.rejectModalActions}>
+              <TouchableOpacity
+                style={[styles.button, styles.rejectModalCancelButton]}
+                onPress={() => {
+                  setShowRejectModal(false);
+                  setRejectNotes("");
+                }}
+                disabled={rejecting}
+              >
+                <Text style={styles.rejectModalCancelText}>Batal</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.button, styles.rejectModalConfirmButton]}
+                onPress={handleReject}
+                disabled={rejecting || !rejectNotes.trim()}
+              >
+                {rejecting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.rejectModalConfirmText}>
+                    Konfirmasi Tolak
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-// ✅ Styles - COPY SEMUA DARI create.tsx DAN TAMBAH YANG BARU
+// ✅ UPDATE STYLES DENGAN APPROVAL-SPECIFIC STYLES
 const styles = StyleSheet.create({
+  // ... (semua styles yang ada sebelumnya tetap sama)
+
+  // ✅ APPROVAL BANNER
+  approvalBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#667eea",
+    padding: 12,
+    paddingHorizontal: 16,
+  },
+  approvalBannerText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 14,
+    marginLeft: 8,
+  },
+
+  // ✅ APPROVAL ACTIONS
+  approvalActions: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  approveButton: {
+    backgroundColor: "#4CAF50",
+    flex: 1,
+  },
+  approveButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  rejectButton: {
+    backgroundColor: "#f44336",
+    flex: 1,
+  },
+  rejectButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+
+  // ✅ REJECT MODAL STYLES
+  rejectModalContent: {
+    flex: 1,
+    padding: 16,
+  },
+  rejectModalText: {
+    fontSize: 16,
+    color: "#333",
+    marginBottom: 8,
+  },
+  rejectOrderNumber: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#667eea",
+    marginBottom: 20,
+  },
+  rejectTextInput: {
+    minHeight: 120,
+    marginBottom: 20,
+  },
+  rejectModalActions: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  rejectModalCancelButton: {
+    flex: 1,
+    backgroundColor: "#f5f5f5",
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+  rejectModalCancelText: {
+    color: "#666",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  rejectModalConfirmButton: {
+    flex: 1,
+    backgroundColor: "#f44336",
+  },
+  rejectModalConfirmText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+
+  // ... (semua styles yang ada sebelumnya tetap sama di bawah ini)
   pajakDescription: {
     fontSize: 10,
     color: "#888",
@@ -1874,7 +2255,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 6,
-    // padding: 4,
     width: 100,
     textAlign: "right",
     fontSize: 14,
@@ -1901,7 +2281,7 @@ const styles = StyleSheet.create({
   },
   paymentModalScrollContent: {
     flexGrow: 1,
-    paddingBottom: 32, // ✅ Extra space
+    paddingBottom: 32,
   },
   ppnHeader: {
     flexDirection: "row",
@@ -1968,7 +2348,7 @@ const styles = StyleSheet.create({
   },
   section: {
     backgroundColor: "white",
-    marginHorizontal: 8, // ✅ Consistent horizontal margin
+    marginHorizontal: 8,
     marginBottom: 8,
     padding: 8,
     borderRadius: 12,
@@ -2772,7 +3152,6 @@ const styles = StyleSheet.create({
     color: "#667eea",
     fontStyle: "italic",
   },
-  // ✅ Styles untuk pajak
   pajakContainer: {
     flexDirection: "row",
     gap: 8,

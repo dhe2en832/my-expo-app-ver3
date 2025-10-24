@@ -59,6 +59,7 @@ import {
 } from "./interface";
 import apiClient from "./axiosConfig";
 import { Alert } from "react-native";
+import { useAuth } from "@/contexts/AuthContext";
 
 // ==================
 // Login API Module
@@ -1008,25 +1009,6 @@ export const salesOrderAPI = {
     }
   },
 
-  // Submit Sales Order
-  submitSalesOrder: async (kodeSO: string): Promise<APIResponse<any>> => {
-    try {
-      const response = await apiClient.post(`/sales-order/submit/${kodeSO}`);
-      return {
-        success: response.data.success,
-        message: response.data.message,
-        data: response.data.data,
-      };
-    } catch (error: any) {
-      console.error("Submit Sales Order API Error:", error);
-      return {
-        success: false,
-        message: error.response?.data?.message || "Gagal submit sales order",
-        data: null,
-      };
-    }
-  },
-
   getSoDetailCombined: async (kodeSO: string): Promise<APIResponse<any>> => {
     try {
       const response = await apiClient.get(
@@ -1064,7 +1046,6 @@ export const salesOrderAPI = {
     }>
   > => {
     try {
-      console.log;
       const response = await apiClient.post("/sales-order/create", orderData);
 
       return {
@@ -1304,44 +1285,6 @@ export const salesOrderAPI = {
     }
   },
 
-  approveSalesOrder: async (
-    kode_so: string,
-    status: "approved" | "rejected",
-    catatan: string = ""
-  ) => {
-    try {
-      const res = await apiClient.put<{
-        success: boolean;
-        data?: any;
-        message?: string;
-      }>(`/sales-order/approve/${kode_so}`, {
-        status,
-        catatan,
-        approved_by: "", // Will be filled by backend from user context
-        approved_at: new Date().toISOString(),
-      });
-
-      return {
-        success: true,
-        data: res.data.data,
-        message:
-          res.data.message ||
-          `Sales Order berhasil ${
-            status === "approved" ? "disetujui" : "ditolak"
-          }`,
-      };
-    } catch (err: any) {
-      return {
-        success: false,
-        error:
-          err.message ||
-          `Gagal ${
-            status === "approved" ? "menyetujui" : "menolak"
-          } Sales Order`,
-      };
-    }
-  },
-
   // ✅ BULK APPROVE Sales Orders (NEW)
   bulkApproveSalesOrders: async (
     kode_so_list: string[],
@@ -1436,6 +1379,187 @@ export const salesOrderAPI = {
       return {
         success: false,
         error: err.message || "Gagal mengambil history approval",
+      };
+    }
+  },
+
+  // Di salesOrderAPI tambahkan:
+  createApprovalHistory: async (historyData: {
+    kode_so: string;
+    action: string;
+    performed_by: string;
+    status_before: string;
+    status_after: string;
+    notes?: string;
+  }): Promise<APIResponse<any>> => {
+    try {
+      const response = await apiClient.post(
+        "/sales-order/approval-history",
+        historyData
+      );
+      return {
+        success: true,
+        data: response.data,
+        message: "History berhasil dibuat",
+      };
+    } catch (error: any) {
+      console.error("Error creating approval history:", error);
+      return {
+        success: false,
+        message: error.response?.data?.message || "Gagal membuat history",
+        error: error.response?.data || error.message,
+      };
+    }
+  },
+
+  approveSalesOrder: async (
+    orderId: string,
+    notes?: string,
+    user?: any
+  ): Promise<APIResponse<any>> => {
+    try {
+      // const { user } = useAuth();
+
+      // 1. Update main SO table
+      await apiClient.put(`/sales-order/approve/${orderId}`, {
+        notes: notes || "",
+        approved_by: user,
+        approved_at: new Date().toISOString(),
+      });
+
+      // // 2. Create approval history record
+      // await apiClient.post("/sales-order/approval-history", {
+      //   kode_so: orderId,
+      //   action: "approved",
+      //   performed_by: user,
+      //   notes: notes || "",
+      //   status_before: "pending",
+      //   status_after: "approved",
+      // });
+
+      return {
+        success: true,
+        message: "Sales Order berhasil disetujui",
+      };
+    } catch (error: any) {
+      console.error("Error approving sales order:", error);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message || "Gagal menyetujui sales order",
+        error: error.response?.data || error.message,
+      };
+    }
+  },
+
+  rejectSalesOrder: async (
+    orderId: string,
+    notes?: string,
+    user?: any
+  ): Promise<APIResponse<any>> => {
+    try {
+      // const { user } = useAuth();
+
+      // 1. Update main SO table
+      await apiClient.put(`/sales-order/reject/${orderId}`, {
+        notes: notes || "",
+        rejected_by: user,
+        rejected_at: new Date().toISOString(),
+        rejection_notes: notes || "",
+      });
+
+      // 2. Create rejection history record
+      // await apiClient.post("/sales-order/approval-history", {
+      //   kode_so: orderId,
+      //   action: "rejected",
+      //   performed_by: user,
+      //   notes: notes || "",
+      //   status_before: "pending",
+      //   status_after: "rejected",
+      // });
+
+      return {
+        success: true,
+        message: "Sales Order berhasil ditolak",
+      };
+    } catch (error: any) {
+      console.error("Error rejecting sales order:", error);
+      return {
+        success: false,
+        message: error.response?.data?.message || "Gagal menolak sales order",
+        error: error.response?.data || error.message,
+      };
+    }
+  },
+
+  // Submit Sales Order
+  submitSalesOrder: async (
+    orderId: string,
+    user: any
+  ): Promise<APIResponse<any>> => {
+    try {
+      // const { user } = useAuth();
+
+      // 1. Update status di main table
+      const response = await apiClient.put(`/sales-order/submit/${orderId}`, {
+        status: "pending",
+        submitted_by: user,
+        submitted_at: new Date().toISOString(),
+      });
+
+      // // 2. Create submission history record - SELALU JALANKAN
+      // await apiClient.post("/sales-order/approval-history", {
+      //   kode_so: orderId,
+      //   action: "submitted",
+      //   performed_by: user,
+      //   status_before: "draft",
+      //   status_after: "pending",
+      // });
+
+      return {
+        success: true,
+        data: response.data,
+        message: "Sales Order berhasil disubmit",
+      };
+    } catch (error: any) {
+      console.error("Error submitting sales order:", error);
+      return {
+        success: false,
+        message: error.response?.data?.message || "Gagal submit sales order",
+        error: error.response?.data || error.message,
+      };
+    }
+  },
+
+  updateSalesOrderStatus: async (
+    orderId: string,
+    status: "approved" | "rejected",
+    notes?: string
+  ): Promise<APIResponse<any>> => {
+    try {
+      const response = await apiClient.put(`/sales-order/${orderId}/status`, {
+        status,
+        notes: notes || "",
+        updated_at: new Date().toISOString(),
+      });
+
+      return {
+        success: true,
+        data: response.data,
+        message: `Sales Order berhasil ${
+          status === "approved" ? "disetujui" : "ditolak"
+        }`,
+      };
+    } catch (error: any) {
+      console.error("Error updating sales order status:", error);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          `Gagal ${
+            status === "approved" ? "menyetujui" : "menolak"
+          } sales order`,
+        error: error.response?.data || error.message,
       };
     }
   },
