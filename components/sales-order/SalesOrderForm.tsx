@@ -901,44 +901,27 @@ export default function SalesOrderForm({
             try {
               setSaving(true);
               setError(null);
-
-              console.log("🔍 DEBUG: Starting handleSubmitOrder");
-              console.log("- Mode:", mode);
-              console.log("- Order ID:", orderId);
-              console.log("- Current Status:", existingOrder?.header.status);
-
               const orderData = prepareOrderData();
               let res;
               let targetOrderId = orderId;
 
-              console.log("🔄 Submit Flow Debug:");
-              console.log("- Mode:", mode);
-              console.log("- Current Status:", existingOrder?.header.status);
-              console.log("- Target Status:", "pending");
-
               if (isEditMode) {
                 if (isFromDraft) {
-                  console.log("📝 Flow: EDIT DRAFT → PENDING");
-
                   // ✅ STEP 1: Update data order (tetap sebagai draft)
                   orderData.header.status = "draft"; // Tetap draft dulu
-                  console.log("📤 Calling updateSalesOrder...");
+
                   res = await salesOrderAPI.updateSalesOrder(
                     orderId!,
                     orderData
                   );
 
                   if (res.success) {
-                    console.log(
-                      "✅ Update successful, now calling submitSalesOrder..."
-                    );
-
                     // ✅ STEP 2: Submit untuk ubah status + buat history
                     const submitRes = await salesOrderAPI.submitSalesOrder(
                       orderId!,
                       user?.nama_user
                     );
-                    console.log("📝 submitSalesOrder response:", submitRes);
+
                     if (!submitRes.success) {
                       throw new Error(
                         submitRes.message || "Gagal submit order"
@@ -946,12 +929,11 @@ export default function SalesOrderForm({
                     }
                   }
                 } else {
-                  console.log("📝 Flow: EDIT NON-DRAFT → BUAT HISTORY UPDATE");
                   const statusBefore = existingOrder!.header.status;
 
                   // ✅ UPDATE ORDER: Status tetap sama, tapi buat history
                   orderData.header.status = statusBefore;
-                  console.log("📤 Calling updateSalesOrder...");
+
                   res = await salesOrderAPI.updateSalesOrder(
                     orderId!,
                     orderData
@@ -970,22 +952,20 @@ export default function SalesOrderForm({
                   }
                 }
               } else {
-                console.log("📝 Flow: CREATE NEW ORDER → PENDING");
                 // ✅ CREATE NEW: Langsung buat dengan status draft dulu
                 orderData.header.status = "draft";
-                console.log("📤 Calling createSalesOrder...");
+
                 res = await salesOrderAPI.createSalesOrder(orderData);
 
                 if (res.success && res.data?.kode_so) {
                   targetOrderId = res.data.kode_so;
-                  console.log("✅ New order created, now submitting...");
 
                   // ✅ Submit untuk ubah status + buat history
                   const submitRes = await salesOrderAPI.submitSalesOrder(
                     targetOrderId,
                     user?.nama_user
                   );
-                  console.log("📝 submitSalesOrder response:", submitRes);
+
                   if (!submitRes.success) {
                     throw new Error(
                       submitRes.message || "Gagal submit order baru"
@@ -1000,8 +980,6 @@ export default function SalesOrderForm({
                     ? "Sales Order berhasil disubmit"
                     : "Sales Order berhasil diperbarui"
                   : "Sales Order berhasil dibuat dan disubmit";
-
-                console.log("✅ Success:", message);
 
                 Alert.alert("Berhasil", message, [
                   {
