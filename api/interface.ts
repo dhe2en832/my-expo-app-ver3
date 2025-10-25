@@ -1003,3 +1003,144 @@ export interface UserPermissions {
   can_view_reports: boolean;
   can_export_data: boolean;
 }
+
+// ===================
+// PPI INTERFACE
+// ===================
+
+export interface OutstandingInvoice {
+  kode_fj: string;
+  no_fj: string;
+  tgl_fj: string;
+  jatuh_tempo: string;
+  total_invoice: number;
+  sudah_dibayar: number;
+  sisa_hutang: number;
+  mobile_allocated_amount: number;
+  mobile_allocated_discount: number;
+  sisa_setelah_alokasi: number;
+  overdue_days: number;
+  is_overdue: boolean;
+  kode_mu: string;
+  nama_cust: string;
+  kode_cust: string;
+  nama_sales: string;
+  source: 'ERP' | 'MOBILE_ALLOCATED';
+}
+
+export interface PPIListItem {
+  kode_ppi: string;
+  no_ppi: string;
+  tanggal_ppi: string;
+  nama_cust: string;
+  total_dibayar: number;
+  total_discount: number;
+  cara_bayar: 'cash' | 'transfer' | 'giro';
+  no_giro?: string;
+  bank?: string;
+  status: string;
+  sumber_data: 'MOBILE' | 'ERP';
+  jumlah_faktur: number;
+  list_faktur: string[];
+  kode_sales: string;
+  nama_sales: string;
+  summary_info: string;
+  status_badge: {
+    color: string;
+    text: string;
+  };
+}
+
+export interface PPIDetail {
+  header: {
+    kode_ppi: string;
+    no_ppi: string;
+    tanggal_ppi: string;
+    kode_cust: string;
+    nama_cust: string;
+    kode_sales: string;
+    nama_sales: string;
+    total_dibayar: number;
+    total_discount: number;
+    cara_bayar: 'cash' | 'transfer' | 'giro';
+    no_giro?: string;
+    bank?: string;
+    tgl_jatuh_tempo?: string;
+    status: string;
+    sumber_data: 'MOBILE' | 'ERP';
+    debet_rp?: number;
+    kredit_rp?: number;
+    jumlah_rp?: number;
+    kode_akun_debet?: string;
+    no_akun?: string;
+    nama_akun?: string;
+  };
+  details: {
+    kode_fj: string;
+    no_fj: string;
+    tgl_fj: string;
+    netto_mu: number;
+    lunas_mu: number;
+    owing: number;
+    bayar_mu: number;
+    discount: number;
+    sisa_setelah_bayar: number;
+  }[];
+  payments: {
+    metode_bayar: 'cash' | 'transfer' | 'giro';
+    jumlah_bayar: number;
+    tgl_bayar: string;
+    no_giro?: string;
+    bank?: string;
+    no_rekening?: string;
+    tgl_jatuh_tempo?: string;
+    keterangan?: string;
+  }[];
+  summary: {
+    jumlah_faktur: number;
+    total_dibayar: number;
+    total_discount: number;
+    sumber_data: 'MOBILE' | 'ERP';
+  };
+}
+
+export interface PPICreateRequest {
+  header: {
+    tanggal_ppi: string;
+    kode_cust: string;
+    nama_cust: string;
+    cara_bayar: 'cash' | 'transfer' | 'giro';
+    no_giro?: string;
+    bank?: string;
+    tgl_jatuh_tempo?: string;
+  };
+  details: {
+    kode_fj: string;
+    no_fj: string;
+    tgl_fj: string;
+    netto_mu: number;
+    lunas_mu: number;
+    owing: number;
+    bayar_mu: number;
+    discount: number;
+  }[];
+  payments?: {
+    metode_bayar: 'cash' | 'transfer' | 'giro';
+    jumlah_bayar: number;
+    tgl_bayar: string;
+    no_giro?: string;
+    bank?: string;
+    no_rekening?: string;
+    tgl_jatuh_tempo?: string;
+    keterangan?: string;
+  }[];
+}
+
+export interface PPICreateResponse {
+  kode_ppi: string;
+  no_ppi: string;
+  total_dibayar: number;
+  total_discount: number;
+  jumlah_faktur: number;
+  status: string;
+}

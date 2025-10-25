@@ -56,6 +56,11 @@ import {
   ProductListResponse,
   ProductList,
   TerminList,
+  PPICreateRequest,
+  OutstandingInvoice,
+  PPIListItem,
+  PPIDetail,
+  PPICreateResponse,
 } from "./interface";
 import apiClient from "./axiosConfig";
 import { Alert } from "react-native";
@@ -1667,6 +1672,191 @@ export const dataUmumAPI = {
   },
 };
 
+// ===================
+// PPI API Module
+// ===================
+
+export const ppiAPI = {
+  // ✅ Get Outstanding Invoices for Customer
+  getOutstandingInvoices: async (
+    kodeCust: string,
+    params?: { page?: number; limit?: number; filter?: string }
+  ): Promise<APIResponse<OutstandingInvoice[]>> => {
+    try {
+      const response = await apiClient.get(
+        `/ppi-mobile/outstanding/${kodeCust}`,
+        { params }
+      );
+      return {
+        success: response.data.success,
+        data: response.data.data,
+        message: response.data.message,
+        meta: response.data.meta,
+      };
+    } catch (error: any) {
+      console.error("Get Outstanding Invoices API Error:", error);
+      return {
+        success: false,
+        data: null,
+        message:
+          error.response?.data?.message ||
+          "Gagal mengambil data outstanding invoices",
+        error: error.response?.data?.error || error.message,
+      };
+    }
+  },
+
+  // ✅ Get PPI List Combined (ERP + Mobile)
+  getPpiListCombined: async (params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    filter?: string;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<APIResponse<PPIListItem[]>> => {
+    try {
+      const response = await apiClient.get("/ppi-mobile/list-combined", {
+        params,
+      });
+      return {
+        success: response.data.success,
+        data: response.data.data,
+        message: response.data.message,
+        meta: response.data.meta,
+      };
+    } catch (error: any) {
+      console.error("Get PPI List Combined API Error:", error);
+      return {
+        success: false,
+        data: null,
+        message:
+          error.response?.data?.message || "Gagal mengambil data list PPI",
+        error: error.response?.data?.error || error.message,
+      };
+    }
+  },
+
+  // ✅ Get PPI Master Detail Combined
+  getPpiMasterDetailCombined: async (
+    kodePPI: string
+  ): Promise<APIResponse<PPIDetail>> => {
+    try {
+      const response = await apiClient.get(
+        `/ppi-mobile/master-detail-combined/${kodePPI}`
+      );
+      return {
+        success: response.data.success,
+        data: response.data.data,
+        message: response.data.message,
+        meta: response.data.meta,
+      };
+    } catch (error: any) {
+      console.error("Get PPI Master Detail Combined API Error:", error);
+      return {
+        success: false,
+        data: null,
+        message: error.response?.data?.message || "Gagal mengambil detail PPI",
+        error: error.response?.data?.error || error.message,
+      };
+    }
+  },
+
+  // ✅ Create PPI
+  createPpi: async (
+    ppiData: PPICreateRequest
+  ): Promise<APIResponse<PPICreateResponse>> => {
+    try {
+      const response = await apiClient.post("/ppi-mobile/create", ppiData);
+      return {
+        success: response.data.success,
+        data: response.data.data,
+        message: response.data.message,
+        meta: response.data.meta,
+      };
+    } catch (error: any) {
+      console.error("Create PPI API Error:", error);
+      return {
+        success: false,
+        data: null,
+        message: error.response?.data?.message || "Gagal membuat PPI",
+        error: error.response?.data?.error || error.message,
+      };
+    }
+  },
+
+  // ✅ Submit PPI for Sync (Future)
+  submitPpi: async (kodePPI: string): Promise<APIResponse<any>> => {
+    try {
+      const response = await apiClient.post(`/ppi-mobile/submit`, {
+        kode_ppi: kodePPI,
+      });
+      return {
+        success: response.data.success,
+        data: response.data.data,
+        message: response.data.message,
+        meta: response.data.meta,
+      };
+    } catch (error: any) {
+      console.error("Submit PPI API Error:", error);
+      return {
+        success: false,
+        data: null,
+        message: error.response?.data?.message || "Gagal submit PPI",
+        error: error.response?.data?.error || error.message,
+      };
+    }
+  },
+
+  // ✅ Update PPI (Future)
+  updatePpi: async (
+    kodePPI: string,
+    ppiData: Partial<PPICreateRequest>
+  ): Promise<APIResponse<any>> => {
+    try {
+      const response = await apiClient.put(
+        `/ppi-mobile/update/${kodePPI}`,
+        ppiData
+      );
+      return {
+        success: response.data.success,
+        data: response.data.data,
+        message: response.data.message,
+        meta: response.data.meta,
+      };
+    } catch (error: any) {
+      console.error("Update PPI API Error:", error);
+      return {
+        success: false,
+        data: null,
+        message: error.response?.data?.message || "Gagal update PPI",
+        error: error.response?.data?.error || error.message,
+      };
+    }
+  },
+
+  // ✅ Cancel PPI (Future)
+  cancelPpi: async (kodePPI: string): Promise<APIResponse<any>> => {
+    try {
+      const response = await apiClient.put(`/ppi-mobile/cancel/${kodePPI}`);
+      return {
+        success: response.data.success,
+        data: response.data.data,
+        message: response.data.message,
+        meta: response.data.meta,
+      };
+    } catch (error: any) {
+      console.error("Cancel PPI API Error:", error);
+      return {
+        success: false,
+        data: null,
+        message: error.response?.data?.message || "Gagal cancel PPI",
+        error: error.response?.data?.error || error.message,
+      };
+    }
+  },
+};
+
 export default {
   loginAPI,
   rksAPI,
@@ -1676,4 +1866,5 @@ export default {
   salesOrderAPI,
   dataBarangAPI,
   dataUmumAPI,
+  ppiAPI,
 };
