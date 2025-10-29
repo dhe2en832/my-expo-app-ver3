@@ -11,7 +11,12 @@ import {
   ActivityIndicator,
   Image,
 } from "react-native";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import {
+  Stack,
+  useFocusEffect,
+  useLocalSearchParams,
+  useRouter,
+} from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOfflineQueue } from "../../../contexts/OfflineContext";
@@ -80,7 +85,35 @@ export default function CreateCustomer() {
     "toko_samping",
     "ktp",
   ];
+  const resetForm = () => {
+    setFormData({
+      namaPemilik: "",
+      namaToko: "",
+      alamat: "",
+      kota: "",
+      nomorHp: "",
+    });
+    setPhotos([]);
+    setCameraVisible(false);
+    setPhotoSessionActive(false);
+    setLocation(null);
+    setLocationLoading(true);
+    setUploadProgress(0);
+    setIsUploading(false);
+    setLoading(false);
+    // Trigger location fetch ulang
+    getCurrentLocation();
+  };
 
+  useFocusEffect(
+    React.useCallback(() => {
+      // Reset form setiap kali halaman ini aktif (misal: kembali dari camera atau RKS)
+      resetForm();
+      return () => {
+        // Opsional: cleanup jika perlu
+      };
+    }, [])
+  );
   // ✅ Get current location saat component mount
   useEffect(() => {
     getCurrentLocation();
@@ -433,6 +466,7 @@ export default function CreateCustomer() {
       console.log("🎯 Persistent customer created:", rksCustomerData);
 
       if (isForRKS) {
+        resetForm();
         router.push({
           pathname: "/(tabs)/rks",
           params: {
@@ -440,6 +474,7 @@ export default function CreateCustomer() {
           },
         });
       } else {
+        resetForm();
         router.push({
           pathname: "/customers",
           params: {

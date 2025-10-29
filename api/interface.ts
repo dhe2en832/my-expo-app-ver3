@@ -934,6 +934,27 @@ export interface StockGudangItem extends StockItem {
   stok_gudang: number;
 }
 
+export interface StockGudang {
+  kode_gudang: string;
+  nama_gudang: string;
+  stok_gudang: number;
+}
+
+export interface StockItemGrouped {
+  kode_item: string;
+  no_item: string;
+  nama_item: string;
+  kategori?: string;
+  kelompok?: string;
+  satuan?: string;
+  berat?: number;
+  harga1?: number;
+  harga2?: number;
+  harga3?: number;
+  stok_total?: number;
+  gudang_list: StockGudang[];
+}
+
 export interface ApprovalData {
   kode_so: string;
   status: "approved" | "rejected";
@@ -1019,27 +1040,30 @@ export interface OutstandingInvoice {
   mobile_allocated_amount: number;
   mobile_allocated_discount: number;
   sisa_setelah_alokasi: number;
+  sudah_dibayar_setelah_alokasi: number;
   overdue_days: number;
   is_overdue: boolean;
   kode_mu: string;
   nama_cust: string;
   kode_cust: string;
   nama_sales: string;
-  source: 'ERP' | 'MOBILE_ALLOCATED';
+  source: "ERP" | "MOBILE_ALLOCATED";
 }
 
 export interface PPIListItem {
   kode_ppi: string;
   no_ppi: string;
   tanggal_ppi: string;
+  kode_cust: string;
+  no_cust: string;
   nama_cust: string;
-  total_dibayar: number;
+  jumlah_bayar: number;
   total_discount: number;
-  cara_bayar: 'cash' | 'transfer' | 'giro';
+  cara_bayar: "cash" | "transfer" | "giro";
   no_giro?: string;
   bank?: string;
   status: string;
-  sumber_data: 'MOBILE' | 'ERP';
+  sumber_data: "MOBILE" | "ERP";
   jumlah_faktur: number;
   list_faktur: string[];
   kode_sales: string;
@@ -1051,29 +1075,36 @@ export interface PPIListItem {
   };
 }
 
-export interface PPIDetail {
+export interface PPIMasterDetailPayments {
   header: {
     kode_ppi: string;
     no_ppi: string;
     tanggal_ppi: string;
     kode_cust: string;
+    no_cust: string;
     nama_cust: string;
+    alamat: string;
+    kota: string;
+    telepon: string;
     kode_sales: string;
+    no_sales: string;
     nama_sales: string;
-    total_dibayar: number;
+    jumlah_bayar: number;
     total_discount: number;
-    cara_bayar: 'cash' | 'transfer' | 'giro';
+    cara_bayar: "cash" | "transfer" | "giro";
     no_giro?: string;
     bank?: string;
     tgl_jatuh_tempo?: string;
     status: string;
-    sumber_data: 'MOBILE' | 'ERP';
+    sumber_data: "MOBILE" | "ERP";
     debet_rp?: number;
     kredit_rp?: number;
     jumlah_rp?: number;
     kode_akun_debet?: string;
     no_akun?: string;
     nama_akun?: string;
+    kode_akun_piutang: string;
+    nama_akun_piutang: string;
   };
   details: {
     kode_fj: string;
@@ -1087,7 +1118,7 @@ export interface PPIDetail {
     sisa_setelah_bayar: number;
   }[];
   payments: {
-    metode_bayar: 'cash' | 'transfer' | 'giro';
+    metode_bayar: "cash" | "transfer" | "giro";
     jumlah_bayar: number;
     tgl_bayar: string;
     no_giro?: string;
@@ -1098,34 +1129,40 @@ export interface PPIDetail {
   }[];
   summary: {
     jumlah_faktur: number;
-    total_dibayar: number;
+    jumlah_bayar: number;
     total_discount: number;
-    sumber_data: 'MOBILE' | 'ERP';
+    sumber_data: "MOBILE" | "ERP";
   };
 }
 
+// api/interface.ts - UPDATE
 export interface PPICreateRequest {
   header: {
     tanggal_ppi: string;
     kode_cust: string;
     nama_cust: string;
-    cara_bayar: 'cash' | 'transfer' | 'giro';
+    cara_bayar: "cash" | "transfer" | "giro";
     no_giro?: string;
     bank?: string;
     tgl_jatuh_tempo?: string;
+    kode_akun_debet?: string; // ✅ NEW FIELD untuk bank
+    status?: "draft" | "submitted"; // ✅ NEW FIELD
+    file_zip_path?: string; // ✅ Pindahkan ke header
+    // total_dibayar: number; // ✅ TAMBAHKAN INI
+    // total_discount: number; // ✅ SESUAI DDL
   };
   details: {
     kode_fj: string;
     no_fj: string;
     tgl_fj: string;
-    netto_mu: number;
-    lunas_mu: number;
-    owing: number;
+    // netto_mu: number;
+    // lunas_mu: number;
+    // owing: number;
     bayar_mu: number;
     discount: number;
   }[];
   payments?: {
-    metode_bayar: 'cash' | 'transfer' | 'giro';
+    metode_bayar: "cash" | "transfer" | "giro";
     jumlah_bayar: number;
     tgl_bayar: string;
     no_giro?: string;
@@ -1136,6 +1173,12 @@ export interface PPICreateRequest {
   }[];
 }
 
+export interface AkunBank {
+  kode_akun: string;
+  no_akun: string;
+  nama_akun: string;
+}
+
 export interface PPICreateResponse {
   kode_ppi: string;
   no_ppi: string;
@@ -1143,4 +1186,274 @@ export interface PPICreateResponse {
   total_discount: number;
   jumlah_faktur: number;
   status: string;
+}
+
+export interface PPISummary {
+  totalPiutang: number;
+  totalTertagih: number;
+  totalOutstanding: number;
+  draftCount: number;
+  pendingSyncCount: number;
+  syncedCount: number;
+}
+
+export interface CustomerType {
+  kode_cust: string;
+  no_cust: string;
+  nama_relasi: string;
+  alamat_kirim1?: string;
+  kota_kirim?: string;
+  kode_termin?: string;
+  nama_termin?: string;
+  // tambahkan field lain sesuai kebutuhan
+}
+
+// --- DASHBOARD SUMMARY COMPONENT ---
+export interface PPISummaryDashboardProps {
+  summary: PPISummary | null;
+  loading: boolean;
+}
+
+// --- STATUS OVERVIEW COMPONENT ---
+export interface PPIStatusOverviewProps {
+  summary: PPISummary | null;
+}
+
+// --- PPI LIST CONTENT COMPONENT ---
+export interface PPIListContentProps {
+  filter: string;
+  baseFilteredPPI: PPIListItem[];
+  searchQuery: string;
+  onPPIPress: (ppi: PPIListItem) => void;
+  onPrintPress: (ppi: PPIListItem) => void;
+  onRefresh: () => void;
+  refreshing: boolean;
+  salesDropdownOpen: boolean;
+}
+
+export interface PpiCustomerList {
+  // 🔹 Status & Identitas Umum
+  status_sumber: "existing" | "baru"; // sumber data
+  status_warna?: string; // hanya untuk existing ERP (Aktif, NOO, dst)
+  kode_cust: string;
+  kode_relasi: string;
+  no_cust: string;
+  nama_relasi: string; // alias dari nama_relasi
+  hp?: string;
+
+  // 🔹 Alamat & Lokasi
+  alamat?: string;
+  alamat_kirim1?: string;
+  alamat_kirim2?: string;
+  kota_kirim?: string;
+  propinsi_kirim?: string;
+  lat_kirim?: string;
+  long_kirim?: string;
+
+  // 🔹 Termin & Transaksi
+  kode_termin?: string;
+  nama_termin?: string;
+  hari?: number;
+  persen?: number;
+  tempo?: number;
+  cod?: string;
+
+  // 🔹 Keuangan & Pajak
+  kode_mu?: string;
+  harga_def?: string;
+  diskon_def?: string;
+  kode_pajak?: string;
+  kurs?: number;
+  kurs_pajak?: number;
+  nilai_pajak?: number;
+
+  // 🔹 Akun & Subledger
+  kode_akun_piutang?: string;
+  nama_akun_piutang?: string;
+  no_akun_piutang?: string;
+  subledger?: string;
+
+  // 🔹 Info Penjualan (Area & Salesman)
+  kode_sales?: string;
+  no_sales?: string;
+  nama_sales?: string;
+  wa_sales?: string;
+  kode_salesman?: string;
+  no_salesman?: string;
+  nama_salesman?: string;
+  wa_salesman?: string;
+
+  // 🔹 Status Data
+  aktif?: string;
+  tipe?: string;
+  kelas?: string;
+  catatan?: string;
+  filegambar?: string; // hanya untuk mobile pending
+  created_at?: string; // hanya untuk mobile pending
+  sort_order?: number; // urutan tampilan
+}
+
+// components/PPIPhotoUpload.tsx - UPDATE interface
+export interface PPIPhoto {
+  id: string;
+  uri: string;
+  name: string;
+  type: string;
+  filename: string;
+  timestamp: string;
+  base64?: string | null; // ✅ PERBAIKI: tambah null
+}
+
+// ==============================
+// Interface Modul Data Kompetitor
+// ==============================
+
+// Data untuk List (ringkasan)
+export interface KompetitorList {
+  kode_kompetitor: string;
+  tanggal_input: string;
+  kode_rks?: string | null;
+  id_rks?: string | null;
+  kode_cust?: string | null;
+  nama_cust?: string | null;
+  kode_sales?: string | null;
+  nama_sales?: string | null;
+  catatan?: string | null;
+  status?: string;
+  total_produk: number;
+}
+
+// Data detail produk (child)
+export interface KompetitorDetailItem {
+  id: number;
+  nama_produk: string;
+  merek_produk?: string;
+  harga?: number;
+  foto_url?: string | null;
+  keterangan?: string | null;
+  photo_filenames?: string;
+  created_by?: string;
+  created_at?: string;
+  update_by?: string | null;
+  update_at?: string | null;
+}
+
+// Data master (parent)
+export interface KompetitorMaster {
+  kode_kompetitor: string;
+  kode_rks: string;
+  id_rks?: string;
+  kode_cust: string;
+  nama_cust: string;
+  kode_sales: string;
+  nama_sales: string;
+  tanggal_input: string;
+  catatan: string;
+  status: string;
+  file_zip_path: string;
+}
+
+// Master + Detail (untuk detail view)
+export interface KompetitorMasterDetail {
+  master: KompetitorMaster;
+  details: KompetitorDetailItem[];
+}
+
+// Payload untuk create data kompetitor
+export interface KompetitorRequest {
+  header: {
+    kode_rks?: string | null;
+    id_rks?: string | null;
+    kode_cust?: string | null;
+    nama_cust?: string | null;
+    catatan?: string | null;
+  };
+  details: {
+    nama_produk: string;
+    merek_produk?: string | null;
+    harga?: number;
+    foto_url?: string | null; // opsional base64/url
+    keterangan?: string | null;
+  }[];
+}
+
+// Response untuk create
+export interface KompetitorCreateResponse {
+  success: boolean;
+  data: KompetitorList[] | null;
+  message?: string;
+  error?: string;
+  meta?: {
+    // ✅ Ganti 'pagination' menjadi 'meta'
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+}
+
+export interface KompetitorPhoto {
+  id: string;
+  uri: string;
+  // name: string;
+  type: string;
+  filename: string;
+  timestamp: string;
+  base64?: string | null; // ✅ PERBAIKI: tambah null
+  productId?: string;
+  watermarkData?: {
+    customerName: string;
+    salesName: string;
+    locationText: string;
+    accuracyText: string;
+    checkType: string;
+  };
+}
+
+export interface KompetitorCreateRequest {
+  header: {
+    kode_kompetitor: string;
+    kode_rks: string;
+    id_rks: string;
+    kode_cust?: string;
+    nama_cust?: string;
+    kode_sales: string;
+    nama_sales: string;
+    tanggal_input: string;
+    catatan: string;
+    status: string;
+    file_zip_path: string;
+    created_by: string;
+    created_at: string;
+    update_by: string;
+    update_at: string;
+  };
+  details: {
+    // id: string;
+    kode_kompetitor: string;
+    nama_produk: string;
+    merek_produk: string;
+    harga: number;
+    foto_url: string;
+    keterangan: string;
+    photo_filenames?: string;
+    created_by: string;
+    created_at: string;
+    update_by: string | null;
+    update_at: string | null;
+  }[];
+}
+
+export interface CatatanData {
+  id_catatan?: number;
+  kode_rks?: string;
+  id_rks?: string;
+  kode_cust: string;
+  nama_cust?: string;
+  no_cust?: string;
+  isi_catatan: string;
+  kode_sales?: string;
+  nama_sales?: string;
+  created_at?: string;
+  updated_at?: string;
 }

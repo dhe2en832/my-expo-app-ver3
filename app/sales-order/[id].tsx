@@ -26,31 +26,52 @@ export default function EditSalesOrder() {
   const [orderData, setOrderData] = useState<any>(null);
 
   // ✅ TENTUKAN MODE BERDASARKAN PARAMS DAN ROLE USER
-  const determineMode = (): "create" | "edit" | "approval" => {
-    // ✅ HAPUS "view"
-    // Jika mode sudah ditentukan dari params, gunakan itu
+  // const determineMode = (): "create" | "edit" | "approval" => {
+  //   // ✅ HAPUS "view"
+  //   // Jika mode sudah ditentukan dari params, gunakan itu
+  //   if (mode === "approval") return "approval";
+  //   if (mode === "create") return "create";
+  //   if (mode === "edit") return "edit";
+
+  //   // Auto-determine mode berdasarkan role dan status
+  //   if (user?.salesRole === "Sales Supervisor") {
+  //     // Supervisor: approval untuk pending, EDIT untuk lainnya (bukan view)
+  //     const statusStr = Array.isArray(status) ? status[0] : status;
+  //     return statusStr?.toLowerCase() === "pending" ||
+  //       statusStr?.toLowerCase() === "menunggu"
+  //       ? "approval"
+  //       : "edit"; // ✅ GUNAKAN "edit" DENGAN isEditable=false
+  //   } else {
+  //     // Sales biasa: edit untuk draft milik sendiri, EDIT untuk lainnya (bukan view)
+  //     const statusStr = Array.isArray(status) ? status[0] : status;
+  //     const isEditableForm =
+  //       isEditable === "true" ||
+  //       statusStr === "draft" ||
+  //       statusStr?.toLowerCase() === "terbuka";
+
+  //     return isEditableForm ? "edit" : "edit"; // ✅ SELALU "edit", kontrol via isEditable
+  //   }
+  // };
+
+  const determineMode = (): "create" | "edit" | "approval" | "view" => {
     if (mode === "approval") return "approval";
     if (mode === "create") return "create";
     if (mode === "edit") return "edit";
 
-    // Auto-determine mode berdasarkan role dan status
-    if (user?.salesRole === "Sales Supervisor") {
-      // Supervisor: approval untuk pending, EDIT untuk lainnya (bukan view)
-      const statusStr = Array.isArray(status) ? status[0] : status;
-      return statusStr?.toLowerCase() === "pending" ||
-        statusStr?.toLowerCase() === "menunggu"
-        ? "approval"
-        : "edit"; // ✅ GUNAKAN "edit" DENGAN isEditable=false
-    } else {
-      // Sales biasa: edit untuk draft milik sendiri, EDIT untuk lainnya (bukan view)
-      const statusStr = Array.isArray(status) ? status[0] : status;
-      const isEditableForm =
-        isEditable === "true" ||
-        statusStr === "draft" ||
-        statusStr?.toLowerCase() === "terbuka";
+    const statusStr = Array.isArray(status)
+      ? status[0]?.toLowerCase()
+      : status?.toLowerCase();
 
-      return isEditableForm ? "edit" : "edit"; // ✅ SELALU "edit", kontrol via isEditable
+    if (user?.salesRole === "Sales Supervisor") {
+      if (["pending", "menunggu"].includes(statusStr)) return "approval";
+      return "view"; // supervisor view saja selain pending
     }
+
+    if (["draft", "terbuka"].includes(statusStr) && isEditable === "true") {
+      return "edit";
+    }
+
+    return "view"; // default
   };
 
   const currentMode = determineMode();

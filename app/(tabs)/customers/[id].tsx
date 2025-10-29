@@ -124,6 +124,11 @@ export default function EditCustomer() {
   ];
 
   useEffect(() => {
+    resetForm(); // kosongkan state form dan foto
+    loadCustomerData(); // fetch data baru
+  }, [kode_cust]);
+
+  useEffect(() => {
     const getLocation = async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
@@ -139,10 +144,33 @@ export default function EditCustomer() {
     loadCustomerData();
   }, [kode_cust]);
 
-  const loadCustomerData = async () => {
-    setExistingPhotos([]);
+  useEffect(() => {
+    console.log("🔄 existingPhotos updated:", existingPhotos.length, "photos");
+  }, [existingPhotos]);
+
+  // ✅ Reset form data dan photos - PERBAIKAN
+  const resetForm = () => {
+    setFormData({
+      namaPemilik: "",
+      namaToko: "",
+      alamat: "",
+      kota: "",
+      nomorHp: "",
+      email: "",
+      kode_pos: "",
+      propinsi: "",
+    });
+    setExistingPhotos([]); // ✅ PASTIKAN INI DIKOSONGKAN
     setNewPhotos([]);
-    setPhotoPreviewLoading(true); // ✅ Mulai loading preview
+    setOriginalData(null);
+    setCustomer(null);
+    setSelectedPhoto(null);
+  };
+
+  const loadCustomerData = async () => {
+    // ✅ Reset form sebelum load data baru - GUNAKAN FUNCTIONAL UPDATE
+    resetForm();
+    setPhotoPreviewLoading(true);
 
     if (!kode_cust) {
       Alert.alert("Error", "Kode customer tidak ditemukan");
@@ -153,14 +181,20 @@ export default function EditCustomer() {
 
     try {
       setLoading(true);
+
+      // ✅ PASTIKAN existingPhotos KOSONG dengan functional update
+      setExistingPhotos([]);
+
       const customerRes = await customerAPI.getDetailCustomerCombined(
         kode_cust
       );
       if (!customerRes.success || !customerRes.data) {
         throw new Error("Customer tidak ditemukan");
       }
+
       const customerData = customerRes.data;
       setCustomer(customerData);
+
       // Load dari params
       const formData: CustomerFormData = {
         namaPemilik: customerData.nama_cust?.split(" / ")[0] || "",
@@ -178,32 +212,95 @@ export default function EditCustomer() {
       setFormData(formData);
       setOriginalData(formData);
 
-      // ✅ Load existing photos dari filegambar (simulasi)
-      // Di real implementation, Anda perlu API untuk get multiple photos
-      // ✅ LOAD FOTO DARI ZIP
-      if (customerData.filegambar) {
-        const previewRes = await customerAPI.previewCustomerPhotos(
-          customerData.filegambar
-        );
-        if (previewRes.success && previewRes.photos) {
-          const existing: CustomerPhoto[] = previewRes.photos.map((photo) => ({
-            id: `existing-${Date.now()}-${Math.random()
-              .toString(36)
-              .substring(2, 9)}`,
-            uri: photo.url,
-            type: photo.type as any,
-            filename: photo.filename,
-            timestamp: new Date().toISOString(),
-          }));
-          setExistingPhotos(existing);
+      // ✅ Load existing photos hanya jika filegambar ada - PERBAIKI DENGAN TIMEOUT
+      if (customerData.filegambar && customerData.filegambar.trim() !== "") {
+        try {
+          console.log("📥 Loading photos from:", customerData.filegambar);
+
+          const previewRes = await customerAPI.previewCustomerPhotos(
+            customerData.filegambar
+          );
+
+          console.log("📸 Preview response:", previewRes);
+
+          if (
+            previewRes.success &&
+            previewRes.photos &&
+            previewRes.photos.length > 0
+          ) {
+            // ✅ FILTER OUT METADATA FILE
+            const photoFiles = previewRes.photos.filter(
+              (photo) =>
+                !photo.filename.includes("metadata.json") &&
+                !photo.type.includes(".") &&
+                photo.type !== "." &&
+                photo.filename !== "metadata.json"
+            );
+
+            const existing: CustomerPhoto[] = photoFiles.map((photo, index) => {
+              // ✅ HAPUS QUERY PARAMETER DARI URL
+              const cleanUri = photo.url.split("?")[0];
+              const originalUri = photo.url;
+              return {
+                id: `existing-${Date.now()}-${index}`,
+                uri: originalUri, // ✅ GUNAKAN URL BERSIH
+                type: photo.type as any,
+                filename: photo.filename,
+                timestamp: new Date().toISOString(),
+              };
+            });
+
+            console.log(
+              `✅ Loaded ${existing.length} existing photos after filtering`
+            );
+
+            // ✅ GUNAKAN setTimeout UNTUK MEMASTIKAN STATE UPDATE
+            setTimeout(() => {
+              setExistingPhotos(existing);
+            }, 0);
+          } else {
+            console.log("ℹ️ No photos found in preview response");
+            setExistingPhotos([]);
+          }
+        } catch (photoError: any) {
+          console.warn("⚠️ Gagal memuat foto existing:", photoError.message);
+          setExistingPhotos([]);
         }
+      } else {
+        console.log("ℹ️ No filegambar found for customer");
+        setExistingPhotos([]);
       }
     } catch (error: any) {
       console.error("Error loading customer data:", error);
       Alert.alert("Error", "Gagal memuat data customer");
+      setExistingPhotos([]);
     } finally {
       setLoading(false);
-      setPhotoPreviewLoading(false); // ✅ Akhiri loading preview
+      setPhotoPreviewLoading(false);
+    }
+  };
+
+  // ✅ Juga pastikan handleBack mereset form
+  const handleBack = () => {
+    if (hasChanges()) {
+      Alert.alert(
+        "Perubahan Belum Disimpan",
+        "Anda memiliki perubahan yang belum disimpan. Yakin ingin keluar?",
+        [
+          { text: "Batal", style: "cancel" },
+          {
+            text: "Keluar",
+            style: "destructive",
+            onPress: () => {
+              resetForm(); // ✅ PASTIKAN RESET FORM
+              router.back();
+            },
+          },
+        ]
+      );
+    } else {
+      resetForm(); // ✅ PASTIKAN RESET FORM MESKI TIDAK ADA PERUBAHAN
+      router.back();
     }
   };
 
@@ -334,7 +431,16 @@ export default function EditCustomer() {
 
   // ✅ Handle photo view
   const handleViewPhoto = (photoUri: string) => {
-    setSelectedPhoto(photoUri);
+    // console.log("🖼️ Viewing photo:", photoUri);
+    // console.log("existingPhotos XXXXXXX ", existingPhotos);
+
+    // ✅ COBA DUA VERSI URL: ASLI DAN CLEAN
+    const urlsToTry = [
+      photoUri, // URL asli dengan query parameter
+      photoUri.split("?")[0], // URL tanpa query parameter (fallback)
+    ];
+
+    setSelectedPhoto(urlsToTry[0]); // Coba yang asli dulu
     setPhotoModalVisible(true);
   };
 
@@ -374,7 +480,7 @@ export default function EditCustomer() {
         // ✅ Pastikan watermarkData ada
         watermarkData: photo.watermarkData || {
           customerName: formData.namaPemilik,
-          salesName: user?.namaSales || user?.name || "Sales",
+          salesName: user?.namaSales || user?.nama_user || "Sales",
           locationText: location
             ? `📍 ${location.coords.latitude.toFixed(
                 6
@@ -404,14 +510,14 @@ export default function EditCustomer() {
       //   })
       // );
 
-      const kode_cabang = user?.territory;
+      const kode_cabang = user?.kodeCabang;
 
       uploadedZipPath = await MobileFTPUploader.uploadCustomerPhotosAsZip(
         photosWithWatermark, // ✅ Kirim photos dengan watermark data
         kode_cust,
         kode_cabang?.toString() || "",
         formData.namaToko,
-        user?.namaSales || user?.name || "Sales",
+        user?.namaSales || user?.nama_user || "Sales",
         location
           ? {
               latitude: location.coords.latitude,
@@ -476,7 +582,7 @@ export default function EditCustomer() {
         alamat_kirim1: formData.alamat,
         kota_kirim: formData.kota,
         propinsi_kirim: formData.propinsi,
-        userid: user?.id || "MOBILE_USER",
+        userid: user?.userid || "MOBILE_USER",
       };
 
       let finalZipPath = customer?.photo_path || "";
@@ -529,25 +635,6 @@ export default function EditCustomer() {
   };
 
   // Handle back with confirmation if there are changes
-  const handleBack = () => {
-    if (hasChanges()) {
-      Alert.alert(
-        "Perubahan Belum Disimpan",
-        "Anda memiliki perubahan yang belum disimpan. Yakin ingin keluar?",
-        [
-          { text: "Batal", style: "cancel" },
-          {
-            text: "Keluar",
-            style: "destructive",
-            onPress: () => router.back(),
-          },
-        ]
-      );
-    } else {
-      router.back();
-    }
-  };
-
   const photoStatus = getPhotoStatus();
 
   if (loading) {
@@ -605,7 +692,7 @@ export default function EditCustomer() {
           <View style={styles.salesInfo}>
             <Text style={styles.salesLabel}>Sales:</Text>
             <Text style={styles.salesName}>
-              {user?.namaSales || user?.name || "Sales"}
+              {user?.namaSales || user?.nama_user || "Sales"}
             </Text>
           </View>
 
@@ -671,7 +758,7 @@ export default function EditCustomer() {
 
             {/* Existing Photos */}
 
-            {!photoPreviewLoading && existingPhotos.length > 0 && (
+            {!loading && !photoPreviewLoading && existingPhotos.length > 0 && (
               <View style={styles.photosContainer}>
                 <Text style={styles.photosTitle}>
                   Foto Existing ({existingPhotos.length})
@@ -682,10 +769,16 @@ export default function EditCustomer() {
                       <TouchableOpacity
                         onPress={() => handleViewPhoto(photo.uri)}
                       >
-                        <View style={styles.photoPlaceholder}>
-                          <MaterialIcons name="photo" size={24} color="#666" />
-                          <Text style={styles.photoText}>Lihat Foto</Text>
-                        </View>
+                        {/* ✅ GUNAKAN IMAGE UNTUK FOTO EXISTING JUGA */}
+                        <Image
+                          source={{ uri: photo.uri }}
+                          style={styles.photoImage}
+                          onError={(e) => {
+                            console.log("❌ Error loading image:", photo.uri);
+                            // Fallback ke placeholder jika error
+                            const fallbackUri = photo.uri.split("?")[0];
+                          }}
+                        />
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.removePhotoButton}
@@ -701,6 +794,18 @@ export default function EditCustomer() {
                 </ScrollView>
               </View>
             )}
+
+            {!loading &&
+              !photoPreviewLoading &&
+              existingPhotos.length === 0 &&
+              customer?.photos && (
+                <View style={styles.infoBox}>
+                  <MaterialIcons name="info" size={20} color="#2196F3" />
+                  <Text style={styles.infoText}>
+                    Foto tersedia tapi belum bisa dimuat. Coba refresh halaman.
+                  </Text>
+                </View>
+              )}
 
             {/* New Photos */}
             {newPhotos.length > 0 && (
@@ -880,7 +985,7 @@ export default function EditCustomer() {
           onClose={() => setCameraVisible(false)}
           onPhotosCapture={handleCameraPhotosCapture}
           customerName={formData.namaPemilik || "Customer"}
-          salesName={user?.namaSales || user?.name || "Sales"}
+          salesName={user?.namaSales || user?.nama_user || "Sales"}
           photoTypes={defaultPhotoTypes}
           initialPhotos={[]} // Start fresh for new photos
         />

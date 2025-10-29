@@ -1,5 +1,5 @@
 // components/sales-order/SalesOrderForm.tsx
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -34,6 +34,7 @@ import {
   formatCurrencyInput,
   parseCurrencyInput,
 } from "@/utils/helpers";
+import { useLocalSearchParams } from "expo-router";
 
 const now = moment();
 
@@ -79,7 +80,7 @@ interface SalesOrderForm {
 }
 
 interface SalesOrderFormProps {
-  mode: "create" | "edit" | "approval"; // ✅ TAMBAH MODE APPROVAL
+  mode: "create" | "edit" | "approval" | "view"; // ✅ TAMBAH MODE APPROVAL
   orderId?: string;
   initialData?: any;
   isEditable?: boolean;
@@ -96,10 +97,22 @@ export default function SalesOrderForm({
   onApprove,
   onReject,
 }: SalesOrderFormProps) {
+  console.log("CEK MODE XXX ", mode);
   const insets = useSafeAreaInsets();
   const DEFAULT_PPN_PERCENT = 11;
   const router = useRouter();
   const { user } = useAuth();
+
+  const params = useLocalSearchParams<{
+    kode_rks?: string;
+    kode_cust?: string;
+    no_cust?: string;
+    nama_cust?: string;
+    alamat?: string;
+    is_unscheduled?: string;
+    baru?: string;
+    fromRKS?: string;
+  }>();
 
   const [loading, setLoading] = useState(
     mode === "edit" || mode === "approval"
@@ -149,15 +162,18 @@ export default function SalesOrderForm({
 
   const [searchCustomer, setSearchCustomer] = useState("");
   const [searchProduct, setSearchProduct] = useState("");
+  const [fromRKS, setFromRKS] = useState(false);
+  const [isFormReset, setIsFormReset] = useState(false);
 
   // ✅ DETERMINE READ-ONLY STATE BERDASARKAN MODE
   const isReadOnly = mode === "approval" || !isEditable;
+  const initializedFromRKS = useRef(false);
 
-  useEffect(() => {
-    return () => {
-      resetForm();
-    };
-  }, []);
+  // useEffect(() => {
+  //   return () => {
+  //     resetForm();
+  //   };
+  // }, []);
 
   const resetForm = useCallback(() => {
     // console.log("🔄 Resetting form...");
@@ -195,8 +211,34 @@ export default function SalesOrderForm({
   useEffect(() => {
     if (mode === "create" && !orderId) {
       resetForm();
+      setIsFormReset(true);
     }
   }, [mode, orderId, resetForm]);
+
+  useEffect(() => {
+    if (mode === "create" && !orderId) {
+      resetForm();
+    }
+  }, [mode, orderId, resetForm]);
+
+  useEffect(() => {
+    if (isFormReset && !initializedFromRKS.current && params?.kode_cust) {
+      console.log("📦 Diterima dari check-in:", params);
+
+      // ✅ Gunakan handleSelectCustomer agar form terisi konsisten
+      handleSelectCustomer({
+        kode_cust: params.kode_cust.toString(),
+        no_cust: params.no_cust?.toString() || "",
+        nama_cust: params.nama_cust?.toString() || "",
+        alamat: params.alamat?.toString() || "Alamat belum tersedia",
+        kode_termin: "",
+        nama_termin: "",
+      } as CustomerList);
+
+      setFromRKS(true);
+      initializedFromRKS.current = true; // ✅ cegah rerun
+    }
+  }, [params, params?.kode_cust, isFormReset]);
 
   // ✅ Load existing data untuk edit dan approval mode
   useEffect(() => {
@@ -1319,37 +1361,53 @@ export default function SalesOrderForm({
 
   // ✅ Render customer selector dengan conditional editing
   const renderCustomerSelector = () => {
-    const content = (
-      <TouchableOpacity
-        style={[styles.customerSelector, isReadOnly && styles.readOnly]}
-        onPress={!isReadOnly ? () => setShowCustomerModal(true) : undefined}
-        disabled={isReadOnly}
-      >
-        {form.nama_cust ? (
-          <View>
-            <Text style={styles.selectedCustomerName}>{form.nama_cust}</Text>
-            <Text style={styles.selectedCustomerCode}>{form.no_cust}</Text>
-            {form.alamat && (
-              <Text style={styles.selectedCustomerAddress} numberOfLines={2}>
-                {form.alamat}
-              </Text>
-            )}
-            {form.kode_termin && (
-              <Text style={styles.selectedCustomerTermin}>
-                Termin: {form.nama_termin}
-              </Text>
-            )}
+    return (
+      <View style={{ marginBottom: 8 }}>
+        {/* ✅ Badge muncul hanya jika form dibuka dari RKS */}
+        {fromRKS && (
+          <View style={styles.rksBadge}>
+            <MaterialIcons name="location-pin" size={14} color="#0a7" />
+            <Text style={styles.rksBadgeText}>Dari Kunjungan RKS</Text>
           </View>
-        ) : (
-          <Text style={styles.placeholderText}>Pilih Customer</Text>
         )}
-        {!isReadOnly && (
-          <MaterialIcons name="arrow-drop-down" size={24} color="#666" />
-        )}
-      </TouchableOpacity>
-    );
 
-    return content;
+        <TouchableOpacity
+          style={[
+            styles.customerSelector,
+            (isReadOnly || fromRKS) && styles.readOnly,
+          ]}
+          onPress={
+            !isReadOnly && !fromRKS
+              ? () => setShowCustomerModal(true)
+              : undefined
+          }
+          disabled={isReadOnly || fromRKS}
+        >
+          {form.nama_cust ? (
+            <View>
+              <Text style={styles.selectedCustomerName}>{form.nama_cust}</Text>
+              <Text style={styles.selectedCustomerCode}>{form.no_cust}</Text>
+              {form.alamat && (
+                <Text style={styles.selectedCustomerAddress} numberOfLines={2}>
+                  {form.alamat}
+                </Text>
+              )}
+              {form.kode_termin && (
+                <Text style={styles.selectedCustomerTermin}>
+                  Termin: {form.nama_termin}
+                </Text>
+              )}
+            </View>
+          ) : (
+            <Text style={styles.placeholderText}>Pilih Customer</Text>
+          )}
+
+          {!isReadOnly && !fromRKS && (
+            <MaterialIcons name="arrow-drop-down" size={24} color="#666" />
+          )}
+        </TouchableOpacity>
+      </View>
+    );
   };
 
   const handlePajakChange = useCallback(
@@ -1421,25 +1479,25 @@ export default function SalesOrderForm({
   // ✅ Loading state
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View
-          style={[styles.loadingContainer, { paddingBottom: insets.bottom }]}
-        >
-          <ActivityIndicator size="large" color="#667eea" />
-          <Text style={styles.loadingText}>
-            {mode === "edit"
-              ? "Memuat data sales order..."
-              : mode === "approval"
-              ? "Memuat data untuk approval..."
-              : "Mempersiapkan form..."}
-          </Text>
-        </View>
-      </SafeAreaView>
+      // <SafeAreaView style={styles.safeArea}>
+      <View style={[styles.loadingContainer, { paddingBottom: insets.bottom }]}>
+        <ActivityIndicator size="large" color="#667eea" />
+        <Text style={styles.loadingText}>
+          {mode === "edit"
+            ? "Memuat data sales order..."
+            : mode === "approval"
+            ? "Memuat data untuk approval..."
+            : "Mempersiapkan form..."}
+        </Text>
+      </View>
+      // </SafeAreaView>
     );
   }
-
+  // console.log("🧾 MODE:", mode);
+  // console.log("📦 existingOrder:", existingOrder?.header?.status);
   return (
-    <SafeAreaView style={styles.container}>
+    // <SafeAreaView style={styles.safeArea}>
+    <View style={styles.container}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -1640,9 +1698,14 @@ export default function SalesOrderForm({
               ) : (
                 <Text style={styles.draftButtonText}>
                   {/* {mode === "edit" ? "Update Draft" : "Simpan Draft"} */}
-                  {existingOrder?.header.status === "draft"
+                  {/* {existingOrder?.header?.status === "draft"
                     ? "Update Draft"
-                    : "Save as Draft"}
+                    : "Save as Draft"} */}
+                  {mode === "create"
+                    ? "Simpan Draft"
+                    : existingOrder?.header?.status === "draft"
+                    ? "Update Draft"
+                    : "Simpan Draft"}
                 </Text>
               )}
             </TouchableOpacity>
@@ -1657,7 +1720,12 @@ export default function SalesOrderForm({
               ) : (
                 <Text style={styles.submitButtonText}>
                   {/* {mode === "edit" ? "Update Order" : "Submit Order"} */}
-                  {existingOrder?.header.status === "draft"
+                  {/* {existingOrder?.header?.status === "draft"
+                    ? "Submit Order"
+                    : "Update Order"} */}
+                  {mode === "create"
+                    ? "Simpan Order"
+                    : existingOrder?.header?.status === "draft"
                     ? "Submit Order"
                     : "Update Order"}
                 </Text>
@@ -2089,14 +2157,35 @@ export default function SalesOrderForm({
           </View>
         </SafeAreaView>
       </Modal>
-    </SafeAreaView>
+    </View>
+    // </SafeAreaView>
   );
 }
 
 // ✅ UPDATE STYLES DENGAN APPROVAL-SPECIFIC STYLES
 const styles = StyleSheet.create({
-  // ... (semua styles yang ada sebelumnya tetap sama)
-
+  rksBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "#E6FFF3",
+    borderColor: "#0a7",
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 4,
+  },
+  rksBadgeText: {
+    color: "#0a7",
+    fontSize: 12,
+    fontWeight: "600",
+    marginLeft: 4,
+  },
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
   // ✅ APPROVAL BANNER
   approvalBanner: {
     flexDirection: "row",
@@ -2762,9 +2851,6 @@ const styles = StyleSheet.create({
   readOnlyContainer: {
     opacity: 0.7,
   },
-  readOnly: {
-    backgroundColor: "#f5f5f5",
-  },
   readOnlyLabel: {
     fontSize: 10,
     color: "#666",
@@ -3003,6 +3089,10 @@ const styles = StyleSheet.create({
     borderColor: "#e0e0e0",
     borderRadius: 8,
     backgroundColor: "#fafafa",
+  },
+  readOnly: {
+    backgroundColor: "#f5f5f5",
+    opacity: 0.8,
   },
   selectedCustomerAddress: {
     fontSize: 12,

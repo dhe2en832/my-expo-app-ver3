@@ -59,12 +59,21 @@ import {
   PPICreateRequest,
   OutstandingInvoice,
   PPIListItem,
-  PPIDetail,
   PPICreateResponse,
+  PPIMasterDetailPayments,
+  PPISummary,
+  PpiCustomerList,
+  StockItemGrouped,
+  KompetitorList,
+  KompetitorMasterDetail,
+  KompetitorRequest,
+  KompetitorCreateResponse,
+  CatatanData,
 } from "./interface";
 import apiClient from "./axiosConfig";
 import { Alert } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
+import { update } from "lodash";
 
 // ==================
 // Login API Module
@@ -1607,7 +1616,6 @@ export const dataBarangAPI = {
       };
     }
   },
-
   // Get Product by Kode
   getProductByKode: async (
     kodeItem: string
@@ -1626,6 +1634,107 @@ export const dataBarangAPI = {
         message:
           error.response?.data?.message || "Gagal mengambil detail produk",
         data: null,
+      };
+    }
+  },
+  getStockData: async (
+    view: "summary" | "perGudang" | "combined" = "summary",
+    page: number = 1,
+    limit: number = 50,
+    filter: string = ""
+  ): Promise<APIResponse<StockItem[]>> => {
+    try {
+      const response = await apiClient.get("data-barang/stock/data", {
+        params: {
+          view,
+          page,
+          limit,
+          filter,
+        },
+      });
+
+      return {
+        success: true,
+        message: "Berhasil mengambil data stok",
+        data: response.data.data || [],
+        meta: response.data.meta,
+      };
+    } catch (error: any) {
+      console.error("Stock Data API Error:", error);
+      return {
+        success: false,
+        message: error.response?.data?.message || "Gagal mengambil data stok",
+        data: [],
+        meta: { total: 0, page: 1, limit },
+      };
+    }
+  },
+  getStockGrouped: async (
+    view: "summary" | "perGudang" | "combined" = "combined",
+    page: number = 1,
+    limit: number = 50,
+    filter: string = ""
+  ): Promise<APIResponse<StockItemGrouped[]>> => {
+    try {
+      const response = await apiClient.get("data-barang/stock/data", {
+        params: {
+          view,
+          page,
+          limit,
+          filter,
+        },
+      });
+
+      const rawData = response.data.data || [];
+
+      // 🧩 Kelompokkan per kode_item
+      const groupedData: StockItemGrouped[] = Object.values(
+        rawData.reduce((acc: Record<string, StockItemGrouped>, row: any) => {
+          const kode = row.kode_item;
+
+          if (!acc[kode]) {
+            acc[kode] = {
+              kode_item: row.kode_item,
+              no_item: row.no_item,
+              nama_item: row.nama_item,
+              kategori: row.kategori,
+              kelompok: row.kelompok,
+              satuan: row.satuan,
+              berat: row.berat,
+              harga1: row.harga1,
+              harga2: row.harga2,
+              harga3: row.harga3,
+              stok_total: row.stok || row.stok_total || 0,
+              gudang_list: [],
+            };
+          }
+
+          if (row.kode_gudang) {
+            acc[kode].gudang_list.push({
+              kode_gudang: row.kode_gudang,
+              nama_gudang: row.gudang,
+              stok_gudang: row.stok_gudang || 0,
+            });
+          }
+
+          return acc;
+        }, {})
+      );
+
+      return {
+        success: true,
+        message: "Berhasil mengambil dan mengelompokkan data stok",
+        data: groupedData,
+        meta: response.data.meta,
+      };
+    } catch (error: any) {
+      console.error("Stock Grouped API Error:", error);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message || "Gagal mengambil data stok per item",
+        data: [],
+        meta: { total: 0, page: 1, limit },
       };
     }
   },
@@ -1670,14 +1779,56 @@ export const dataUmumAPI = {
       };
     }
   },
+  getAkunBank: async (): Promise<APIResponse<any>> => {
+    try {
+      const response = await apiClient.get(`/umum/akun-bank`);
+      return {
+        success: response.data.success,
+        message: response.data.message,
+        data: response.data.data,
+      };
+    } catch (error: any) {
+      console.error("Akun Bank API Error:", error);
+      return {
+        success: false,
+        message: error.response?.data?.message || "Gagal mengambil akun bank",
+        data: null,
+      };
+    }
+  },
 };
 
 // ===================
 // PPI API Module
 // ===================
-
 export const ppiAPI = {
-  // ✅ Get Outstanding Invoices for Customer
+  getPPISummary: async (kodeSales?: string): Promise<PPISummary> => {
+    try {
+      // Tambahkan query param jika kodeSales diberikan
+      const response = await apiClient.get("/ppi-mobile/summary", {
+        params: kodeSales ? { kode_sales: kodeSales } : {},
+      });
+
+      if (!response.data?.success) {
+        throw new Error("Gagal memuat ringkasan PPI");
+      }
+
+      const summary = response.data.data;
+
+      return {
+        totalPiutang: summary.totalPiutang ?? 0,
+        totalTertagih: summary.totalTertagih ?? 0,
+        totalOutstanding: summary.totalOutstanding ?? 0,
+        draftCount: summary.draftCount ?? 0,
+        pendingSyncCount: summary.pendingSyncCount ?? 0,
+        syncedCount: summary.syncedCount ?? 0,
+      };
+    } catch (error) {
+      console.error("❌ Error fetching PPI summary:", error);
+      throw error;
+    }
+  },
+
   getOutstandingInvoices: async (
     kodeCust: string,
     params?: { page?: number; limit?: number; filter?: string }
@@ -1691,6 +1842,7 @@ export const ppiAPI = {
         success: response.data.success,
         data: response.data.data,
         message: response.data.message,
+        error: response.data.error,
         meta: response.data.meta,
       };
     } catch (error: any) {
@@ -1707,7 +1859,7 @@ export const ppiAPI = {
   },
 
   // ✅ Get PPI List Combined (ERP + Mobile)
-  getPpiListCombined: async (params?: {
+  getPPIList: async (params?: {
     page?: number;
     limit?: number;
     status?: string;
@@ -1723,6 +1875,7 @@ export const ppiAPI = {
         success: response.data.success,
         data: response.data.data,
         message: response.data.message,
+        error: response.data.error,
         meta: response.data.meta,
       };
     } catch (error: any) {
@@ -1738,9 +1891,9 @@ export const ppiAPI = {
   },
 
   // ✅ Get PPI Master Detail Combined
-  getPpiMasterDetailCombined: async (
+  getPPIDetail: async (
     kodePPI: string
-  ): Promise<APIResponse<PPIDetail>> => {
+  ): Promise<APIResponse<PPIMasterDetailPayments>> => {
     try {
       const response = await apiClient.get(
         `/ppi-mobile/master-detail-combined/${kodePPI}`
@@ -1749,6 +1902,7 @@ export const ppiAPI = {
         success: response.data.success,
         data: response.data.data,
         message: response.data.message,
+        error: response.data.error,
         meta: response.data.meta,
       };
     } catch (error: any) {
@@ -1762,8 +1916,45 @@ export const ppiAPI = {
     }
   },
 
+  getPpiCustomerList: async (
+    // kode_sales: string,
+    page: number = 1,
+    limit: number = 50
+  ): Promise<APIResponse<PpiCustomerList[]>> => {
+    try {
+      const res = await apiClient.get<{
+        success: boolean;
+        data?: PpiCustomerList[];
+        meta?: { total: number; page: number; limit: number };
+        message?: string;
+        // }>(`/customer-mobile/combined-list/${kode_sales}`, {
+      }>(`/ppi-mobile/customer-list`, {
+        params: { page, limit },
+      });
+
+      return {
+        success: true,
+        data: res.data.data || [],
+        meta: res.data.meta || {
+          total: res.data.data?.length || 0,
+          page,
+          limit,
+        },
+        message: res.data.message || "Berhasil",
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        data: [],
+        meta: { total: 0, page, limit },
+        message: err.response?.data?.message || "Gagal mengambil Customer List",
+        error: err,
+      };
+    }
+  },
+
   // ✅ Create PPI
-  createPpi: async (
+  createPPI: async (
     ppiData: PPICreateRequest
   ): Promise<APIResponse<PPICreateResponse>> => {
     try {
@@ -1772,6 +1963,7 @@ export const ppiAPI = {
         success: response.data.success,
         data: response.data.data,
         message: response.data.message,
+        error: response.data.error,
         meta: response.data.meta,
       };
     } catch (error: any) {
@@ -1786,15 +1978,16 @@ export const ppiAPI = {
   },
 
   // ✅ Submit PPI for Sync (Future)
-  submitPpi: async (kodePPI: string): Promise<APIResponse<any>> => {
+  submitPPI: async (kodePPI: string): Promise<APIResponse<any>> => {
     try {
-      const response = await apiClient.post(`/ppi-mobile/submit`, {
+      const response = await apiClient.post("/ppi-mobile/submit", {
         kode_ppi: kodePPI,
       });
       return {
         success: response.data.success,
         data: response.data.data,
         message: response.data.message,
+        error: response.data.error,
         meta: response.data.meta,
       };
     } catch (error: any) {
@@ -1809,7 +2002,7 @@ export const ppiAPI = {
   },
 
   // ✅ Update PPI (Future)
-  updatePpi: async (
+  updatePPI: async (
     kodePPI: string,
     ppiData: Partial<PPICreateRequest>
   ): Promise<APIResponse<any>> => {
@@ -1822,6 +2015,7 @@ export const ppiAPI = {
         success: response.data.success,
         data: response.data.data,
         message: response.data.message,
+        error: response.data.error,
         meta: response.data.meta,
       };
     } catch (error: any) {
@@ -1836,13 +2030,14 @@ export const ppiAPI = {
   },
 
   // ✅ Cancel PPI (Future)
-  cancelPpi: async (kodePPI: string): Promise<APIResponse<any>> => {
+  cancelPPI: async (kodePPI: string): Promise<APIResponse<any>> => {
     try {
       const response = await apiClient.put(`/ppi-mobile/cancel/${kodePPI}`);
       return {
         success: response.data.success,
         data: response.data.data,
         message: response.data.message,
+        error: response.data.error,
         meta: response.data.meta,
       };
     } catch (error: any) {
@@ -1857,6 +2052,601 @@ export const ppiAPI = {
   },
 };
 
+// ===================
+// Data Kompetitor API Module
+// ===================
+export const kompetitorAPI = {
+  // ✅ Get PPI List Combined (ERP + Mobile)
+  getKompetitorList: async (
+    page: number = 1,
+    limit: number = 50,
+    search: string = "",
+    kode_sales: string = ""
+  ): Promise<APIResponse<KompetitorList[]>> => {
+    try {
+      const pageNum = Number(page) || 1;
+      const limitNum = Number(limit) || 50;
+      const searchTerm = search || "";
+
+      const response = await apiClient.get("/data-kompetitor/list", {
+        params: {
+          page: pageNum,
+          limit: limitNum,
+          search: searchTerm,
+          kode_sales: kode_sales || undefined,
+        },
+      });
+
+      // console.log("🔹 [SERVICE] Full API Response:", response.data);
+
+      // ✅ Handle both meta and pagination fields
+      const backendMeta = response.data.meta || response.data.pagination;
+
+      let meta = null;
+      if (backendMeta) {
+        meta = backendMeta;
+      } else {
+        // Fallback
+        const dataLength = response.data.data?.length || 0;
+        meta = {
+          page: pageNum,
+          limit: limitNum,
+          total: dataLength,
+          pages: Math.ceil(dataLength / limitNum),
+        };
+      }
+
+      return {
+        success: response.data.success,
+        data: response.data.data,
+        message: response.data.message,
+        error: response.data.error,
+        meta: meta,
+      };
+    } catch (error: any) {
+      console.error("Get Data Kompetitor API Error:", error);
+      return {
+        success: false,
+        data: [],
+        message:
+          error.response?.data?.message ||
+          "Gagal mengambil data list kompetitor",
+        error: error.response?.data?.error || error.message,
+        meta: { total: 0, page: 1, limit: Number(limit) || 50, pages: 0 },
+      };
+    }
+  },
+
+  getKompetitorDetail: async (
+    kode_kompetitor: string
+  ): Promise<{
+    success: boolean;
+    data?: KompetitorMasterDetail;
+    photos?: { type: string; filename: string; url: string }[];
+    message?: string;
+    error?: string;
+  }> => {
+    try {
+      console.log("📥 Memuat detail kompetitor:", kode_kompetitor);
+
+      // Ambil detail kompetitor utama
+      const response = await apiClient.get(
+        `/data-kompetitor/detail/${kode_kompetitor}`
+      );
+
+      const kompetitorData = response.data?.data;
+      if (!kompetitorData) {
+        throw new Error("Data kompetitor tidak ditemukan");
+      }
+
+      // Jika ada path ZIP foto, ambil preview foto
+      let photos: { type: string; filename: string; url: string }[] = [];
+      const zipPath = kompetitorData?.file_zip_path; // pastikan field ini ada di DB/API
+
+      if (zipPath && typeof zipPath === "string") {
+        console.log("📸 Meminta preview foto kompetitor dari:", zipPath);
+
+        try {
+          const photoRes = await apiClient.post<{
+            success: boolean;
+            photos?: { type: string; filename: string; url: string }[];
+            message?: string;
+          }>("/ftp/preview-photos", { zipPath });
+
+          if (photoRes.data.success && photoRes.data.photos) {
+            photos = photoRes.data.photos;
+            console.log("✅ Preview foto kompetitor berhasil:", photos.length);
+          } else {
+            console.warn(
+              "⚠️ Gagal memuat foto kompetitor:",
+              photoRes.data.message || "Unknown error"
+            );
+          }
+        } catch (photoErr: any) {
+          console.error(
+            "❌ Error saat memuat foto kompetitor:",
+            photoErr.message
+          );
+        }
+      } else {
+        console.log("ℹ️ Tidak ada ZIP foto kompetitor");
+      }
+
+      return {
+        success: true,
+        data: kompetitorData,
+        photos,
+        message: response.data?.message,
+      };
+    } catch (error: any) {
+      console.error("❌ Error getKompetitorDetailCombined:", {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
+
+      let errorMessage = "Gagal mendapatkan detail kompetitor";
+      if (error.code === "ECONNABORTED") {
+        errorMessage = "Waktu permintaan habis. Coba lagi nanti.";
+      } else if (error.response?.status === 404) {
+        errorMessage = "Data kompetitor tidak ditemukan";
+      } else if (error.response?.status === 500) {
+        errorMessage = "Server mengalami kesalahan internal";
+      }
+
+      return {
+        success: false,
+        error: errorMessage,
+        message: errorMessage,
+      };
+    }
+  },
+
+  previewKompetitorPhotos: async (
+    zipPath: string
+  ): Promise<{
+    success: boolean;
+    photos?: {
+      type: string;
+      filename: string;
+      url: string;
+      productId: string | null; // ✅ Bisa null untuk data lama
+    }[];
+    error?: string;
+  }> => {
+    try {
+      // Validasi input
+      if (!zipPath || typeof zipPath !== "string") {
+        return { success: false, error: "ZIP path kompetitor tidak valid" };
+      }
+
+      console.log("📤 Meminta preview foto kompetitor dari server:", {
+        zipPath,
+      });
+
+      // ✅ PERBAIKAN FINAL: GUNAKAN POST METHOD
+      const response = await apiClient.post<{
+        success: boolean;
+        photos?: {
+          type: string;
+          filename: string;
+          url: string;
+          productId: string | null;
+        }[];
+        message?: string;
+        error?: string;
+      }>("/ftp/preview-kompetitor-photos", {
+        zipPath, // ✅ Kirim di body, bukan query string
+      });
+
+      console.log("📥 Backend response:", response.data);
+
+      if (response.data.success && response.data.photos) {
+        console.log(
+          "✅ Preview foto kompetitor berhasil dimuat:",
+          response.data.photos.length,
+          "foto"
+        );
+        return {
+          success: true,
+          photos: response.data.photos,
+        };
+      } else {
+        const errorMsg =
+          response.data.error ||
+          response.data.message ||
+          "Gagal memuat preview foto kompetitor";
+        console.warn("⚠️ Server response tidak sukses:", errorMsg);
+        return { success: false, error: errorMsg };
+      }
+    } catch (error: any) {
+      console.error("❌ Error previewKompetitorPhotos:", {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
+
+      let errorMessage = "Gagal mengambil preview foto kompetitor";
+      if (error.code === "ECONNABORTED") {
+        errorMessage = "Waktu permintaan habis. Coba lagi nanti.";
+      } else if (error.response?.status === 404) {
+        errorMessage = "File foto kompetitor tidak ditemukan di server";
+      } else if (error.response?.status === 500) {
+        errorMessage = "Server mengalami kesalahan internal";
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      return { success: false, error: errorMessage };
+    }
+  },
+
+  // ✅ Create Data Kompetitor
+  createDataKompetitor: async (
+    payLoadKompetitor: KompetitorRequest
+  ): Promise<APIResponse<KompetitorCreateResponse>> => {
+    try {
+      const response = await apiClient.post(
+        "/data-kompetitor/create",
+        payLoadKompetitor
+      );
+      return {
+        success: response.data.success,
+        data: response.data.data,
+        message: response.data.message,
+        error: response.data.error,
+        meta: response.data.meta,
+      };
+    } catch (error: any) {
+      console.error("Create Data Kompetitor API Error:", error);
+      return {
+        success: false,
+        data: null,
+        message:
+          error.response?.data?.message || "Gagal membuat Data Kompetitor",
+        error: error.response?.data?.error || error.message,
+      };
+    }
+  },
+
+  // ✅ Create Data Kompetitor
+  updateDataKompetitor: async (
+    kodeKompetitor: string,
+    payLoadKompetitor: any //KompetitorRequest
+  ): Promise<APIResponse<{ kodeKompetitor: string }>> => {
+    try {
+      console.log("payLoadKompetitor ", payLoadKompetitor);
+      const response = await apiClient.patch(
+        `/data-kompetitor/update/${kodeKompetitor}`,
+        payLoadKompetitor
+      );
+      return {
+        success: response.data.success,
+        data: response.data.data,
+        message: response.data.message,
+        error: response.data.error,
+        meta: response.data.meta,
+      };
+    } catch (error: any) {
+      console.error("Create Data Kompetitor API Error:", error);
+      return {
+        success: false,
+        data: null,
+        message:
+          error.response?.data?.message || "Gagal membuat Data Kompetitor",
+        error: error.response?.data?.error || error.message,
+      };
+    }
+  },
+
+  updateKompetitorWithPhotos: async (data: {
+    kode_kompetitor: string;
+    kode_rks: string;
+    kode_sales: string;
+    nama_sales: string;
+    kode_cust: string;
+    nama_cust: string;
+    tanggal_input: string;
+    catatan: string;
+    status: string;
+    file_zip_path: string; // ✅ Path ZIP di FTP
+    photo_count: number; // ✅ Jumlah total foto dalam ZIP
+    updated_by: string;
+  }): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }> => {
+    try {
+      console.log("📤 Mengupdate data kompetitor dengan foto ZIP:", {
+        kode_kompetitor: data.kode_kompetitor,
+        file_zip_path: data.file_zip_path,
+        photo_count: data.photo_count,
+      });
+
+      // PUT atau POST tergantung backend (disarankan PUT)
+      const res = await apiClient.put<{
+        success: boolean;
+        message?: string;
+      }>("/data-kompetitor/update-with-photos", data);
+
+      if (res.data.success) {
+        console.log("✅ Kompetitor berhasil diperbarui:", res.data.message);
+        return {
+          success: true,
+          message: res.data.message || "Data kompetitor berhasil diperbarui",
+        };
+      } else {
+        console.warn("⚠️ Gagal memperbarui kompetitor:", res.data.message);
+        return {
+          success: false,
+          error: res.data.message || "Gagal memperbarui data kompetitor",
+        };
+      }
+    } catch (err: any) {
+      console.error("❌ Error updateKompetitorWithPhotos:", {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+      });
+
+      let errorMessage = "Gagal memperbarui data kompetitor";
+      if (err.response?.status === 400) {
+        errorMessage =
+          err.response.data?.message || "Data kompetitor tidak valid";
+      } else if (err.response?.status === 404) {
+        errorMessage = "Data kompetitor tidak ditemukan";
+      } else if (err.response?.status === 500) {
+        errorMessage = "Server mengalami kesalahan internal";
+      } else if (err.code === "ECONNABORTED") {
+        errorMessage = "Waktu permintaan habis. Coba lagi nanti.";
+      }
+
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+  },
+
+  updateKompetitorPhotos: async (
+    kode_kompetitor: string,
+    photoPaths: string[]
+  ) => {
+    try {
+      console.log("📤 Updating kompetitor photo paths:", {
+        kode_kompetitor,
+        photoCount: photoPaths.length,
+      });
+
+      const res = await apiClient.post<{
+        success: boolean;
+        message?: string;
+        data?: {
+          kode_kompetitor: string;
+          kode_rks: string;
+          photo_count: number;
+          main_photo_path: string;
+          all_photo_paths: string[];
+        };
+      }>("/data-kompetitor/update-photos", {
+        kode_kompetitor,
+        photo_paths: photoPaths,
+      });
+
+      console.log("✅ Response updateKompetitorPhotos:", res.data);
+      return {
+        success: true,
+        data: res.data.data,
+        message: res.data.message,
+      };
+    } catch (err: any) {
+      console.error(
+        "❌ Error updateKompetitorPhotos:",
+        err.response?.data || err.message
+      );
+
+      return {
+        success: false,
+        error:
+          err.response?.data?.message ||
+          err.message ||
+          "Gagal update photo paths kompetitor",
+      };
+    }
+  },
+};
+
+// ===================================================================
+// 🔹 Service API untuk Sales Report (ERP + Mobile)
+// ===================================================================
+
+// 🧩 Type Definition
+export interface SalesRealisasiItem {
+  nama_sales: string;
+  qty_target: number;
+  qty_real: number;
+  ton_target: number;
+  ton_real: number;
+  nilai_target: number;
+  nilai_real: number;
+  persen_qty: number;
+  persen_ton: number;
+  persen_nilai: number;
+}
+
+export interface SalesRealisasiSummary {
+  total_sales: number;
+  total_target_qty: number;
+  total_real_qty: number;
+  total_target_ton: number;
+  total_real_ton: number;
+  total_target_nilai: number;
+  total_real_nilai: number;
+  avg_persen_qty: number;
+  avg_persen_ton: number;
+  avg_persen_nilai: number;
+}
+
+export interface SalesRealisasiResponse {
+  success: boolean;
+  data: SalesRealisasiItem[];
+  meta: {
+    tahun: number;
+    bulan: number;
+    total_sales: number;
+  };
+}
+
+export const salesReportAPI = {
+  getTargetRealisasiCombined: async (
+    tahun: string,
+    bulan: string,
+    sales: string
+  ) => {
+    try {
+      const res = await apiClient.get(
+        "/sales-report/target-realisasi-combined",
+        {
+          params: { tahun, bulan, sales },
+        }
+      );
+      return res.data;
+    } catch (err: any) {
+      console.error("getTargetRealisasiCombined error:", err);
+      return { success: false, data: [] };
+    }
+  },
+
+  // getTargetRealisasiSummary: async (
+  //   tahun?: number,
+  //   bulan?: number
+  // ): Promise<SalesRealisasiSummary> => {
+  //   const { data } = await salesReportAPI.getTargetRealisasiCombined(
+  //     tahun,
+  //     bulan
+  //   );
+
+  //   const summary = data.reduce(
+  //     (acc, curr) => {
+  //       acc.total_target_qty += curr.qty_target;
+  //       acc.total_real_qty += curr.qty_real;
+  //       acc.total_target_ton += curr.ton_target;
+  //       acc.total_real_ton += curr.ton_real;
+  //       acc.total_target_nilai += curr.nilai_target;
+  //       acc.total_real_nilai += curr.nilai_real;
+  //       acc.avg_persen_qty += curr.persen_qty;
+  //       acc.avg_persen_ton += curr.persen_ton;
+  //       acc.avg_persen_nilai += curr.persen_nilai;
+  //       return acc;
+  //     },
+  //     {
+  //       total_sales: data.length,
+  //       total_target_qty: 0,
+  //       total_real_qty: 0,
+  //       total_target_ton: 0,
+  //       total_real_ton: 0,
+  //       total_target_nilai: 0,
+  //       total_real_nilai: 0,
+  //       avg_persen_qty: 0,
+  //       avg_persen_ton: 0,
+  //       avg_persen_nilai: 0,
+  //     }
+  //   );
+
+  //   // rata-rata persentase
+  //   if (summary.total_sales > 0) {
+  //     summary.avg_persen_qty /= summary.total_sales;
+  //     summary.avg_persen_ton /= summary.total_sales;
+  //     summary.avg_persen_nilai /= summary.total_sales;
+  //   }
+
+  //   return summary;
+  // },
+};
+
+// ===================
+// Data Catatan API Module
+// ===================
+
+export const mobileCatatanService = {
+  /**
+   * 🟢 CREATE catatan
+   */
+  create: async (data: CatatanData) => {
+    try {
+      const res = await apiClient.post("/rks-mobile/catatan/create", data);
+      return res.data;
+    } catch (err: any) {
+      console.error(
+        "❌ mobileCatatanService.create error:",
+        err.response?.data || err
+      );
+      throw err;
+    }
+  },
+
+  /**
+   * 🟡 UPDATE catatan
+   */
+  update: async (data: CatatanData) => {
+    try {
+      const res = await apiClient.post("/rks-mobile/catatan/update", data);
+      return res.data;
+    } catch (err: any) {
+      console.error(
+        "❌ mobileCatatanService.update error:",
+        err.response?.data || err
+      );
+      throw err;
+    }
+  },
+
+  /**
+   * 🔵 GET DETAIL catatan
+   */
+  getDetail: async (id_catatan: string | number) => {
+    try {
+      const res = await apiClient.get("/rks-mobile/catatan/detail", {
+        params: { id_catatan },
+      });
+      return res.data;
+    } catch (err: any) {
+      console.error(
+        "❌ mobileCatatanService.getDetail error:",
+        err.response?.data || err
+      );
+      throw err;
+    }
+  },
+
+  /**
+   * 🟣 GET LIST catatan
+   * Filter opsional: kode_sales, kode_cust, tanggal, search
+   */
+  getList: async (filters?: {
+    kode_sales?: string;
+    kode_cust?: string;
+    tanggal?: string;
+    search?: string;
+  }) => {
+    try {
+      const res = await apiClient.get("/rks-mobile/catatan/list", {
+        params: filters || {},
+      });
+      return res.data;
+    } catch (err: any) {
+      console.error(
+        "❌ mobileCatatanService.getList error:",
+        err.response?.data || err
+      );
+      throw err;
+    }
+  },
+};
+
 export default {
   loginAPI,
   rksAPI,
@@ -1867,4 +2657,7 @@ export default {
   dataBarangAPI,
   dataUmumAPI,
   ppiAPI,
+  salesReportAPI,
+  kompetitorAPI,
+  mobileCatatanService,
 };

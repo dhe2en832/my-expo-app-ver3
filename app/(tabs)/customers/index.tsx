@@ -11,7 +11,12 @@ import {
   RefreshControl,
   TextInput,
 } from "react-native";
-import { Stack, useRouter, useLocalSearchParams } from "expo-router";
+import {
+  Stack,
+  useRouter,
+  useLocalSearchParams,
+  useFocusEffect,
+} from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useAuth } from "@/contexts/AuthContext";
 import { customerAPI } from "@/api/services";
@@ -61,7 +66,7 @@ export default function CustomerList() {
 
     const query = debouncedSearchQuery.toLowerCase();
     return customers.filter(
-      customer =>
+      (customer) =>
         customer.nama_cust?.toLowerCase().includes(query) ||
         customer.alamat_kirim1?.toLowerCase().includes(query) ||
         customer.kota_kirim?.toLowerCase().includes(query) ||
@@ -78,63 +83,72 @@ export default function CustomerList() {
   }, [params.successMessage]);
 
   // ✅ Fetch customers - FIX TYPE ISSUE
-  const fetchCustomers = useCallback(async (pageNumber = 1, append = false) => {
-    if (!user?.kodeSales) {
-      setError("Data sales tidak ditemukan");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      append ? setLoadingMore(true) : setLoading(true);
-      setError(null);
-
-      // ✅ Type assertion untuk handle response dengan benar
-      const res = await customerAPI.getCombinedCustomerList(
-        // user.kodeSales,
-        pageNumber,
-        limit
-      );
-
-      // console.log("📊 API Response:", {
-      //   success: res.success,
-      //   dataLength: res.data?.length,
-      //   meta: res.meta,
-      //   message: res.message
-      // });
-
-      // ✅ Handle response dengan type safety
-      if (res.success && res.data && Array.isArray(res.data)) {
-        const customerData = res.data; // Type sudah CustomerListType[]
-
-        if (append) {
-          setCustomers((prev) => [...prev, ...customerData]);
-        } else {
-          setCustomers(customerData);
-        }
-        setPage(pageNumber);
-        setTotal(res.meta?.total || customerData.length);
-      } else {
-        if (!append) {
-          setCustomers([]);
-        }
-        setError(res.message || "Gagal mengambil data pelanggan");
+  const fetchCustomers = useCallback(
+    async (pageNumber = 1, append = false) => {
+      if (!user?.kodeSales) {
+        setError("Data sales tidak ditemukan");
+        setLoading(false);
+        return;
       }
-    } catch (err: any) {
-      console.error("Error fetching customers:", err);
-      setError(err.message || "Gagal memuat data pelanggan");
-      if (!append) setCustomers([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-      setLoadingMore(false);
-    }
-  }, [user?.kodeSales]);
+
+      try {
+        append ? setLoadingMore(true) : setLoading(true);
+        setError(null);
+
+        // ✅ Type assertion untuk handle response dengan benar
+        const res = await customerAPI.getCombinedCustomerList(
+          // user.kodeSales,
+          pageNumber,
+          limit
+        );
+
+        // console.log("📊 API Response:", {
+        //   success: res.success,
+        //   dataLength: res.data?.length,
+        //   meta: res.meta,
+        //   message: res.message
+        // });
+
+        // ✅ Handle response dengan type safety
+        if (res.success && res.data && Array.isArray(res.data)) {
+          const customerData = res.data; // Type sudah CustomerListType[]
+
+          if (append) {
+            setCustomers((prev) => [...prev, ...customerData]);
+          } else {
+            setCustomers(customerData);
+          }
+          setPage(pageNumber);
+          setTotal(res.meta?.total || customerData.length);
+        } else {
+          if (!append) {
+            setCustomers([]);
+          }
+          setError(res.message || "Gagal mengambil data pelanggan");
+        }
+      } catch (err: any) {
+        console.error("Error fetching customers:", err);
+        setError(err.message || "Gagal memuat data pelanggan");
+        if (!append) setCustomers([]);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+        setLoadingMore(false);
+      }
+    },
+    [user?.kodeSales]
+  );
 
   // ✅ Initial load
-  useEffect(() => {
-    fetchCustomers();
-  }, [fetchCustomers]);
+  // useEffect(() => {
+  //   fetchCustomers();
+  // }, [fetchCustomers]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchCustomers(); // Refresh setiap kali focus
+    }, [])
+  );
 
   // ✅ Pull-to-refresh
   const onRefresh = useCallback(() => {
@@ -144,29 +158,43 @@ export default function CustomerList() {
 
   // ✅ Infinite scroll load more
   const handleLoadMore = useCallback(() => {
-    if (!loadingMore && customers.length < total && filteredCustomers.length > 0) {
+    if (
+      !loadingMore &&
+      customers.length < total &&
+      filteredCustomers.length > 0
+    ) {
       fetchCustomers(page + 1, true);
     }
-  }, [loadingMore, customers.length, total, filteredCustomers.length, page, fetchCustomers]);
+  }, [
+    loadingMore,
+    customers.length,
+    total,
+    filteredCustomers.length,
+    page,
+    fetchCustomers,
+  ]);
 
   // ✅ Handle customer press
-  const handleCustomerPress = useCallback((customer: CustomerListType) => {
-    router.push({
-      pathname: `/customers/${customer.kode_cust}`,
-      params: {
-        kode_relasi: customer.kode_relasi,
-        nama_cust: customer.nama_cust,
-        alamat_kirim1: customer.alamat_kirim1,
-        kota_kirim: customer.kota_kirim,
-        phone: customer.hp,
-        no_cust: customer.no_cust,
-        status_sumber: customer.status_sumber,
-        propinsi_kirim: customer.propinsi_kirim,
-        lat_kirim: customer.lat_kirim,
-        long_kirim: customer.long_kirim,
-      },
-    });
-  }, [router]);
+  const handleCustomerPress = useCallback(
+    (customer: CustomerListType) => {
+      router.push({
+        pathname: `/customers/${customer.kode_cust}`,
+        params: {
+          kode_relasi: customer.kode_relasi,
+          nama_cust: customer.nama_cust,
+          alamat_kirim1: customer.alamat_kirim1,
+          kota_kirim: customer.kota_kirim,
+          phone: customer.hp,
+          no_cust: customer.no_cust,
+          status_sumber: customer.status_sumber,
+          propinsi_kirim: customer.propinsi_kirim,
+          lat_kirim: customer.lat_kirim,
+          long_kirim: customer.long_kirim,
+        },
+      });
+    },
+    [router]
+  );
 
   const handleCreateCustomer = useCallback(() => {
     router.push("/customers/create");
@@ -176,10 +204,10 @@ export default function CustomerList() {
   const formatDate = useCallback((dateString: string) => {
     try {
       const date = new Date(dateString);
-      return date.toLocaleDateString('id-ID', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
+      return date.toLocaleDateString("id-ID", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
       });
     } catch {
       return dateString;
@@ -188,122 +216,132 @@ export default function CustomerList() {
 
   // ✅ Check if customer has mobile photos
   const hasMobilePhotos = useCallback((customer: CustomerListType) => {
-    return customer.filegambar && customer.filegambar.includes('mobile-images');
+    return customer.filegambar && customer.filegambar.includes("mobile-images");
   }, []);
 
   // ✅ Render customer item
-  const renderCustomerItem = useCallback(({ item }: { item: CustomerListType }) => (
-    <TouchableOpacity
-      style={styles.customerItem}
-      onPress={() => handleCustomerPress(item)}
-    >
-      <View style={styles.customerHeader}>
-        <Text style={styles.customerName} numberOfLines={1}>
-          {item.nama_cust}
-        </Text>
-        <View style={styles.customerBadges}>
-          {item.status_sumber === "baru" && (
-            <View style={[styles.badge, styles.newBadge]}>
-              <Text style={styles.badgeText}>Baru</Text>
-            </View>
-          )}
-          {hasMobilePhotos(item) && (
-            <View style={[styles.badge, styles.photoBadge]}>
-              <MaterialIcons name="photo" size={10} color="#fff" />
-              <Text style={styles.badgeText}>Foto</Text>
-            </View>
-          )}
+  const renderCustomerItem = useCallback(
+    ({ item }: { item: CustomerListType }) => (
+      <TouchableOpacity
+        style={styles.customerItem}
+        onPress={() => handleCustomerPress(item)}
+      >
+        <View style={styles.customerHeader}>
+          <Text style={styles.customerName} numberOfLines={1}>
+            {item.nama_cust}
+          </Text>
+          <View style={styles.customerBadges}>
+            {item.status_sumber === "baru" && (
+              <View style={[styles.badge, styles.newBadge]}>
+                <Text style={styles.badgeText}>Baru</Text>
+              </View>
+            )}
+            {hasMobilePhotos(item) && (
+              <View style={[styles.badge, styles.photoBadge]}>
+                <MaterialIcons name="photo" size={10} color="#fff" />
+                <Text style={styles.badgeText}>Foto</Text>
+              </View>
+            )}
+          </View>
         </View>
-      </View>
 
-      <View style={styles.customerDetail}>
-        <Text style={styles.customerNo}>No: {item.no_cust}</Text>
-        <Text style={styles.customerDate}>
-          {formatDate(item.created_at)}
-        </Text>
-      </View>
-
-      {item.hp ? (
-        <View style={styles.customerInfo}>
-          <MaterialIcons name="phone" size={14} color="#666" />
-          <Text style={styles.customerPhone}>{item.hp}</Text>
+        <View style={styles.customerDetail}>
+          <Text style={styles.customerNo}>No: {item.no_cust}</Text>
+          <Text style={styles.customerDate}>{formatDate(item.created_at)}</Text>
         </View>
-      ) : null}
 
-      <View style={styles.customerInfo}>
-        <MaterialIcons name="location-on" size={14} color="#666" />
-        <Text style={styles.customerAddress} numberOfLines={2}>
-          {item.alamat_kirim1}
-        </Text>
-      </View>
+        {item.hp ? (
+          <View style={styles.customerInfo}>
+            <MaterialIcons name="phone" size={14} color="#666" />
+            <Text style={styles.customerPhone}>{item.hp}</Text>
+          </View>
+        ) : null}
 
-      <View style={styles.customerInfo}>
-        <MaterialIcons name="place" size={14} color="#666" />
-        <Text style={styles.customerCity}>
-          {item.kota_kirim}
-          {item.propinsi_kirim && `, ${item.propinsi_kirim}`}
-        </Text>
-      </View>
-
-      {/* ✅ GPS Coordinates jika ada */}
-      {(item.lat_kirim || item.long_kirim) && (
         <View style={styles.customerInfo}>
-          <MaterialIcons name="gps-fixed" size={14} color="#666" />
-          <Text style={styles.customerGps}>
-            {item.lat_kirim && `Lat: ${item.lat_kirim}`}
-            {item.long_kirim && ` Long: ${item.long_kirim}`}
+          <MaterialIcons name="location-on" size={14} color="#666" />
+          <Text style={styles.customerAddress} numberOfLines={2}>
+            {item.alamat_kirim1}
           </Text>
         </View>
-      )}
 
-      <View style={styles.customerFooter}>
-        <Text style={styles.customerCode}>
-          {item.kode_cust} • {item.kode_relasi}
-        </Text>
-        <MaterialIcons name="chevron-right" size={20} color="#999" />
-      </View>
-    </TouchableOpacity>
-  ), [handleCustomerPress, formatDate, hasMobilePhotos]);
+        <View style={styles.customerInfo}>
+          <MaterialIcons name="place" size={14} color="#666" />
+          <Text style={styles.customerCity}>
+            {item.kota_kirim}
+            {item.propinsi_kirim && `, ${item.propinsi_kirim}`}
+          </Text>
+        </View>
+
+        {/* ✅ GPS Coordinates jika ada */}
+        {(item.lat_kirim || item.long_kirim) && (
+          <View style={styles.customerInfo}>
+            <MaterialIcons name="gps-fixed" size={14} color="#666" />
+            <Text style={styles.customerGps}>
+              {item.lat_kirim && `Lat: ${item.lat_kirim}`}
+              {item.long_kirim && ` Long: ${item.long_kirim}`}
+            </Text>
+          </View>
+        )}
+
+        <View style={styles.customerFooter}>
+          <Text style={styles.customerCode}>
+            {item.kode_cust} • {item.kode_relasi}
+          </Text>
+          <MaterialIcons name="chevron-right" size={20} color="#999" />
+        </View>
+      </TouchableOpacity>
+    ),
+    [handleCustomerPress, formatDate, hasMobilePhotos]
+  );
 
   // ✅ Footer untuk loading more
-  const renderFooter = useCallback(() =>
-    loadingMore ? (
-      <View style={styles.footerContainer}>
-        <ActivityIndicator size="small" color="#667eea" />
-        <Text style={styles.footerText}>Memuat data...</Text>
-      </View>
-    ) : customers.length < total ? (
-      <View style={styles.footerContainer}>
-        <Text style={styles.footerText}>
-          Geser ke bawah untuk memuat lebih banyak
-        </Text>
-      </View>
-    ) : null
-  , [loadingMore, customers.length, total]);
+  const renderFooter = useCallback(
+    () =>
+      loadingMore ? (
+        <View style={styles.footerContainer}>
+          <ActivityIndicator size="small" color="#667eea" />
+          <Text style={styles.footerText}>Memuat data...</Text>
+        </View>
+      ) : customers.length < total ? (
+        <View style={styles.footerContainer}>
+          <Text style={styles.footerText}>
+            Geser ke bawah untuk memuat lebih banyak
+          </Text>
+        </View>
+      ) : null,
+    [loadingMore, customers.length, total]
+  );
 
   // ✅ Empty state
-  const renderEmptyState = useCallback(() => (
-    <View style={styles.emptyState}>
-      <MaterialIcons name="people-outline" size={64} color="#ccc" />
-      <Text style={styles.emptyStateTitle}>
-        {searchQuery ? "Tidak Ada Hasil Pencarian" : "Tidak Ada Data Customer"}
-      </Text>
-      <Text style={styles.emptyStateText}>
-        {searchQuery
-          ? "Tidak ada pelanggan yang sesuai dengan pencarian Anda"
-          : "Belum ada data customer yang tersedia. Mulai dengan menambahkan customer baru."}
-      </Text>
-      {!searchQuery && (
-        <TouchableOpacity
-          style={styles.emptyStateButton}
-          onPress={handleCreateCustomer}
-        >
-          <MaterialIcons name="add" size={20} color="#fff" />
-          <Text style={styles.emptyStateButtonText}>Tambah Customer Baru</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  ), [searchQuery, handleCreateCustomer]);
+  const renderEmptyState = useCallback(
+    () => (
+      <View style={styles.emptyState}>
+        <MaterialIcons name="people-outline" size={64} color="#ccc" />
+        <Text style={styles.emptyStateTitle}>
+          {searchQuery
+            ? "Tidak Ada Hasil Pencarian"
+            : "Tidak Ada Data Customer"}
+        </Text>
+        <Text style={styles.emptyStateText}>
+          {searchQuery
+            ? "Tidak ada pelanggan yang sesuai dengan pencarian Anda"
+            : "Belum ada data customer yang tersedia. Mulai dengan menambahkan customer baru."}
+        </Text>
+        {!searchQuery && (
+          <TouchableOpacity
+            style={styles.emptyStateButton}
+            onPress={handleCreateCustomer}
+          >
+            <MaterialIcons name="add" size={20} color="#fff" />
+            <Text style={styles.emptyStateButtonText}>
+              Tambah Customer Baru
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    ),
+    [searchQuery, handleCreateCustomer]
+  );
 
   // ✅ Clear search
   const handleClearSearch = useCallback(() => {
@@ -349,8 +387,7 @@ export default function CustomerList() {
         <Text style={styles.statsText}>
           {searchQuery
             ? `${filteredCustomers.length} dari ${customers.length} pelanggan`
-            : `Total: ${customers.length} pelanggan`
-          }
+            : `Total: ${customers.length} pelanggan`}
           {total > customers.length && ` dari ${total}`}
         </Text>
         <TouchableOpacity onPress={onRefresh} disabled={refreshing}>
@@ -384,7 +421,9 @@ export default function CustomerList() {
         <FlatList
           data={filteredCustomers}
           renderItem={renderCustomerItem}
-          keyExtractor={(item) => `${item.kode_cust}-${item.kode_relasi}-${item.no_cust}`}
+          keyExtractor={(item) =>
+            `${item.kode_cust}-${item.kode_relasi}-${item.no_cust}`
+          }
           contentContainerStyle={[
             styles.listContainer,
             filteredCustomers.length === 0 && styles.emptyListContainer,
@@ -425,7 +464,7 @@ export default function CustomerList() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f7fb"
+    backgroundColor: "#f5f7fb",
   },
   searchContainer: {
     flexDirection: "row",
@@ -463,15 +502,15 @@ const styles = StyleSheet.create({
   statsText: {
     fontSize: 14,
     color: "#666",
-    fontWeight: "500"
+    fontWeight: "500",
   },
   listContainer: {
     flexGrow: 1,
-    padding: 16
+    padding: 16,
   },
   emptyListContainer: {
     flexGrow: 1,
-    justifyContent: "center"
+    justifyContent: "center",
   },
   customerItem: {
     backgroundColor: "white",
@@ -562,7 +601,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#888",
     marginLeft: 6,
-    fontFamily: 'monospace',
+    fontFamily: "monospace",
   },
   customerFooter: {
     flexDirection: "row",
@@ -576,33 +615,33 @@ const styles = StyleSheet.create({
   customerCode: {
     fontSize: 12,
     color: "#999",
-    fontFamily: 'monospace',
+    fontFamily: "monospace",
   },
   headerButton: {
-    padding: 4
+    padding: 4,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
-    alignItems: "center"
+    alignItems: "center",
   },
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: "#666"
+    color: "#666",
   },
   emptyState: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 60
+    paddingVertical: 60,
   },
   emptyStateTitle: {
     fontSize: 18,
     fontWeight: "bold",
     color: "#666",
     marginTop: 16,
-    marginBottom: 8
+    marginBottom: 8,
   },
   emptyStateText: {
     fontSize: 14,
@@ -618,12 +657,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#667eea",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderRadius: 8
+    borderRadius: 8,
   },
   emptyStateButtonText: {
     color: "#fff",
     fontWeight: "600",
-    marginLeft: 8
+    marginLeft: 8,
   },
   errorContainer: {
     flexDirection: "row",
@@ -631,18 +670,18 @@ const styles = StyleSheet.create({
     backgroundColor: "#fdecea",
     padding: 12,
     margin: 16,
-    borderRadius: 8
+    borderRadius: 8,
   },
   errorText: {
     flex: 1,
     color: "#f44336",
     fontSize: 14,
-    marginLeft: 8
+    marginLeft: 8,
   },
   retryText: {
     color: "#667eea",
     fontWeight: "600",
-    marginLeft: 8
+    marginLeft: 8,
   },
   footerContainer: {
     flexDirection: "row",

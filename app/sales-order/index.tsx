@@ -708,7 +708,8 @@ export default function SalesOrderList() {
               textStyle={styles.dropdownText}
               dropDownContainerStyle={styles.dropdownContainerStyle}
               listItemContainerStyle={styles.dropdownItem}
-              listMode="SCROLLVIEW" // Membuat dropdown bisa di-scroll
+              // listMode="SCROLLVIEW"
+              listMode="MODAL"
               scrollViewProps={{
                 nestedScrollEnabled: true,
                 contentContainerStyle: {

@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   StatusBar,
   Dimensions,
-  SafeAreaView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -26,6 +25,7 @@ import {
   MapPin,
   CheckCircle2,
   AlertCircle,
+  FolderKanban,
 } from "lucide-react-native";
 import { router } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
@@ -33,6 +33,8 @@ import ProgressBar from "@/components/ProgressBar";
 import { getGreeting, getFirstName } from "@/utils/helpers";
 import { CustomerList as CustomerListType } from "@/api/interface";
 import { customerAPI } from "@/api/services";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { PaperProvider } from "react-native-paper";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -215,14 +217,6 @@ export default function HomeScreen() {
           pageNumber,
           limit
         );
-
-        // console.log("📊 API Response:", {
-        //   success: res.success,
-        //   dataLength: res.data?.length,
-        //   meta: res.meta,
-        //   message: res.message,
-        // });
-
         // ✅ Handle response dengan type safety
         if (res.success && res.data && Array.isArray(res.data)) {
           const customerData = res.data; // Type sudah CustomerListType[]
@@ -331,19 +325,25 @@ export default function HomeScreen() {
       title: "Tagihan",
       icon: <DollarSign color="#F59E0B" size={20} />,
       color: "#F59E0B",
-      route: "/collection",
+      route: "/ppi",
     },
     {
       title: "Stok Barang",
       icon: <Package color="#06B6D4" size={20} />,
       color: "#06B6D4",
-      route: "/inventory",
+      route: "/stock",
+    },
+    {
+      title: "Kompetitor",
+      icon: <FolderKanban color="#6366F1" size={20} />,
+      color: "#6366F1",
+      route: "/data-kompetitor",
     },
     {
       title: "Target",
       icon: <BarChart3 color="#EC4899" size={20} />,
       color: "#EC4899",
-      route: "/target",
+      route: "/sales-report/target-realisasi",
     },
     {
       title: "Laporan",
@@ -392,7 +392,8 @@ export default function HomeScreen() {
   ];
   // console.log("user?.namaCabang ", user?.namaCabang);
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <PaperProvider>
+      {/* <SafeAreaView style={styles.safeArea}> */}
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       {/* COMPACT FIXED HEADER - DIUBAH LAYOUT */}
@@ -531,7 +532,8 @@ export default function HomeScreen() {
         {/* Bottom Spacing */}
         <View style={styles.bottomSpacing} />
       </ScrollView>
-    </SafeAreaView>
+      {/* </SafeAreaView> */}
+    </PaperProvider>
   );
 }
 

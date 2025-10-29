@@ -11,6 +11,7 @@ import { initDatabase, resetRKSLocalTable } from "@/utils/database";
 import { SyncLoadingOverlay } from "@/components/SyncLoadingOverlay ";
 import * as Notifications from "expo-notifications";
 import type { NotificationBehavior } from "expo-notifications";
+import { PaperProvider } from "react-native-paper";
 
 const queryClient = new QueryClient();
 
@@ -176,23 +177,27 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <AuthProvider>
-          <OfflineProvider>
-            <OrderProvider>
-              {/* Sync Loading Overlay */}
-              {/* Sync Loading Overlay */}
-              {/* <SyncLoadingOverlay
+        <PaperProvider>
+          <AuthProvider>
+            <OfflineProvider>
+              <OrderProvider>
+                {/* Sync Loading Overlay */}
+                {/* Sync Loading Overlay */}
+                {/* <SyncLoadingOverlay
                 isVisible={isSyncing}
                 message={syncMessage}
                 progress={syncProgress}
               /> */}
-              {/* <SyncLoadingOverlay isVisible={isSyncing} message={syncMessage} /> */}
+                {/* <SyncLoadingOverlay isVisible={isSyncing} message={syncMessage} /> */}
 
-              <Stack screenOptions={{ headerBackTitle: "Back" }}>
-                <Stack.Screen name="index" options={{ headerShown: false }} />
-                <Stack.Screen name="login" options={{ headerShown: false }} />
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                {/* <Stack.Screen
+                <Stack screenOptions={{ headerBackTitle: "Back" }}>
+                  <Stack.Screen name="index" options={{ headerShown: false }} />
+                  <Stack.Screen name="login" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    name="(tabs)"
+                    options={{ headerShown: false }}
+                  />
+                  {/* <Stack.Screen
                   name="modal"
                   options={{ presentation: "modal" }}
                 />
@@ -245,10 +250,11 @@ export default function RootLayout() {
                   name="+not-found"
                   options={{ title: "Halaman Tidak Ditemukan" }}
                 /> */}
-              </Stack>
-            </OrderProvider>
-          </OfflineProvider>
-        </AuthProvider>
+                </Stack>
+              </OrderProvider>
+            </OfflineProvider>
+          </AuthProvider>
+        </PaperProvider>
       </GestureHandlerRootView>
     </QueryClientProvider>
   );
