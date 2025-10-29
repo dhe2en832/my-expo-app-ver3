@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   StatusBar,
   Dimensions,
+
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -32,9 +33,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import ProgressBar from "@/components/ProgressBar";
 import { getGreeting, getFirstName } from "@/utils/helpers";
 import { CustomerList as CustomerListType } from "@/api/interface";
-import { customerAPI } from "@/api/services";
+import { customerAPI, dashboardAPI } from "@/api/services";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { PaperProvider } from "react-native-paper";
+import { ActivityIndicator, PaperProvider } from "react-native-paper";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -196,7 +197,13 @@ export default function HomeScreen() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-
+  const [summarySo, setSummarySo] = useState<any>(null);
+  const [activitiesSo, setActivitiesSo] = useState<any[]>([]);
+  const [summaryPpi, setSummaryPpi] = useState<any>(null);
+  const [activitiesPpi, setActivitiesPpi] = useState<any[]>([]);
+  const [summaryRks, setSummaryRks] = useState<any>(null);
+  const [activitiesRks, setActivitiesRks] = useState<any[]>([]);
+  const [dailyActivities, setDailyActivities] = useState<any[]>([]);
   const limit = 50;
 
   const fetchCustomers = useCallback(
@@ -247,6 +254,84 @@ export default function HomeScreen() {
     [user?.kodeSales]
   );
 
+  const fetchDashboardActivities = async () => {
+    setLoading(true);
+    try {
+      // ✅ Panggil semua service summary + activities
+      // ✅ Gabungkan semua aktivitas dari 3 sumber
+      const allActivities = [
+        ...(activitiesSo || []),
+        ...(activitiesPpi || []),
+        ...(activitiesRks || []),
+      ];
+
+      // ✅ Urutkan aktivitas berdasarkan waktu terbaru
+      allActivities.sort((a, b) => b.time.localeCompare(a.time));
+
+      // ✅ Format icon berdasarkan tipe (frontend rendering)
+      const formatted = allActivities.map((item: any) => {
+        switch (item.type) {
+          case "success":
+            return {
+              ...item,
+              icon: <CheckCircle2 color="#10B981" size={16} />,
+            };
+          case "payment":
+            return { ...item, icon: <DollarSign color="#10B981" size={16} /> };
+          case "order":
+            return {
+              ...item,
+              icon: <ShoppingCart color="#10B981" size={16} />,
+            };
+          case "rks":
+            return { ...item, icon: <MapPin color="#3B82F6" size={16} /> };
+          case "warning":
+            return { ...item, icon: <AlertCircle color="#F59E0B" size={16} /> };
+          default:
+            return {
+              ...item,
+              icon: <CheckCircle2 color="#9CA3AF" size={16} />,
+            };
+        }
+      });
+
+      setDailyActivities(formatted);
+    } catch (err) {
+      console.error("❌ Gagal memuat aktivitas dashboard:", err);
+      setDailyActivities([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadDashboardAll = async () => {
+    setLoading(true);
+
+    const resSo = await dashboardAPI.getDashboardSummarySo();
+    console.log("loadDashboard res ", resSo);
+    if (resSo.success) {
+      setSummarySo(resSo.data.summary);
+      setActivitiesSo(resSo.data.activities);
+    }
+    const resPpi = await dashboardAPI.getDashboardSummaryPpi();
+    console.log("loadDashboard res ", resSo);
+    if (resPpi.success) {
+      setSummaryPpi(resPpi.data.summary);
+      setActivitiesPpi(resPpi.data.activities);
+    }
+    const resRks = await dashboardAPI.getDashboardSummaryPpi();
+    console.log("loadDashboard res ", resSo);
+    if (resPpi.success) {
+      setSummaryRks(resRks.data.summary);
+      setActivitiesRks(resRks.data.activities);
+    }
+    fetchDashboardActivities();
+    setLoading(false);
+  };
+  useEffect(() => {
+    loadDashboardAll();
+  }, []);
+
   // ✅ Initial load
   useEffect(() => {
     fetchCustomers();
@@ -256,33 +341,70 @@ export default function HomeScreen() {
   const todayStats = [
     {
       title: "Penjualan Hari Ini",
-      value: "Rp 12.450.000",
-      subtitle: "+12% dari kemarin",
+      value:
+        "Rp " +
+        (summarySo?.penjualan_hari_ini
+          ? summarySo.penjualan_hari_ini.toLocaleString("id-ID")
+          : "0"),
+      subtitle: (() => {
+        const persen =
+          typeof summarySo?.persentase_perubahan === "number"
+            ? summarySo.persentase_perubahan
+            : 0; // ✅ fallback ke 0 jika undefined / null
+
+        const formatted = persen.toFixed(2);
+
+        return persen >= 0
+          ? `+${formatted}% dari kemarin`
+          : `${formatted}% dari kemarin`;
+      })(),
       icon: <TrendingUp color="white" size={20} />,
       color: "#10B981",
-      progress: 68,
+      progress: Math.min(
+        (summarySo?.penjualan_hari_ini / 18300000) * 100 || 0,
+        100
+      ),
       target: "Rp 18.300.000",
       route: "/sales-order",
     },
     {
       title: "Tagihan Tertagih",
-      value: "Rp 8.200.000",
-      subtitle: "45% dari target",
+      value:
+        "Rp " +
+        (summaryPpi?.tagihan_tertagih_hari_ini?.toLocaleString("id-ID") || "0"),
+      subtitle: (() => {
+        const persen = summaryPpi?.persentase_perubahan ?? 0;
+        const formatted = persen.toFixed(2);
+        return persen >= 0
+          ? `+${formatted}% dari kemarin`
+          : `${formatted}% dari kemarin`;
+      })(),
       icon: <DollarSign color="white" size={20} />,
       color: "#3B82F6",
-      progress: 45,
+      progress: Math.min(
+        (summaryPpi?.tagihan_tertagih_hari_ini / 18200000) * 100 || 0,
+        100
+      ),
       target: "Rp 18.200.000",
       route: "/collection",
     },
     {
       title: "Kunjungan Hari Ini",
-      value: "6/8",
-      subtitle: "75% completed",
+      value: `${summaryRks?.kunjungan_hari_ini || 0}/${
+        summaryRks?.total_kunjungan || 0
+      }`,
+      subtitle: (() => {
+        const persen = summaryRks?.persentase_perubahan ?? 0;
+        const formatted = persen.toFixed(2);
+        return persen >= 0
+          ? `+${formatted}% dari kemarin`
+          : `${formatted}% dari kemarin`;
+      })(),
       icon: <UserCheck color="white" size={20} />,
       color: "#8B5CF6",
-      progress: 75,
-      target: "8 kunjungan",
-      route: "/attendance",
+      progress: summaryRks?.progress || 0,
+      target: `${summaryRks?.total_kunjungan || 0} kunjungan`,
+      route: "/rks",
     },
     {
       title: "Pelanggan Aktif",
@@ -354,7 +476,7 @@ export default function HomeScreen() {
   ];
 
   // Data aktivitas harian
-  const dailyActivities = [
+  const dailyActivities2 = [
     {
       title: "Pesanan Baru #SO-0012",
       time: "10:30 AM • PT. Contoh Jaya",
@@ -511,11 +633,34 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Aktivitas Terbaru</Text>
-            <TouchableOpacity>
+            {/* <TouchableOpacity>
               <Text style={styles.seeAllText}>Lihat Semua</Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </View>
           <View style={styles.activityCard}>
+            {loading ? (
+              <ActivityIndicator size="small" color="#667eea" />
+            ) : dailyActivities.length > 0 ? (
+              dailyActivities.map((activity, index) => (
+                <ActivityItem
+                  key={index}
+                  title={activity.title}
+                  time={activity.time}
+                  type={activity.type}
+                  icon={activity.icon}
+                  amount={activity.amount}
+                />
+              ))
+            ) : (
+              <Text
+                style={{ color: "#9CA3AF", textAlign: "center", marginTop: 10 }}
+              >
+                Belum ada aktivitas hari ini.
+              </Text>
+            )}
+          </View>
+
+          {/* <View style={styles.activityCard}>
             {dailyActivities.map((activity, index) => (
               <ActivityItem
                 key={index}
@@ -526,7 +671,7 @@ export default function HomeScreen() {
                 amount={activity.amount}
               />
             ))}
-          </View>
+          </View> */}
         </View>
 
         {/* Bottom Spacing */}

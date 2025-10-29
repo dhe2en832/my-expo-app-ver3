@@ -2647,6 +2647,164 @@ export const mobileCatatanService = {
   },
 };
 
+// ===================
+// Data Dashboar Summary SO
+// ===================
+// 🧱 Struktur data summary dari backend
+export interface DashboardSummaryData {
+  penjualan_hari_ini: number;
+  penjualan_kemarin: number;
+  persentase_perubahan: number;
+  pelanggan_aktif: number;
+  tagihan_tertagih: number;
+  kunjungan_hari_ini?: number;
+}
+
+export interface DashboardActivity {
+  title: string;
+  time: string;
+  type: "success" | "info" | "warning" | "error";
+  amount?: string;
+}
+
+export interface DashboardResponse {
+  success: boolean;
+  data: {
+    summary: DashboardSummaryData;
+    activities: DashboardActivity[];
+  };
+}
+
+export interface TagihanSummary {
+  tagihan_tertagih_hari_ini: number;
+  tagihan_kemarin: number;
+  persentase_perubahan: number;
+}
+
+export interface TagihanActivity {
+  title: string;
+  time: string;
+  type: "success" | "info" | "warning" | "error";
+  amount?: string;
+}
+
+export interface TagihanResponse {
+  success: boolean;
+  data: {
+    summary: TagihanSummary;
+    activities: TagihanActivity[];
+  };
+}
+
+export interface KunjunganSummary {
+  kunjungan_hari_ini: number;
+  total_kunjungan: number;
+  progress: number;
+  persentase_perubahan: number;
+}
+
+export interface KunjunganActivity {
+  title: string;
+  time: string;
+  type: "success" | "info" | "warning";
+  icon?: string;
+  amount?: string;
+}
+
+export interface KunjunganResponse {
+  success: boolean;
+  data: {
+    summary: KunjunganSummary;
+    activities: KunjunganActivity[];
+  };
+}
+// =======================================================
+// 🚀 DASHBOARD SERVICE
+// =======================================================
+export const dashboardAPI = {
+  async getDashboardSummarySo(): Promise<DashboardResponse> {
+    try {
+      const res = await apiClient.get<DashboardResponse>(
+        "/dashboard/summary/so"
+      );
+      if (!res.data.success) {
+        throw new Error("Gagal mengambil data dashboard");
+      }
+      return res.data;
+    } catch (error: any) {
+      console.error("❌ dashboardAPI.getDashboardSummary error:", error);
+      return {
+        success: false,
+        data: {
+          summary: {
+            penjualan_hari_ini: 0,
+            penjualan_kemarin: 0,
+            persentase_perubahan: 0,
+            pelanggan_aktif: 0,
+            tagihan_tertagih: 0,
+          },
+          activities: [],
+        },
+      };
+    }
+  },
+
+ async getDashboardSummaryPpi(): Promise<TagihanResponse> {
+    try {
+      const res = await apiClient.get<TagihanResponse>("/dashboard/summary/ppi");
+      if (!res.data.success) {
+        throw new Error("Gagal mengambil data tagihan");
+      }
+      return res.data;
+    } catch (error: any) {
+      console.error("❌ tagihanAPI.getTagihanSummary error:", error);
+      return {
+        success: false,
+        data: {
+          summary: {
+            tagihan_tertagih_hari_ini: 0,
+            tagihan_kemarin: 0,
+            persentase_perubahan: 0,
+          },
+          activities: [],
+        },
+      };
+    }
+  },
+
+  async getDashboardSummaryRks(): Promise<KunjunganResponse> {
+    try {
+      const res = await apiClient.get<KunjunganResponse>("/dashboard/summary/rks");
+      return res.data;
+    } catch (error: any) {
+      console.error("❌ kunjunganAPI.getKunjunganSummary error:", error);
+      return {
+        success: false,
+        data: {
+          summary: {
+            kunjungan_hari_ini: 0,
+            total_kunjungan: 0,
+            progress: 0,
+            persentase_perubahan: 0,
+          },
+          activities: [],
+        },
+      };
+    }
+  },
+
+  async addActivity(activity: DashboardActivity) {
+    try {
+      const res = await apiClient.post("/dashboard/activity", activity);
+      return res.data;
+    } catch (error: any) {
+      console.error("❌ dashboardAPI.addActivity error:", error);
+      throw error;
+    }
+  },
+
+};
+
 export default {
   loginAPI,
   rksAPI,
@@ -2660,4 +2818,5 @@ export default {
   salesReportAPI,
   kompetitorAPI,
   mobileCatatanService,
+  dashboardAPI,
 };

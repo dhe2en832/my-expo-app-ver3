@@ -1495,13 +1495,13 @@ export default function RKSPage() {
   };
 
   const handleSO = () => {
-    // if (!lastCheckedInItem || !lastCheckedInItem.kode_cust) {
-    //   Alert.alert(
-    //     "Data tidak ditemukan",
-    //     "Data kunjungan belum tersedia. Coba check-in ulang dulu, atau input SO manual."
-    //   );
-    //   return;
-    // }
+    if (!lastCheckedInItem || !lastCheckedInItem.kode_cust) {
+      Alert.alert(
+        "Data tidak ditemukan",
+        "Data kunjungan belum tersedia. Coba check-in ulang dulu, atau input SO manual."
+      );
+      return;
+    }
 
     const dummyItem: RKSItem = {
       id: "DUMMY-001",
@@ -2289,8 +2289,8 @@ export default function RKSPage() {
     //   item.scheduledDate === new Date().toISOString().split("T")[0];
     const isToday = item.scheduledDate === dayjs().format("YYYY-MM-DD"); //todayLocal;
 
-    const canCheckIn = true; //item.status === "scheduled" && isToday;
-    const canCheckOut = true;
+    const canCheckIn = item.status === "scheduled" && isToday;
+    const canCheckOut = item.status === "checked-in";
     item.status === "checked-in";
     const isAnotherCheckedIn = rksList.some(
       (r) => r.checkIn && !r.checkOut && r.id !== item.id
