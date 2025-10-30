@@ -5,6 +5,8 @@ import * as SecureStore from "expo-secure-store";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { loginAPI, salesAPI, User, type User as ApiUser } from "@/api/services";
 import { Alert } from "react-native";
+import { fcmService } from "@/utils/fcmMobileService";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // interface User {
 //   id: string;
@@ -118,8 +120,22 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
     );
 
     const logout = useCallback(async () => {
-      await loginAPI.logout();
-      setUser(null);
+      try {
+        // Unregister FCM token dari server
+        await fcmService.unregisterTokenFromServer();
+      } catch (error) {
+        console.warn("Error during FCM unregistration:", error);
+      } finally {
+        // Clear local storage dan state
+        await SecureStore.deleteItemAsync("auth_token");
+        await SecureStore.deleteItemAsync("user_data");
+        await AsyncStorage.removeItem("userToken");
+        await AsyncStorage.removeItem("userData");
+        setUser(null);
+        // Navigate ke login
+        // router.replace("/login");
+        await loginAPI.logout();
+      }
     }, []);
 
     return useMemo(

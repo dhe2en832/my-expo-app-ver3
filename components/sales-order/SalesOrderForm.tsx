@@ -97,7 +97,7 @@ export default function SalesOrderForm({
   onApprove,
   onReject,
 }: SalesOrderFormProps) {
-  console.log("CEK MODE XXX ", mode);
+  // console.log("CEK MODE XXX ", mode);
   const insets = useSafeAreaInsets();
   const DEFAULT_PPN_PERCENT = 11;
   const router = useRouter();
@@ -922,6 +922,128 @@ export default function SalesOrderForm({
     }
   };
 
+  // const handleSubmitOrder = async () => {
+  //   if (isReadOnly) return;
+  //   if (!validateForm()) return;
+
+  //   const isEditMode = mode === "edit";
+  //   const isFromDraft = existingOrder?.header.status === "draft";
+  //   const isNewOrder = mode === "create";
+
+  //   const confirmText = isFromDraft ? "submit" : "memperbarui";
+
+  //   Alert.alert(
+  //     "Konfirmasi",
+  //     `Apakah Anda yakin ingin ${confirmText} Sales Order ini?`,
+  //     [
+  //       { text: "Batal", style: "cancel" },
+  //       {
+  //         text: "Ya",
+  //         onPress: async () => {
+  //           try {
+  //             setSaving(true);
+  //             setError(null);
+  //             const orderData = prepareOrderData();
+  //             let res;
+  //             let targetOrderId = orderId;
+
+  //             if (isEditMode) {
+  //               if (isFromDraft) {
+  //                 // ✅ STEP 1: Update data order (tetap sebagai draft)
+  //                 orderData.header.status = "draft"; // Tetap draft dulu
+
+  //                 res = await salesOrderAPI.updateSalesOrder(
+  //                   orderId!,
+  //                   orderData
+  //                 );
+
+  //                 if (res.success) {
+  //                   // ✅ STEP 2: Submit untuk ubah status + buat history
+  //                   const submitRes = await salesOrderAPI.submitSalesOrder(
+  //                     orderId!,
+  //                     user?.nama_user
+  //                   );
+
+  //                   if (!submitRes.success) {
+  //                     throw new Error(
+  //                       submitRes.message || "Gagal submit order"
+  //                     );
+  //                   }
+  //                 }
+  //               } else {
+  //                 const statusBefore = existingOrder!.header.status;
+
+  //                 // ✅ UPDATE ORDER: Status tetap sama, tapi buat history
+  //                 orderData.header.status = statusBefore;
+
+  //                 res = await salesOrderAPI.updateSalesOrder(
+  //                   orderId!,
+  //                   orderData
+  //                 );
+
+  //                 if (res.success) {
+  //                   // ✅ BUAT HISTORY UNTUK EDIT/UPDATE
+  //                   await salesOrderAPI.createApprovalHistory({
+  //                     kode_so: orderId!,
+  //                     action: "updated",
+  //                     performed_by: user?.nama_user || "",
+  //                     status_before: statusBefore,
+  //                     status_after: statusBefore, // Status tetap sama
+  //                     notes: "Order diperbarui oleh sales",
+  //                   });
+  //                 }
+  //               }
+  //             } else {
+  //               // ✅ CREATE NEW: Langsung buat dengan status draft dulu
+  //               orderData.header.status = "draft";
+
+  //               res = await salesOrderAPI.createSalesOrder(orderData);
+
+  //               if (res.success && res.data?.kode_so) {
+  //                 targetOrderId = res.data.kode_so;
+
+  //                 // ✅ Submit untuk ubah status + buat history
+  //                 const submitRes = await salesOrderAPI.submitSalesOrder(
+  //                   targetOrderId,
+  //                   user?.nama_user
+  //                 );
+
+  //                 if (!submitRes.success) {
+  //                   throw new Error(
+  //                     submitRes.message || "Gagal submit order baru"
+  //                   );
+  //                 }
+  //               }
+  //             }
+
+  //             if (res.success) {
+  //               const message = isEditMode
+  //                 ? isFromDraft
+  //                   ? "Sales Order berhasil disubmit"
+  //                   : "Sales Order berhasil diperbarui"
+  //                 : "Sales Order berhasil dibuat dan disubmit";
+
+  //               Alert.alert("Berhasil", message, [
+  //                 {
+  //                   text: "OK",
+  //                   onPress: () => router.back(),
+  //                 },
+  //               ]);
+  //             } else {
+  //               setError(res.message || `Gagal ${confirmText} sales order`);
+  //             }
+  //           } catch (err: any) {
+  //             console.error("❌ Error in handleSubmitOrder:", err);
+  //             setError(err.message || `Gagal ${confirmText} sales order`);
+  //           } finally {
+  //             setSaving(false);
+  //           }
+  //         },
+  //       },
+  //     ]
+  //   );
+  // };
+
   const handleSubmitOrder = async () => {
     if (isReadOnly) return;
     if (!validateForm()) return;
@@ -930,7 +1052,12 @@ export default function SalesOrderForm({
     const isFromDraft = existingOrder?.header.status === "draft";
     const isNewOrder = mode === "create";
 
-    const confirmText = isFromDraft ? "submit" : "memperbarui";
+    // ✅ Perbaikan confirmText
+    const confirmText = isNewOrder
+      ? "membuat"
+      : isFromDraft
+      ? "submit"
+      : "memperbarui";
 
     Alert.alert(
       "Konfirmasi",
