@@ -14,7 +14,8 @@
       "env": {
         "IS_PRODUCTION": "false",
         "BLUETOOTH_ENABLED": "false",
-        "APP_ENV": "development"
+        "APP_ENV": "development",
+        "API_BASE_URL": "http://192.168.1.9:3000/api"
       }
     },
     "preview": {
@@ -31,14 +32,15 @@
     },
     "production": {
       "autoIncrement": true,
-      "distribution": "store",
+      "distribution": "internal",
       "android": {
         "buildType": "apk"
       },
       "env": {
         "IS_PRODUCTION": "true",
         "BLUETOOTH_ENABLED": "true",
-        "APP_ENV": "production"
+        "APP_ENV": "production",
+        "API_BASE_URL": "http://faspro.ddns.net:3000/api"
       }
     }
   },

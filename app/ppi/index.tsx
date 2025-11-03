@@ -37,6 +37,7 @@ import {
 import { TabBar, TabView, Route } from "react-native-tab-view";
 import DropDownPicker from "react-native-dropdown-picker";
 import { Card, Button } from "react-native-paper";
+import * as SecureStore from "expo-secure-store";
 
 // --- CUSTOM HOOKS ---
 const useDebounce = <T,>(value: T, delay: number): T => {
@@ -572,6 +573,13 @@ export default function PPIHome() {
       loadAllData();
     }, [salesFilter])
   );
+
+  useEffect(() => {
+    const updateActivity = async () => {
+      await SecureStore.setItemAsync("last_active", Date.now().toString());
+    };
+    updateActivity();
+  }, []);
 
   // Effect untuk update summary ketika sales filter berubah
   useEffect(() => {

@@ -20,6 +20,7 @@ import { StockItemGrouped } from "@/api/interface";
 import { dataBarangAPI } from "@/api/services";
 import { Stack } from "expo-router";
 import { formatNumber } from "@/utils/helpers";
+import * as SecureStore from "expo-secure-store";
 
 if (
   Platform.OS === "android" &&
@@ -106,6 +107,13 @@ export default function StockListScreen() {
     setTotalStock(totalStok);
     setTotalGudang(totalGudangCount);
   };
+
+  useEffect(() => {
+    const updateActivity = async () => {
+      await SecureStore.setItemAsync("last_active", Date.now().toString());
+    };
+    updateActivity();
+  }, []);
 
   useEffect(() => {
     loadStockData(true);

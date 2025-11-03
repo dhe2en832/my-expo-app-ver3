@@ -51,7 +51,8 @@
         "android.permission.BLUETOOTH_ADMIN",
         "android.permission.BLUETOOTH_SCAN",
         "android.permission.BLUETOOTH_CONNECT",
-        "READ_EXTERNAL_STORAGE"
+        "READ_EXTERNAL_STORAGE",
+        "android.permission.INTERNET"
       ]
     },
     "web": {
@@ -63,6 +64,7 @@
       "expo-splash-screen",
       "expo-sqlite",
       "expo-secure-store",
+      "./plugins/withCleartextTraffic",
       [
         "expo-camera",
         {
@@ -89,7 +91,7 @@
         {
           "icon": "./assets/alert.png",
           "color": "#ffffff",
-          "sounds": ["./assets/sounds/new-notification.mp3"]
+          "sounds": ["./assets/sounds/new_notification.mp3"]
         }
       ]
     ],
@@ -98,7 +100,8 @@
       "eas": {
         "projectId": "5d2044e0-3004-4f1e-afc9-07ac9aa8c6f5"
       },
-      "IS_PRODUCTION": false
+      "IS_PRODUCTION": true,
+      "API_BASE_URL": "http://faspro.ddns.net:3000/api"
     }
   }
 }

@@ -74,18 +74,120 @@ import apiClient from "./axiosConfig";
 import { Alert } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { update } from "lodash";
+import { testNetworkConnection } from "@/utils/networkTest";
+import { testLoginConnection } from "@/utils/tesLoginConnection";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // ==================
 // Login API Module
 // ==================
+// export const loginAPI = {
+//   login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
+//     try {
+//       console.log("credentials ", credentials);
+//       const response = await axios.post<LoginResponse>("/login", credentials);
+//       if (response.data.success && response.data.data) {
+//         const { token, user } = response.data.data;
+//         await SecureStore.setItemAsync("auth_token", token);
+//         await SecureStore.setItemAsync("user_data", JSON.stringify(user));
+//         return {
+//           success: true,
+//           data: { token, user },
+//           message: response.data.message,
+//         };
+//       } else {
+//         return {
+//           success: false,
+//           message: response.data.message || "Login gagal",
+//         };
+//       }
+//     } catch (error: any) {
+//       // console.error("Login API error:", error);
+//       // Alert.alert("Login API error : ", error.message);
+
+//       if (error.response) {
+//         const message =
+//           error.response.data?.message || "Terjadi kesalahan pada server";
+//         return { success: false, message };
+//       } else if (error.request) {
+//         await testNetworkConnection();
+//         await testLoginConnection();
+//         return {
+//           success: false,
+//           message: `Tidak ada koneksi ke server ${error.message}`,
+//         };
+//       } else {
+//         return {
+//           success: false,
+//           message: error.message || "Error tidak dikenal",
+//         };
+//       }
+//     }
+//   },
+
+//   logout: async (): Promise<void> => {
+//     try {
+//       const token = await SecureStore.getItemAsync("auth_token");
+//       if (token) {
+//         await axios.post(
+//           "/login/logout",
+//           {},
+//           {
+//             headers: { Authorization: `Bearer ${token}` },
+//           }
+//         );
+//       }
+//     } catch (error) {
+//       console.warn("Logout API warning:", error);
+//     } finally {
+//       await SecureStore.deleteItemAsync("auth_token");
+//       await SecureStore.deleteItemAsync("user_data");
+//     }
+//   },
+
+//   getStoredAuth: async (): Promise<{
+//     token: string | null;
+//     user: User | null;
+//   }> => {
+//     const token = await SecureStore.getItemAsync("auth_token");
+//     const userData = await SecureStore.getItemAsync("user_data");
+//     const user = userData ? JSON.parse(userData) : null;
+//     return { token, user };
+//   },
+// };
+
+// api/services/loginAPI.ts
+
 export const loginAPI = {
   login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
     try {
-      const response = await axios.post<LoginResponse>("/login", credentials);
+      // console.log("🔑 Login credentials:", credentials);
+
+      // ✅ GUNAKAN apiClient, BUKAN axios langsung
+      const response = await apiClient.post<LoginResponse>(
+        "/login",
+        credentials
+      );
+
+      // Alert.alert("✅ Login response:", JSON.stringify(response, null, 2));
+
+      // Alert.alert(
+      //   "✅ Login response.data:",
+      //   JSON.stringify(response.data, null, 2)
+      // );
+
+      // Alert.alert(
+      //   "✅ Login response.data.data:",
+      //   JSON.stringify(response.data.data, null, 2)
+      // );
+
       if (response.data.success && response.data.data) {
         const { token, user } = response.data.data;
         await SecureStore.setItemAsync("auth_token", token);
         await SecureStore.setItemAsync("user_data", JSON.stringify(user));
+        // Saat login sukses
+        await SecureStore.setItemAsync("last_active", Date.now().toString());
+
         return {
           success: true,
           data: { token, user },
@@ -98,16 +200,45 @@ export const loginAPI = {
         };
       }
     } catch (error: any) {
-      // console.error("Login API error:", error);
-      Alert.alert("Login API error : ", error.message);
+      // try {
+      //   await testNetworkConnection();
+      // } finally {
+      //   await testLoginConnection();
+      // }
 
+      // ✅ ERROR HANDLING YANG LEBIH BAIK
       if (error.response) {
+        // Server responded dengan error status
         const message =
           error.response.data?.message || "Terjadi kesalahan pada server";
+        console.log("🚨 Server error:", error.response.status, message);
+        // Alert.alert(
+        //   "🚨 Server error.response :",
+        //   error.response.status,
+        //   message
+        // );
         return { success: false, message };
       } else if (error.request) {
-        return { success: false, message: "Tidak ada koneksi ke server" };
+        // Request dibuat tapi tidak ada response
+        const message = error || "Login API error";
+        console.log("🌐 Network error - No response received");
+        Alert.alert(
+          "🌐 Network error.request :",
+          error.response.status,
+          message
+        );
+        return {
+          success: false,
+          message:
+            "Tidak ada koneksi ke server. Periksa koneksi internet dan pastikan server aktif.",
+        };
       } else {
+        // Other errors
+        const message =
+          error.request.data?.message || "Network error - No response received";
+        console.log("⚡ Other error:", error.message);
+        Alert.alert("⚡ Other server error :", error.response.status, message);
+
         return {
           success: false,
           message: error.message || "Error tidak dikenal",
@@ -133,6 +264,11 @@ export const loginAPI = {
     } finally {
       await SecureStore.deleteItemAsync("auth_token");
       await SecureStore.deleteItemAsync("user_data");
+      await SecureStore.deleteItemAsync("last_active");
+      await AsyncStorage.removeItem("userToken");
+      await AsyncStorage.removeItem("userData");
+      // setUser(null);
+      // await loginAPI.logout();
     }
   },
 
@@ -2663,8 +2799,19 @@ export interface DashboardSummaryData {
 export interface DashboardActivity {
   title: string;
   time: string;
-  type: "success" | "info" | "warning" | "error";
+  type: string;
+  // type: "success" | "warning" | "info" | "payment" | "order" | "rks" | "error";
   amount?: string;
+  icon?: React.ReactNode;
+}
+
+interface DashboardSummary {
+  penjualan_hari_ini?: number;
+  tagihan_tertagih_hari_ini?: number;
+  kunjungan_hari_ini?: number;
+  total_kunjungan?: number;
+  persentase_perubahan?: number;
+  progress?: number;
 }
 
 export interface DashboardResponse {
@@ -2749,9 +2896,11 @@ export const dashboardAPI = {
     }
   },
 
- async getDashboardSummaryPpi(): Promise<TagihanResponse> {
+  async getDashboardSummaryPpi(): Promise<TagihanResponse> {
     try {
-      const res = await apiClient.get<TagihanResponse>("/dashboard/summary/ppi");
+      const res = await apiClient.get<TagihanResponse>(
+        "/dashboard/summary/ppi"
+      );
       if (!res.data.success) {
         throw new Error("Gagal mengambil data tagihan");
       }
@@ -2774,7 +2923,9 @@ export const dashboardAPI = {
 
   async getDashboardSummaryRks(): Promise<KunjunganResponse> {
     try {
-      const res = await apiClient.get<KunjunganResponse>("/dashboard/summary/rks");
+      const res = await apiClient.get<KunjunganResponse>(
+        "/dashboard/summary/rks"
+      );
       return res.data;
     } catch (error: any) {
       console.error("❌ kunjunganAPI.getKunjunganSummary error:", error);
@@ -2802,7 +2953,6 @@ export const dashboardAPI = {
       throw error;
     }
   },
-
 };
 
 export default {

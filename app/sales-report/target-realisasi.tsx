@@ -16,6 +16,7 @@ import { BarChart } from "react-native-chart-kit";
 import { Stack } from "expo-router";
 import { salesAPI, salesReportAPI } from "@/api/services";
 import { useAuth } from "@/contexts/AuthContext";
+import * as SecureStore from "expo-secure-store";
 
 // --- TIPE DATA ---
 interface SalesDetail {
@@ -84,6 +85,13 @@ export default function TargetRealisasiScreen() {
   };
 
   useEffect(() => {
+    const updateActivity = async () => {
+      await SecureStore.setItemAsync("last_active", Date.now().toString());
+    };
+    updateActivity();
+  }, []);
+
+  useEffect(() => {
     if (isSalesSupervisor) loadSalesList();
   }, [isSalesSupervisor]);
 
@@ -91,7 +99,11 @@ export default function TargetRealisasiScreen() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const res = await salesReportAPI.getTargetRealisasiCombined(tahun, bulan, salesFilter);
+      const res = await salesReportAPI.getTargetRealisasiCombined(
+        tahun,
+        bulan,
+        salesFilter
+      );
       if (res.success) setData(res.data || []);
     } catch (err) {
       console.error("Gagal load data:", err);
@@ -131,15 +143,30 @@ export default function TargetRealisasiScreen() {
 
   // --- Keys Dinamis ---
   const keyTarget = useMemo(
-    () => (metric === "nilai" ? "nilai_target" : metric === "ton" ? "ton_target" : "qty_target"),
+    () =>
+      metric === "nilai"
+        ? "nilai_target"
+        : metric === "ton"
+        ? "ton_target"
+        : "qty_target",
     [metric]
   );
   const keyRealisasi = useMemo(
-    () => (metric === "nilai" ? "nilai_real" : metric === "ton" ? "ton_real" : "qty_real"),
+    () =>
+      metric === "nilai"
+        ? "nilai_real"
+        : metric === "ton"
+        ? "ton_real"
+        : "qty_real",
     [metric]
   );
   const keyPersen = useMemo(
-    () => (metric === "nilai" ? "persen_nilai" : metric === "ton" ? "persen_ton" : "persen_qty"),
+    () =>
+      metric === "nilai"
+        ? "persen_nilai"
+        : metric === "ton"
+        ? "persen_ton"
+        : "persen_qty",
     [metric]
   );
 
@@ -203,7 +230,12 @@ export default function TargetRealisasiScreen() {
 
       {/* Filter Sales */}
       {isSalesSupervisor && salesList.length > 0 && (
-        <View style={[styles.dropdownContainer, { zIndex: salesDropdownOpen ? 4000 : 1 }]}>
+        <View
+          style={[
+            styles.dropdownContainer,
+            { zIndex: salesDropdownOpen ? 4000 : 1 },
+          ]}
+        >
           <DropDownPicker
             open={salesDropdownOpen}
             value={salesFilter}
@@ -230,7 +262,9 @@ export default function TargetRealisasiScreen() {
         </View>
       ) : (
         <ScrollView
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
           {...panResponder.panHandlers}
           nestedScrollEnabled={true}
         >
@@ -259,7 +293,12 @@ export default function TargetRealisasiScreen() {
           <Card style={[styles.card, { margin: 12 }]}>
             <Card.Content>
               <Text style={styles.label}>Pencapaian Total</Text>
-              <Text style={[styles.value, { color: persen >= 100 ? "#4caf50" : "#ff9800" }]}>
+              <Text
+                style={[
+                  styles.value,
+                  { color: persen >= 100 ? "#4caf50" : "#ff9800" },
+                ]}
+              >
                 {persen.toFixed(2)}%
               </Text>
             </Card.Content>
@@ -272,7 +311,7 @@ export default function TargetRealisasiScreen() {
               width={screenWidth}
               height={260}
               yAxisLabel={metric === "nilai" ? "Rp " : ""}
-               yAxisSuffix=""
+              yAxisSuffix=""
               fromZero
               chartConfig={{
                 backgroundGradientFrom: "#fff",
@@ -296,7 +335,10 @@ export default function TargetRealisasiScreen() {
                     <Text
                       style={[
                         styles.persenText,
-                        { color: (d[keyPersen] || 0) >= 100 ? "#4caf50" : "#ff9800" },
+                        {
+                          color:
+                            (d[keyPersen] || 0) >= 100 ? "#4caf50" : "#ff9800",
+                        },
                       ]}
                     >
                       {d[keyPersen]?.toFixed(2)}%
@@ -319,7 +361,15 @@ export default function TargetRealisasiScreen() {
 }
 
 // --- Helper Components ---
-const SummaryCard = ({ label, value, metric }: { label: string; value: number; metric: string }) => (
+const SummaryCard = ({
+  label,
+  value,
+  metric,
+}: {
+  label: string;
+  value: number;
+  metric: string;
+}) => (
   <Card style={styles.card}>
     <Card.Content>
       <Text style={styles.label}>{label}</Text>
@@ -362,12 +412,33 @@ const styles = StyleSheet.create({
   metricHeader: { alignItems: "center", marginTop: 12, marginBottom: 8 },
   metricText: { fontSize: 18, fontWeight: "700", color: "#1e293b" },
   swipeHint: { fontSize: 12, color: "#94a3b8", marginTop: 4 },
-  summaryRow: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 12, marginTop: 10 },
-  card: { flex: 1, marginHorizontal: 4, borderRadius: 16, backgroundColor: "#fff", elevation: 2 },
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    marginTop: 10,
+  },
+  card: {
+    flex: 1,
+    marginHorizontal: 4,
+    borderRadius: 16,
+    backgroundColor: "#fff",
+    elevation: 2,
+  },
   label: { fontSize: 12, color: "#64748b" },
   value: { fontSize: 16, fontWeight: "700", marginTop: 4, color: "#1e293b" },
-  detailCard: { marginBottom: 12, borderRadius: 16, backgroundColor: "#fff", elevation: 1 },
-  detailRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
+  detailCard: {
+    marginBottom: 12,
+    borderRadius: 16,
+    backgroundColor: "#fff",
+    elevation: 1,
+  },
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
   salesName: { fontSize: 15, fontWeight: "600", color: "#1e293b" },
   persenText: { fontWeight: "bold", fontSize: 14 },
   detailText: { fontSize: 13, color: "#475569" },

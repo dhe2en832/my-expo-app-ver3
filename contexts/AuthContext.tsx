@@ -7,6 +7,8 @@ import { loginAPI, salesAPI, User, type User as ApiUser } from "@/api/services";
 import { Alert } from "react-native";
 import { fcmService } from "@/utils/fcmMobileService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { testNetworkConnection } from "@/utils/networkTest";
+import { router } from "expo-router";
 
 // interface User {
 //   id: string;
@@ -41,14 +43,27 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
 
     const loadStoredAuth = async () => {
       try {
-        // Tunggu secure store + minimal delay 1 detik untuk UX splash
-        const [token, userData] = await Promise.all([
+        const MAX_INACTIVE_TIME = 5 * 60 * 1000; // 5 menit
+
+        const [token, userData, lastActiveStr] = await Promise.all([
           SecureStore.getItemAsync("auth_token"),
           SecureStore.getItemAsync("user_data"),
-          new Promise((resolve) => setTimeout(resolve, 7000)), // ← minimal splash 1 detik
+          SecureStore.getItemAsync("last_active"),
         ]);
 
-        if (token && userData) {
+        let sessionValid = false;
+
+        if (token && userData && lastActiveStr) {
+          const lastActive = parseInt(lastActiveStr, 10);
+          const now = Date.now();
+          if (!isNaN(lastActive) && now - lastActive <= MAX_INACTIVE_TIME) {
+            sessionValid = true;
+            // Perbarui timestamp agar session tetap hidup
+            await SecureStore.setItemAsync("last_active", now.toString());
+          }
+        }
+
+        if (sessionValid && userData) {
           const apiUser = JSON.parse(userData) as ApiUser;
           const frontendUser: User = {
             kodeCabang: apiUser.kodeCabang,
@@ -59,19 +74,27 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
             userid: apiUser.userid,
             nama_user: apiUser.nama_user,
             kodeSales: apiUser.kodeSales || "",
-            namaSales: apiUser.namaSales || "", // ← inisialisasi namaSales
+            namaSales: apiUser.namaSales || "",
             salesRole: apiUser.salesRole || "",
             anakBuah: apiUser.anakBuah,
-            // jabatan: apiUser.jabatan,
           };
-          // console.log("Loaded stored user auth:", frontendUser);
           setUser(frontendUser);
+        } else {
+          // Session expired atau tidak valid → clear semua
+          await SecureStore.deleteItemAsync("auth_token");
+          await SecureStore.deleteItemAsync("user_data");
+          await SecureStore.deleteItemAsync("last_active");
+          setUser(null);
         }
       } catch (error: any) {
-        console.error("Error loading auth ", error);
         Alert.alert("Error fungsi loadStoredAuth : ", error.message);
+        // Clear on error
+        await SecureStore.deleteItemAsync("auth_token");
+        await SecureStore.deleteItemAsync("user_data");
+        await SecureStore.deleteItemAsync("last_active");
+        setUser(null);
       } finally {
-        setIsLoading(false); // ← setelah delay + load, baru selesai loading
+        setIsLoading(false);
       }
     };
 
@@ -83,7 +106,7 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
       ): Promise<boolean> => {
         try {
           const result = await loginAPI.login({ userid, password, kodecabang });
-
+          // console.log("result login XXXX", result);
           if (result.success && result.data) {
             const { user: apiUser } = result.data;
             // const salesRes = await salesAPI.getSalesList(apiUser.kode_sales);
@@ -105,14 +128,14 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
             setUser(frontendUser);
             return true;
           } else {
-            console.warn("Login API failed:", result.message);
-            Alert.alert("Error result login : ", result.message);
+            // console.warn("Login API failed:", result.message);
+            Alert.alert("Error login : ", result.message);
 
             return false; // ← pastikan return false!
           }
         } catch (error: any) {
-          console.error("Login exception:", error);
-          Alert.alert("Error fungsi auth async login: ", error.message);
+          // console.error("Login exception:", error);
+          // Alert.alert("Error fungsi auth async login: ", error);
           return false; // ← jangan throw, return false!
         }
       },
@@ -129,12 +152,13 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
         // Clear local storage dan state
         await SecureStore.deleteItemAsync("auth_token");
         await SecureStore.deleteItemAsync("user_data");
+        await SecureStore.deleteItemAsync("last_active");
         await AsyncStorage.removeItem("userToken");
         await AsyncStorage.removeItem("userData");
         setUser(null);
         // Navigate ke login
         // router.replace("/login");
-        await loginAPI.logout();
+        // await loginAPI.logout();
       }
     }, []);
 

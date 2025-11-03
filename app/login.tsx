@@ -25,6 +25,9 @@ import {
 } from "@/utils/autoSync";
 import { SyncLoadingOverlay } from "@/components/SyncLoadingOverlay ";
 import { fcmService } from "@/utils/fcmMobileService";
+import apiClient from "@/api/axiosConfig";
+import { testNetworkConnection } from "@/utils/networkTest";
+import { testLoginConnection } from "@/utils/tesLoginConnection";
 
 export default function LoginScreen() {
   const [username, setUsername] = useState<string>("");
@@ -55,6 +58,11 @@ export default function LoginScreen() {
       );
     };
   }, []);
+
+  // useEffect(() => {
+  //   // Test koneksi saat screen mount
+  //   testNetworkConnection();
+  // }, []);
 
   const runInitAndSync = async () => {
     const startTime = Date.now();
@@ -95,6 +103,8 @@ export default function LoginScreen() {
       setIsSyncing(false); // HIDE OVERLAY
     } catch (error: any) {
       console.error("[App] Error initializing DB/Sync:", error);
+      Alert.alert("[App] Error initializing DB/Sync:", error);
+
       // Handling error, pastikan overlay tetap hilang
       setSyncProgress(100);
       setSyncMessage("Terjadi kesalahan sinkronisasi. Coba lagi.");
@@ -109,22 +119,24 @@ export default function LoginScreen() {
   };
 
   const handleLogin = async () => {
+    // await testNetworkConnection();
+    // await testLoginConnection();
     if (!username.trim() || !kodeCabang.trim()) {
       Alert.alert("Error", "Username and Branch Code are required");
       return;
     }
-
     setLoading(true); // Mulai loading button
     try {
       // 1. COBA LOGIN ke server
       const success = await login(username, password, kodeCabang);
+      console.log("success ", success);
 
       if (success) {
         // 2. Initialize FCM dan register token
         try {
           await fcmService.initialize();
           await fcmService.registerTokenWithServer();
-          console.log("FCM token registered successfully");
+          // console.log("FCM token registered successfully");
         } catch (fcmError) {
           console.warn(
             "FCM registration failed, continuing without notifications:",
@@ -140,12 +152,15 @@ export default function LoginScreen() {
         router.replace("/(tabs)");
       } else {
         // LOGIN GAGAL
-        Alert.alert("Login Failed", "Invalid credentials or branch code");
+        // Alert.alert(
+        //   "Login Failed",
+        //   `Invalid credentials or branch code ${success}`
+        // );
         setLoading(false);
       }
     } catch (err) {
       // ERROR (koneksi/API/Sync Error)
-      console.error("Login or Sync error:", err);
+      // console.error("Login or Sync error:", err);
       Alert.alert(
         "Login Failed",
         "Unable to connect or sync data. Please check your connection."
@@ -257,7 +272,23 @@ export default function LoginScreen() {
                     styles.loginButton,
                     (loading || isSyncing) && styles.loginButtonDisabled,
                   ]}
-                  onPress={handleLogin}
+                  onPress={() => {
+                    // Alert.alert(
+                    //   "Login Failed",
+                    //   "Unable to connect or sync data. Please check your connection."
+                    // );
+                    // const API_BASE_URL = "https://faspro.ddns.net:3000/api";
+                    // fetch(`${API_BASE_URL}/health`)
+                    //   .then((res) => res.json())
+                    //   .then((data) => console.log("API OK:", data))
+                    //   .catch((err) => console.error("API ERROR:", err));
+                    // fetch(`${API_BASE_URL}/login`)
+                    //   .then((res) => res.json())
+                    //   .then((data) => console.log("API OK:", data))
+                    //   .catch((err) => console.error("API ERROR:", err));
+                    // console.log("MASUK TOMBOL LOGIN");
+                    handleLogin();
+                  }}
                   disabled={loading || isSyncing} // <-- Disable saat loading/syncing
                 >
                   <Text style={styles.loginButtonText}>
@@ -272,6 +303,9 @@ export default function LoginScreen() {
 
               <View style={styles.footer}>
                 <Text style={styles.footerText}>©batasku-faspro</Text>
+              </View>
+              <View style={styles.footer}>
+                <Text style={styles.footerText}>Ver.0.0.1</Text>
               </View>
             </View>
           </ScrollView>

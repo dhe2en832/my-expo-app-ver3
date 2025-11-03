@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   StatusBar,
   Dimensions,
-
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -28,12 +27,17 @@ import {
   AlertCircle,
   FolderKanban,
 } from "lucide-react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
 import ProgressBar from "@/components/ProgressBar";
 import { getGreeting, getFirstName } from "@/utils/helpers";
 import { CustomerList as CustomerListType } from "@/api/interface";
-import { customerAPI, dashboardAPI } from "@/api/services";
+import {
+  customerAPI,
+  DashboardActivity,
+  dashboardAPI,
+  salesReportAPI,
+} from "@/api/services";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ActivityIndicator, PaperProvider } from "react-native-paper";
 
@@ -158,7 +162,7 @@ const ActivityItem: React.FC<ActivityItemProps> = ({
 );
 
 export default function HomeScreen() {
-  const { user, logout } = useAuth();
+  const { user, logout, isLoading: authLoading } = useAuth();
   const [currentTime, setCurrentTime] = useState(new Date());
   const namaUserSales = user?.namaSales;
   // console.log("namaUserSales indexxxx ", namaUserSales);
@@ -166,6 +170,20 @@ export default function HomeScreen() {
     logout();
     router.replace("/login");
   };
+  // 🚫 Jangan render apapun jika auth belum selesai
+  if (authLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color="#667eea" />
+      </View>
+    );
+  }
+
+  // 🚫 Redirect ke login jika tidak ada user
+  if (!user) {
+    router.replace("/login");
+    return null;
+  }
 
   // Real-time clock update
   useEffect(() => {
@@ -204,10 +222,19 @@ export default function HomeScreen() {
   const [summaryRks, setSummaryRks] = useState<any>(null);
   const [activitiesRks, setActivitiesRks] = useState<any[]>([]);
   const [dailyActivities, setDailyActivities] = useState<any[]>([]);
+  const [data, setData] = useState<any[]>([]);
+  const [tahun, setTahun] = useState(() => String(new Date().getFullYear()));
+  const [bulan, setBulan] = useState(() => {
+    const month = new Date().getMonth() + 1;
+    return month < 10 ? `0${month}` : String(month); // format 01–12
+  });
+  const [salesFilter, setSalesFilter] = useState("");
   const limit = 50;
 
   const fetchCustomers = useCallback(
     async (pageNumber = 1, append = false) => {
+      if (!user) return;
+      console.log("fetchCustomers");
       if (!user?.kodeSales) {
         setError("Data sales tidak ditemukan");
         setLoading(false);
@@ -254,90 +281,154 @@ export default function HomeScreen() {
     [user?.kodeSales]
   );
 
-  const fetchDashboardActivities = async () => {
+  const fetchDashboardActivities = useCallback(() => {
+    if (!user) return;
+    const run = async () => {
+      console.log("fetchDashboardActivities");
+      setLoading(true);
+      try {
+        // ✅ Gabungkan semua aktivitas dari 3 sumber
+        const allActivities = [
+          ...(activitiesSo || []),
+          ...(activitiesPpi || []),
+          ...(activitiesRks || []),
+        ];
+
+        // ✅ Urutkan aktivitas berdasarkan waktu terbaru
+        allActivities.sort((a, b) => b.time.localeCompare(a.time));
+
+        // ✅ Format icon berdasarkan tipe (frontend rendering)
+        const formatted = allActivities.map((item: any) => {
+          switch (item.type) {
+            case "success":
+              return {
+                ...item,
+                icon: <CheckCircle2 color="#10B981" size={16} />,
+              };
+            case "payment":
+              return {
+                ...item,
+                icon: <DollarSign color="#10B981" size={16} />,
+              };
+            case "order":
+              return {
+                ...item,
+                icon: <ShoppingCart color="#10B981" size={16} />,
+              };
+            case "rks":
+              return { ...item, icon: <MapPin color="#3B82F6" size={16} /> };
+            case "warning":
+              return {
+                ...item,
+                icon: <AlertCircle color="#F59E0B" size={16} />,
+              };
+            default:
+              return {
+                ...item,
+                icon: <CheckCircle2 color="#9CA3AF" size={16} />,
+              };
+          }
+        });
+
+        setDailyActivities(formatted);
+      } catch (err) {
+        console.error("❌ Gagal memuat aktivitas dashboard:", err);
+        setDailyActivities([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    run();
+  }, [activitiesSo, activitiesPpi, activitiesRks]);
+
+  // -------------------------------------------------------
+  const loadData = async () => {
     setLoading(true);
     try {
-      // ✅ Panggil semua service summary + activities
-      // ✅ Gabungkan semua aktivitas dari 3 sumber
-      const allActivities = [
-        ...(activitiesSo || []),
-        ...(activitiesPpi || []),
-        ...(activitiesRks || []),
-      ];
-
-      // ✅ Urutkan aktivitas berdasarkan waktu terbaru
-      allActivities.sort((a, b) => b.time.localeCompare(a.time));
-
-      // ✅ Format icon berdasarkan tipe (frontend rendering)
-      const formatted = allActivities.map((item: any) => {
-        switch (item.type) {
-          case "success":
-            return {
-              ...item,
-              icon: <CheckCircle2 color="#10B981" size={16} />,
-            };
-          case "payment":
-            return { ...item, icon: <DollarSign color="#10B981" size={16} /> };
-          case "order":
-            return {
-              ...item,
-              icon: <ShoppingCart color="#10B981" size={16} />,
-            };
-          case "rks":
-            return { ...item, icon: <MapPin color="#3B82F6" size={16} /> };
-          case "warning":
-            return { ...item, icon: <AlertCircle color="#F59E0B" size={16} /> };
-          default:
-            return {
-              ...item,
-              icon: <CheckCircle2 color="#9CA3AF" size={16} />,
-            };
-        }
-      });
-
-      setDailyActivities(formatted);
+      const res = await salesReportAPI.getTargetRealisasiCombined(
+        tahun,
+        bulan,
+        user?.kodeSales
+      );
+      if (res.success) {
+        // console.log("XXXX", res.data[0]);
+        // console.log("XXXX", res.data[0].nilai_real);
+        setData(res.data || []);
+      }
     } catch (err) {
-      console.error("❌ Gagal memuat aktivitas dashboard:", err);
-      setDailyActivities([]);
+      console.error("Gagal load data:", err);
     } finally {
       setLoading(false);
+      // setRefreshing(false);
     }
   };
 
-  const loadDashboardAll = async () => {
-    setLoading(true);
+  const loadDashboardAll = useCallback(() => {
+    if (!user) return;
+    const run = async () => {
+      console.log("loadDashboardAll");
+      setLoading(true);
 
-    const resSo = await dashboardAPI.getDashboardSummarySo();
-    console.log("loadDashboard res ", resSo);
-    if (resSo.success) {
-      setSummarySo(resSo.data.summary);
-      setActivitiesSo(resSo.data.activities);
-    }
-    const resPpi = await dashboardAPI.getDashboardSummaryPpi();
-    console.log("loadDashboard res ", resSo);
-    if (resPpi.success) {
-      setSummaryPpi(resPpi.data.summary);
-      setActivitiesPpi(resPpi.data.activities);
-    }
-    const resRks = await dashboardAPI.getDashboardSummaryPpi();
-    console.log("loadDashboard res ", resSo);
-    if (resPpi.success) {
-      setSummaryRks(resRks.data.summary);
-      setActivitiesRks(resRks.data.activities);
-    }
-    fetchDashboardActivities();
-    setLoading(false);
-  };
+      try {
+        const resSo = await dashboardAPI.getDashboardSummarySo();
+        if (resSo.success) {
+          setSummarySo(resSo.data.summary);
+          setActivitiesSo(resSo.data.activities);
+        }
+
+        const resPpi = await dashboardAPI.getDashboardSummaryPpi();
+        if (resPpi.success) {
+          setSummaryPpi(resPpi.data.summary);
+          setActivitiesPpi(resPpi.data.activities);
+        }
+
+        // ⚠️ sebelumnya salah panggil getDashboardSummaryPpi dua kali
+        const resRks = await dashboardAPI.getDashboardSummaryRks?.();
+        if (resRks?.success) {
+          setSummaryRks(resRks.data.summary);
+          setActivitiesRks(resRks.data.activities);
+        }
+
+        // ✅ Panggil aktivitas setelah semua data selesai
+        await fetchDashboardActivities();
+      } catch (err) {
+        console.error("❌ loadDashboardAll error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    run();
+  }, [fetchDashboardActivities]);
+
   useEffect(() => {
-    loadDashboardAll();
-  }, []);
+    if (user) {
+      fetchCustomers();
+      loadData();
+    }
+  }, [fetchCustomers, user]);
 
-  // ✅ Initial load
   useEffect(() => {
-    fetchCustomers();
-  }, [fetchCustomers]);
+    if (user) {
+      loadDashboardAll();
+    }
+  }, [user]);
 
-  // Data statistik
+  useEffect(() => {
+    if (user) {
+      fetchDashboardActivities();
+    }
+  }, [user, activitiesSo, activitiesPpi, activitiesRks]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchCustomers(); // Refresh setiap kali focus
+      fetchDashboardActivities();
+      loadDashboardAll();
+    }, [])
+  );
+
   const todayStats = [
     {
       title: "Penjualan Hari Ini",
@@ -361,10 +452,12 @@ export default function HomeScreen() {
       icon: <TrendingUp color="white" size={20} />,
       color: "#10B981",
       progress: Math.min(
-        (summarySo?.penjualan_hari_ini / 18300000) * 100 || 0,
+        ((summarySo?.penjualan_hari_ini || 0) / (data?.[0]?.nilai_real || 1)) *
+          100,
         100
       ),
-      target: "Rp 18.300.000",
+
+      target: `Rp ${(data?.[0]?.nilai_real ?? 0).toLocaleString("id-ID")}`,
       route: "/sales-order",
     },
     {
@@ -475,43 +568,6 @@ export default function HomeScreen() {
     },
   ];
 
-  // Data aktivitas harian
-  const dailyActivities2 = [
-    {
-      title: "Pesanan Baru #SO-0012",
-      time: "10:30 AM • PT. Contoh Jaya",
-      type: "success" as const,
-      icon: <ShoppingCart color="#10B981" size={16} />,
-      amount: "Rp 2.500.000",
-    },
-    {
-      title: "Pembayaran Diterima",
-      time: "09:15 AM • PT. Sample Makmur",
-      type: "success" as const,
-      icon: <DollarSign color="#10B981" size={16} />,
-      amount: "Rp 1.800.000",
-    },
-    {
-      title: "RKS Baru Dibuat",
-      time: "08:45 AM • Toko Maju Jaya",
-      type: "info" as const,
-      icon: <MapPin color="#3B82F6" size={16} />,
-      amount: "RKS-024",
-    },
-    {
-      title: "Kunjungan Selesai",
-      time: "08:30 AM • Toko Sejahtera",
-      type: "success" as const,
-      icon: <CheckCircle2 color="#10B981" size={16} />,
-    },
-    {
-      title: "Stok Menipis - Produk A",
-      time: "08:15 AM • Gudang Pusat",
-      type: "warning" as const,
-      icon: <AlertCircle color="#F59E0B" size={16} />,
-      amount: "Sisa 5 pcs",
-    },
-  ];
   // console.log("user?.namaCabang ", user?.namaCabang);
   return (
     <PaperProvider>
@@ -659,19 +715,6 @@ export default function HomeScreen() {
               </Text>
             )}
           </View>
-
-          {/* <View style={styles.activityCard}>
-            {dailyActivities.map((activity, index) => (
-              <ActivityItem
-                key={index}
-                title={activity.title}
-                time={activity.time}
-                type={activity.type}
-                icon={activity.icon}
-                amount={activity.amount}
-              />
-            ))}
-          </View> */}
         </View>
 
         {/* Bottom Spacing */}

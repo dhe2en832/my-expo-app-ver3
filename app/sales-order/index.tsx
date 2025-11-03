@@ -29,6 +29,7 @@ import {
 import { SalesOrderListType } from "@/api/interface";
 import { TabBar, TabView, Route } from "react-native-tab-view";
 import DropDownPicker from "react-native-dropdown-picker";
+import * as SecureStore from "expo-secure-store";
 
 // --- CUSTOM HOOKS ---
 // Custom hook untuk debounce
@@ -583,6 +584,13 @@ export default function SalesOrderList() {
       fetchAllSalesOrders();
     }, [])
   );
+
+  useEffect(() => {
+    const updateActivity = async () => {
+      await SecureStore.setItemAsync("last_active", Date.now().toString());
+    };
+    updateActivity();
+  }, []);
 
   // Success message
   useEffect(() => {

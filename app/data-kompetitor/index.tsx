@@ -30,6 +30,7 @@ import debounce from "lodash/debounce";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, Stack } from "expo-router";
 import { Portal } from "react-native-paper";
+import * as SecureStore from "expo-secure-store";
 
 // Types untuk response API
 interface KompetitorAPIResponse {
@@ -80,6 +81,13 @@ const DataKompetitorList = () => {
   const isSupervisor = user?.salesRole === "Sales Supervisor";
   const fadeAnim = useRef(new Animated.Value(0)).current; // ✅ Gunakan useRef
 
+  useEffect(() => {
+    const updateActivity = async () => {
+      await SecureStore.setItemAsync("last_active", Date.now().toString());
+    };
+    updateActivity();
+  }, []);
+
   // ✅ FILTER & SORT DI FRONTEND SAJA
   useEffect(() => {
     let filtered = [...data];
@@ -113,10 +121,10 @@ const DataKompetitorList = () => {
   }, [data, /* statusFilter, */ sortBy]);
 
   useFocusEffect(
-  useCallback(() => {
-    loadData('', true); // Refresh setiap kali focus
-  }, [])
-);
+    useCallback(() => {
+      loadData("", true); // Refresh setiap kali focus
+    }, [])
+  );
 
   useEffect(() => {
     if (pagination.page === 1) {

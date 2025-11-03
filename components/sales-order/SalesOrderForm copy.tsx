@@ -1188,8 +1188,7 @@ export default function SalesOrderForm({
       </View>
 
       <Text style={styles.productCode}>
-        {/* {item.kode_item} •  */}
-        {item.no_item}
+        {item.kode_item} • {item.no_item}
       </Text>
       <Text style={styles.productCategory}>
         {item.kategori} • {item.kelompok}
@@ -1271,43 +1270,34 @@ export default function SalesOrderForm({
       )}
 
       <View style={styles.quantityContainer}>
-        {/* Kiri: Label & Stok */}
         <View style={styles.quantityLeft}>
           <Text style={styles.quantityLabel}>Quantity:</Text>
           <Text style={styles.stockInfo}>Stok: {item.stok}</Text>
         </View>
 
-        {/* Kanan: Input dan Subtotal */}
-        <View style={styles.quantityRightGroup}>
-          {!isReadOnly ? (
-            <View style={styles.quantityInputContainer}>
-              <TextInput
-                style={styles.quantityInput}
-                value={item.quantity.toString()}
-                onChangeText={(text) => {
-                  const cleaned = text.replace(/[^0-9.]/g, "");
-                  const parts = cleaned.split(".");
-                  if (parts.length > 2) return;
-                  const validText =
-                    parts.length === 2 ? `${parts[0]}.${parts[1]}` : cleaned;
+        {!isReadOnly ? (
+          <View style={styles.quantityControls}>
+            <TouchableOpacity
+              onPress={() => updateQuantity(item.id, item.quantity - 1)}
+              style={styles.quantityButton}
+            >
+              <MaterialIcons name="remove" size={16} color="#667eea" />
+            </TouchableOpacity>
 
-                  const num = parseFloat(validText);
-                  if (!isNaN(num) || validText === "") {
-                    updateQuantity(item.id, validText === "" ? 0 : num);
-                  }
-                }}
-                keyboardType="decimal-pad"
-                placeholder="0"
-                selectTextOnFocus
-                textAlign="right"
-              />
-            </View>
-          ) : (
             <Text style={styles.quantityText}>{item.quantity}</Text>
-          )}
 
-          <Text style={styles.subtotal}>{formatCurrency(item.subtotal)}</Text>
-        </View>
+            <TouchableOpacity
+              onPress={() => updateQuantity(item.id, item.quantity + 1)}
+              style={styles.quantityButton}
+            >
+              <MaterialIcons name="add" size={16} color="#667eea" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Text style={styles.quantityText}>{item.quantity}</Text>
+        )}
+
+        <Text style={styles.subtotal}>{formatCurrency(item.subtotal)}</Text>
       </View>
     </View>
   );
@@ -1343,8 +1333,7 @@ export default function SalesOrderForm({
           {item.nama_item}
         </Text>
         <Text style={styles.productCode}>
-          {/* {item.kode_item} •  */}
-          {item.no_item}
+          {item.kode_item} • {item.no_item}
         </Text>
         <Text style={styles.productCategory}>
           {item.kategori} • {item.kelompok}
@@ -1614,13 +1603,6 @@ export default function SalesOrderForm({
     [form.pajak, DEFAULT_PPN_PERCENT, isReadOnly]
   );
 
-  const CARA_KIRIM_LABELS: Record<string, string> = {
-    KG: "Dikirim Gudang",
-    KP: "Dikirim Langsung (Pabrik)",
-    AG: "Ambil Sendiri (Gudang)",
-    AP: "Ambil Sendiri (Pabrik)",
-  };
-
   // ✅ Loading state
   if (loading) {
     return (
@@ -1790,7 +1772,7 @@ export default function SalesOrderForm({
               />
             )}
 
-            {/* {form.items.length > 0 && renderPaymentSummary()} */}
+            {form.items.length > 0 && renderPaymentSummary()}
           </View>
 
           {/* Payment Settings - HIDDEN UNTUK APPROVAL */}
@@ -1807,7 +1789,6 @@ export default function SalesOrderForm({
                 <MaterialIcons name="chevron-right" size={20} color="#666" />
               </TouchableOpacity>
             )}
-            {form.items.length > 0 && renderPaymentSummary()}
           </View>
           {/* Error Message */}
           {error && (
@@ -2214,40 +2195,11 @@ export default function SalesOrderForm({
                             styles.caraKirimTextSelected,
                         ]}
                       >
-                        {CARA_KIRIM_LABELS[cara]}
+                        {cara}
                       </Text>
                     </TouchableOpacity>
                   ))}
                 </View>
-                // <View style={styles.caraKirimContainer}>
-                //   {["KG", "KP", "AG", "AP"].map((cara) => (
-                //     <TouchableOpacity
-                //       key={cara}
-                //       style={[
-                //         styles.caraKirimButton,
-                //         form.cara_kirim === cara &&
-                //           styles.caraKirimButtonSelected,
-                //       ]}
-                //       onPress={() =>
-                //         setForm((prev) => ({
-                //           ...prev,
-                //           cara_kirim: cara as any,
-                //         }))
-                //       }
-                //     >
-                //       <Text
-                //         style={[
-                //           styles.caraKirimText,
-                //           form.cara_kirim === cara &&
-                //             styles.caraKirimTextSelected,
-                //         ]}
-                //       >
-                //         {/* {cara} */}
-                //         {CARA_KIRIM_LABELS[cara]}
-                //       </Text>
-                //     </TouchableOpacity>
-                //   ))}
-                // </View>
               )}
             </View>
             {renderPaymentSummary()}
@@ -2354,80 +2306,6 @@ export default function SalesOrderForm({
 
 // ✅ UPDATE STYLES DENGAN APPROVAL-SPECIFIC STYLES
 const styles = StyleSheet.create({
-  caraKirimContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap", // ← ini yang membuat tombol pindah baris
-    gap: 8, // ← jarak antar tombol (horizontal & vertical)
-    marginTop: 8,
-  },
-  caraKirimButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    backgroundColor: "#fff",
-    justifyContent: "center",
-    alignItems: "center",
-    // Tidak pakai width tetap → biar sesuai teks
-  },
-  caraKirimText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#333",
-    textAlign: "center",
-  },
-  caraKirimButtonSelected: {
-    backgroundColor: "#667eea",
-    borderColor: "#667eea",
-  },
-  caraKirimTextSelected: {
-    color: "#fff",
-  },
-  quantityContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 8,
-  },
-  quantityLeft: {
-    flex: 1,
-  },
-  quantityRightGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12, // jarak antara input dan subtotal
-  },
-  quantityInputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: 100, // ← SESUAIKAN DENGAN discountInputContainer
-    justifyContent: "flex-end",
-  },
-  quantityInput: {
-    width: "100%",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    fontSize: 16,
-    textAlign: "right",
-    backgroundColor: "#fff",
-  },
-  quantityText: {
-    width: 100,
-    fontSize: 16,
-    fontWeight: "600",
-    textAlign: "right",
-  },
-  subtotal: {
-    minWidth: 80,
-    fontSize: 16,
-    fontWeight: "bold",
-    textAlign: "right",
-    color: "#333",
-  },
-
   rksBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -2766,19 +2644,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
-  // caraKirimButton: {
-  //   paddingHorizontal: 12,
-  //   paddingVertical: 6,
-  //   borderRadius: 20,
-  //   backgroundColor: "#f1f5f9",
-  // },
+  caraKirimButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "#f1f5f9",
+  },
   caraKirimButtonActive: {
     backgroundColor: "#667eea",
   },
-  // caraKirimText: {
-  //   fontSize: 14,
-  //   color: "#64748b",
-  // },
+  caraKirimText: {
+    fontSize: 14,
+    color: "#64748b",
+  },
   caraKirimTextActive: {
     color: "#fff",
     fontWeight: "600",
@@ -3198,8 +3076,6 @@ const styles = StyleSheet.create({
   discountInputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    width: 80,
-    justifyContent: "flex-end",
   },
   discountInput: {
     borderWidth: 1,
@@ -3219,6 +3095,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#f44336",
     fontWeight: "600",
+  },
+  quantityContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  quantityLeft: {
+    flex: 1,
   },
   quantityLabel: {
     fontSize: 12,
@@ -3241,6 +3125,18 @@ const styles = StyleSheet.create({
     backgroundColor: "#f0f0f0",
     justifyContent: "center",
     alignItems: "center",
+  },
+  quantityText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
+    minWidth: 60,
+    textAlign: "center",
+  },
+  subtotal: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#333",
   },
   customerTermin: {
     fontSize: 12,
@@ -3409,17 +3305,17 @@ const styles = StyleSheet.create({
   paymentInputGroup: {
     marginBottom: 16,
   },
-  // caraKirimContainer: {
-  //   flexDirection: "row",
-  //   gap: 8,
-  // },
-  // caraKirimButtonSelected: {
-  //   borderColor: "#667eea",
-  //   backgroundColor: "#667eea",
-  // },
-  // caraKirimTextSelected: {
-  //   color: "#fff",
-  // },
+  caraKirimContainer: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  caraKirimButtonSelected: {
+    borderColor: "#667eea",
+    backgroundColor: "#667eea",
+  },
+  caraKirimTextSelected: {
+    color: "#fff",
+  },
   terminSelector: {
     flexDirection: "row",
     justifyContent: "space-between",

@@ -86,7 +86,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="sales-order"
           options={{
-            title: "Pesanan",
+            title: "Sales Order",
             tabBarIcon: ({ color, size }) => (
               <ShoppingCart color={color} size={22} />
             ),

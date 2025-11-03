@@ -21,6 +21,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import { useAuth } from "../../contexts/AuthContext";
 import { mobileCatatanService } from "@/api/services";
+import * as SecureStore from "expo-secure-store";
 
 export default function CatatanCreate() {
   const router = useRouter();
@@ -50,6 +51,13 @@ export default function CatatanCreate() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const initialized = useRef(false);
+
+  useEffect(() => {
+    const updateActivity = async () => {
+      await SecureStore.setItemAsync("last_active", Date.now().toString());
+    };
+    updateActivity();
+  }, []);
 
   // ✅ Inisialisasi data dari params
   useEffect(() => {

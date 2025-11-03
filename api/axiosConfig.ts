@@ -2,10 +2,14 @@
 import axios, { AxiosError } from "axios";
 import * as SecureStore from "expo-secure-store";
 import { Alert } from "react-native";
+import Constants from "expo-constants";
 
-// const API_BASE_URL = "http://faspro.ddns.net:3000/api";
-const API_BASE_URL = "http://192.168.1.9:3000/api";
-// const API_BASE_URL = "http://192.168.1.9:3000";
+const API_BASE_URL = `http://faspro.ddns.net:3000/api`;
+// const API_BASE_URL = `http://192.168.1.9:3000/api`;
+// const API_BASE_URL = `http://192.168.1.9:3000`;
+// const API_BASE_URL =
+//   Constants.expoConfig?.extra?.API_BASE_URL ||
+//   "http://faspro.ddns.net:3000/api";
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -14,6 +18,7 @@ const apiClient = axios.create({
     "Content-Type": "application/json",
   },
 });
+// console.log("API apiClient :", apiClient);
 // Interceptor untuk inject token
 apiClient.interceptors.request.use(
   async (config) => {
