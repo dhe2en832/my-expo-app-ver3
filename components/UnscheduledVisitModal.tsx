@@ -56,9 +56,9 @@ export default function UnscheduledVisitModal({
     >
       <View style={styles.customerInfo}>
         <Text style={styles.customerName}>{item.nama_cust}</Text>
-        <Text style={styles.customerCode}>Kode: {item.kode_cust}</Text>
+        <Text style={styles.customerCode}>No. Cust: {item.no_cust}</Text>
         <Text style={styles.customerAddress} numberOfLines={2}>
-          {item.alamat_kirim1 || 'Alamat tidak tersedia'}
+          {item.alamat_kirim1 || "Alamat tidak tersedia"}
         </Text>
       </View>
       <MaterialIcons name="chevron-right" size={24} color="#667eea" />

@@ -13,13 +13,24 @@ import {
 } from "lucide-react-native";
 import { Platform, View, Text, StyleSheet } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
-import { PaperProvider } from "react-native-paper";
+import { PaperProvider, DefaultTheme } from "react-native-paper";
+
+const theme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: "#fff",
+    surface: "#fff",
+    text: "#000",
+    primary: "#667eea",
+  },
+};
 
 export default function TabsLayout() {
   const { user } = useAuth();
   // console.log("user auth ", user);
   return (
-    <PaperProvider>
+    <PaperProvider theme={theme}>
       <Tabs
         screenOptions={{
           headerShown: true,
@@ -29,9 +40,6 @@ export default function TabsLayout() {
             backgroundColor: "white",
             borderTopWidth: 1,
             borderTopColor: "#e0e0e0",
-            // height: Platform.OS === "ios" ? 85 : 60,
-            // paddingBottom: Platform.OS === "ios" ? 25 : 8,
-            // paddingTop: 8,
           },
           tabBarLabelStyle: {
             fontSize: 11,
@@ -72,17 +80,6 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, size }) => <MapPin color={color} size={22} />,
           }}
         />
-        {/*
-      <Tabs.Screen
-        name="attendance"
-        options={{
-          title: "Kunjungan",
-          tabBarIcon: ({ color, size }) => (
-            <CalendarCheck color={color} size={22} />
-          ),
-        }}
-      /> */}
-
         <Tabs.Screen
           name="sales-order"
           options={{
@@ -92,8 +89,6 @@ export default function TabsLayout() {
             ),
           }}
         />
-
-        {/* SECONDARY FEATURES - Tetap accessible */}
         <Tabs.Screen
           name="collection"
           options={{

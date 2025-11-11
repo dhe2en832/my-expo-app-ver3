@@ -160,6 +160,7 @@ const StatusChip: React.FC<{ status: "active" | "inactive" }> = ({
 // --- PRODUK ITEM ---
 interface ProductItem {
   id: string;
+  nama_kompetitor: string;
   nama_produk: string;
   merek_produk: string;
   harga: string;
@@ -540,6 +541,7 @@ const ProductModal: React.FC<{
   const [form, setForm] = useState<ProductItem>(
     initialData || {
       id: Date.now().toString(),
+      nama_kompetitor: "",
       nama_produk: "",
       merek_produk: "",
       harga: "",
@@ -555,6 +557,7 @@ const ProductModal: React.FC<{
       setForm(
         initialData || {
           id: Date.now().toString(),
+          nama_kompetitor: "",
           nama_produk: "",
           merek_produk: "",
           harga: "",
@@ -605,12 +608,22 @@ const ProductModal: React.FC<{
         >
           <View style={styles.modalContent}>
             <View style={styles.inputGroup}>
+              <Text style={styles.label}>Nama Kompetitor *</Text>
+              <RNTextInput
+                style={styles.input}
+                value={form.nama_kompetitor}
+                onChangeText={(v) => setForm({ ...form, nama_kompetitor: v })}
+                placeholder="Contoh: XYZ"
+                editable={!disabled}
+              />
+            </View>
+            <View style={styles.inputGroup}>
               <Text style={styles.label}>Nama Produk *</Text>
               <RNTextInput
                 style={styles.input}
                 value={form.nama_produk}
                 onChangeText={(v) => setForm({ ...form, nama_produk: v })}
-                placeholder="Contoh: Minyak Goreng Bimoli 1L"
+                placeholder="Contoh: Besi / Asbes"
                 editable={!disabled}
               />
             </View>
@@ -620,7 +633,7 @@ const ProductModal: React.FC<{
                 style={styles.input}
                 value={form.merek_produk}
                 onChangeText={(v) => setForm({ ...form, merek_produk: v })}
-                placeholder="Contoh: Bimoli"
+                placeholder="Contoh: SNI"
                 editable={!disabled}
               />
             </View>
@@ -728,6 +741,8 @@ export default function KompetitorCreate() {
     null
   );
   const [keteranganUmum, setKeteranganUmum] = useState("");
+  const [kodeRks, setKodeRks] = useState("");
+  const [idRks, setIdRks] = useState("");
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [products, setProducts] = useState<ProductItem[]>([
     // {
@@ -756,7 +771,7 @@ export default function KompetitorCreate() {
     is_unscheduled?: string;
     baru?: string;
     fromRKS?: string;
-    rowid:string;
+    rowid: string;
   }>();
 
   useEffect(() => {
@@ -765,6 +780,8 @@ export default function KompetitorCreate() {
       setSelectedCustomer(null);
       setProducts([]);
       setKeteranganUmum("");
+      setKodeRks("");
+      setIdRks("");
       setIsFormReset(true);
       return;
     }
@@ -945,6 +962,7 @@ export default function KompetitorCreate() {
 
           return {
             kode_kompetitor: "",
+            nama_kompetitor: p.nama_kompetitor.trim(),
             nama_produk: p.nama_produk.trim(),
             merek_produk: p.merek_produk.trim(),
             harga: parseCurrencyInput(p.harga),

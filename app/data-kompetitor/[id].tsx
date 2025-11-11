@@ -163,6 +163,7 @@ const StatusChip: React.FC<{ status: "active" | "inactive" }> = ({
 // --- PRODUK ITEM ---
 interface ProductItem {
   id: string;
+  nama_kompetitor: string;
   nama_produk: string;
   merek_produk: string;
   harga: string;
@@ -500,6 +501,7 @@ const ProductModal: React.FC<{
   const [form, setForm] = useState<ProductItem>(
     initialData || {
       id: Date.now().toString(),
+      nama_kompetitor: "",
       nama_produk: "",
       merek_produk: "",
       harga: "",
@@ -514,6 +516,7 @@ const ProductModal: React.FC<{
       setForm(
         initialData || {
           id: Date.now().toString(),
+          nama_kompetitor: "",
           nama_produk: "",
           merek_produk: "",
           harga: "",
@@ -564,12 +567,23 @@ const ProductModal: React.FC<{
         >
           <View style={styles.modalContent}>
             <View style={styles.inputGroup}>
+              <Text style={styles.label}>Nama Kompetitor *</Text>
+              <RNTextInput
+                style={styles.input}
+                value={form.nama_kompetitor}
+                onChangeText={(v) => setForm({ ...form, nama_kompetitor: v })}
+                placeholder="Contoh: XYZ"
+                editable={!disabled}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
               <Text style={styles.label}>Nama Produk *</Text>
               <RNTextInput
                 style={styles.input}
                 value={form.nama_produk}
                 onChangeText={(v) => setForm({ ...form, nama_produk: v })}
-                placeholder="Contoh: Minyak Goreng Bimoli 1L"
+                placeholder="Contoh: Besi / Asbes"
                 editable={!disabled}
               />
             </View>
@@ -579,7 +593,7 @@ const ProductModal: React.FC<{
                 style={styles.input}
                 value={form.merek_produk}
                 onChangeText={(v) => setForm({ ...form, merek_produk: v })}
-                placeholder="Contoh: Bimoli"
+                placeholder="Contoh: SNI"
                 editable={!disabled}
               />
             </View>
@@ -693,6 +707,8 @@ export default function KompetitorEdit() {
   //   null
   // );
   const [keteranganUmum, setKeteranganUmum] = useState("");
+  const [kodeRks, setKodeRks] = useState("");
+  const [idRks, setIdRks] = useState("");
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [showProductModal, setShowProductModal] = useState(false);
@@ -735,6 +751,8 @@ export default function KompetitorEdit() {
           nama_cust: header.nama_cust,
         });
         setKeteranganUmum(header.catatan || "");
+        setKodeRks(header.kode_rks || "");
+        setIdRks(header.id_rks || "");
 
         // Load ZIP preview once
         let allPreviewPhotos: { filename: string; url: string }[] = [];
@@ -787,6 +805,7 @@ export default function KompetitorEdit() {
 
           return {
             id: productId,
+            nama_kompetitor: d.nama_kompetitor || "",
             nama_produk: d.nama_produk || "",
             merek_produk: d.merek_produk || "",
             harga: d.harga?.toString() || "0",
@@ -979,7 +998,8 @@ export default function KompetitorEdit() {
       const KompetitorCreateRequest: KompetitorCreateRequest = {
         header: {
           kode_kompetitor: id!,
-          kode_rks: "",
+          kode_rks: kodeRks,
+          id_rks: idRks,
           kode_cust: selectedCustomer.kode_cust,
           nama_cust: selectedCustomer.nama_cust,
           kode_sales: user?.kodeSales || "",
@@ -995,6 +1015,7 @@ export default function KompetitorEdit() {
         },
         details: products.map((p, idx) => ({
           kode_kompetitor: id!,
+          nama_kompetitor: p.nama_kompetitor.trim(),
           nama_produk: p.nama_produk.trim(),
           merek_produk: p.merek_produk.trim(),
           harga: parseCurrencyInput(p.harga),
@@ -1016,7 +1037,7 @@ export default function KompetitorEdit() {
         // ✅ Reload data agar foto terbaru muncul saat edit ulang
         await loadKompetitorData();
         Alert.alert("Berhasil", "Data kompetitor berhasil diperbarui", [
-          { text: "OK", onPress: () => router.back()},
+          { text: "OK", onPress: () => router.back() },
         ]);
       } else {
         throw new Error(res.message || "Gagal memperbarui data");

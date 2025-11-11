@@ -46,6 +46,7 @@ import {
 import { MobileFTPUploader } from "@/utils/mobileFTPUploader";
 import PPIPhotoUpload from "@/components/ppi/PPIPhotoUpload";
 import { useLocalSearchParams } from "expo-router";
+import { Provider as PaperProvider, DefaultTheme } from "react-native-paper";
 
 // --- TYPES ---
 interface BankAccount {
@@ -54,6 +55,16 @@ interface BankAccount {
   nama_akun: string;
 }
 
+const theme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: "#ffffff",
+    surface: "#ffffff",
+    text: "#000000",
+    primary: "#667eea",
+  },
+};
 // --- CUSTOMER SELECTION MODAL ---
 const CustomerSelectionModal: React.FC<{
   visible: boolean;
@@ -259,14 +270,14 @@ const CustomerStep: React.FC<{
   onNext: () => void;
   showCustomerModal: boolean;
   onShowCustomerModal: (show: boolean) => void;
-  fromRKS:boolean
+  fromRKS: boolean;
 }> = ({
   selectedCustomer,
   onCustomerSelect,
   onNext,
   showCustomerModal,
   onShowCustomerModal,
-  fromRKS = false
+  fromRKS = false,
 }) => {
   return (
     <View style={styles.stepContainer}>
@@ -830,6 +841,7 @@ export default function PPICreate() {
     is_unscheduled?: string;
     baru?: string;
     fromRKS?: string;
+    rowid?: string;
   }>();
 
   //====== OTOMATIS MASUK KE METODE PEMBAYARAN ==========
@@ -1071,6 +1083,8 @@ export default function PPICreate() {
             bayar_mu: invoice.mobile_allocated_amount || 0,
             discount: invoice.mobile_allocated_discount || 0,
             // sisa_setelah_bayar: invoice.sisa_setelah_alokasi ?? invoice.sisa_hutang,
+            kode_rks: params.kode_rks || "",
+            id_rks: params.rowid || "",
           })),
           payments: [paymentRecord],
         };
@@ -1197,127 +1211,128 @@ export default function PPICreate() {
   ];
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Stack.Screen
-        options={{
-          title: "Buat PPI Baru",
-          headerLeft: () => (
-            <TouchableOpacity
-              onPress={() => router.back()}
-              disabled={loading} // 🔹 Disable saat loading
-              style={{ opacity: loading ? 0.5 : 1 }} // 🔹 Optional: buat terlihat disabled
-            >
-              <MaterialIcons name="arrow-back" size={24} color="#667eea" />
-            </TouchableOpacity>
-          ),
-        }}
-      />
+    <PaperProvider theme={theme}>
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen
+          options={{
+            title: "Buat PPI Baru",
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => router.back()}
+                disabled={loading} // 🔹 Disable saat loading
+                style={{ opacity: loading ? 0.5 : 1 }} // 🔹 Optional: buat terlihat disabled
+              >
+                <MaterialIcons name="arrow-back" size={24} color="#667eea" />
+              </TouchableOpacity>
+            ),
+          }}
+        />
 
-      {/* Progress Steps */}
-      <View style={styles.progressContainer}>
-        {steps.map((step, index) => (
-          <View key={step.number} style={styles.progressStep}>
-            <View
-              style={[
-                styles.progressCircle,
-                step.active && styles.progressCircleActive,
-                currentStep > step.number && styles.progressCircleCompleted,
-              ]}
-            >
-              {currentStep > step.number ? (
-                <MaterialIcons name="check" size={16} color="#fff" />
-              ) : (
-                <Text style={styles.progressNumber}>{step.number}</Text>
-              )}
-            </View>
-            <Text
-              style={[
-                styles.progressText,
-                step.active && styles.progressTextActive,
-                currentStep > step.number && styles.progressTextCompleted,
-              ]}
-            >
-              {step.title}
-            </Text>
-            {index < steps.length - 1 && (
+        {/* Progress Steps */}
+        <View style={styles.progressContainer}>
+          {steps.map((step, index) => (
+            <View key={step.number} style={styles.progressStep}>
               <View
                 style={[
-                  styles.progressLine,
-                  currentStep > step.number && styles.progressLineCompleted,
+                  styles.progressCircle,
+                  step.active && styles.progressCircleActive,
+                  currentStep > step.number && styles.progressCircleCompleted,
                 ]}
+              >
+                {currentStep > step.number ? (
+                  <MaterialIcons name="check" size={16} color="#fff" />
+                ) : (
+                  <Text style={styles.progressNumber}>{step.number}</Text>
+                )}
+              </View>
+              <Text
+                style={[
+                  styles.progressText,
+                  step.active && styles.progressTextActive,
+                  currentStep > step.number && styles.progressTextCompleted,
+                ]}
+              >
+                {step.title}
+              </Text>
+              {index < steps.length - 1 && (
+                <View
+                  style={[
+                    styles.progressLine,
+                    currentStep > step.number && styles.progressLineCompleted,
+                  ]}
+                />
+              )}
+            </View>
+          ))}
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <ScrollView
+            style={styles.scrollView}
+            // contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[
+              styles.scrollContent,
+              // { paddingBottom: buttonContainerHeight + insets.bottom },
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Render current step */}
+            {currentStep === 1 && (
+              <CustomerStep
+                selectedCustomer={selectedCustomer}
+                onCustomerSelect={setSelectedCustomer}
+                onNext={handleNextStep}
+                showCustomerModal={showCustomerModal}
+                onShowCustomerModal={setShowCustomerModal}
+                fromRKS={fromRKS}
               />
             )}
-          </View>
-        ))}
-      </View>
 
-      <View style={{ flex: 1 }}>
-        <ScrollView
-          style={styles.scrollView}
-          // contentContainerStyle={styles.scrollContent}
-          contentContainerStyle={[
-            styles.scrollContent,
-            // { paddingBottom: buttonContainerHeight + insets.bottom },
-          ]}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Render current step */}
-          {currentStep === 1 && (
-            <CustomerStep
-              selectedCustomer={selectedCustomer}
-              onCustomerSelect={setSelectedCustomer}
-              onNext={handleNextStep}
-              showCustomerModal={showCustomerModal}
-              onShowCustomerModal={setShowCustomerModal}
-              fromRKS={fromRKS}
-            />
-          )}
+            {currentStep === 2 && (
+              <PaymentMethodStep
+                paymentMethod={paymentMethod}
+                onPaymentMethodChange={setPaymentMethod}
+                selectedBank={selectedBank}
+                onBankSelect={handleBankSelect}
+                giroNumber={giroNumber}
+                onGiroNumberChange={setGiroNumber}
+                dueDate={dueDate}
+                onDueDateChange={setDueDate}
+                onNext={handleNextStep}
+                onBack={handleBackStep}
+                showBankModal={showBankModal}
+                onShowBankModal={setShowBankModal}
+              />
+            )}
 
-          {currentStep === 2 && (
-            <PaymentMethodStep
-              paymentMethod={paymentMethod}
-              onPaymentMethodChange={setPaymentMethod}
-              selectedBank={selectedBank}
-              onBankSelect={handleBankSelect}
-              giroNumber={giroNumber}
-              onGiroNumberChange={setGiroNumber}
-              dueDate={dueDate}
-              onDueDateChange={setDueDate}
-              onNext={handleNextStep}
-              onBack={handleBackStep}
-              showBankModal={showBankModal}
-              onShowBankModal={setShowBankModal}
-            />
-          )}
+            {currentStep === 3 && selectedCustomer && (
+              <InvoiceSelectionStep
+                selectedCustomer={selectedCustomer}
+                selectedInvoices={selectedInvoices}
+                onInvoiceToggle={handleInvoiceToggle}
+                onPaymentChange={handlePaymentChange}
+                onNext={handleNextStep}
+                onBack={handleBackStep}
+              />
+            )}
 
-          {currentStep === 3 && selectedCustomer && (
-            <InvoiceSelectionStep
-              selectedCustomer={selectedCustomer}
-              selectedInvoices={selectedInvoices}
-              onInvoiceToggle={handleInvoiceToggle}
-              onPaymentChange={handlePaymentChange}
-              onNext={handleNextStep}
-              onBack={handleBackStep}
-            />
-          )}
+            {currentStep === 4 && (
+              <PhotoUploadStep
+                photos={photos}
+                onPhotosChange={setPhotos}
+                saveType={saveType}
+                onSaveTypeChange={setSaveType}
+                onBack={handleBackStep}
+                loading={loading}
+                selectedCustomer={selectedCustomer} // ✅ SEKARANG SESUAI DENGAN INTERFACE
+                selectedInvoices={selectedInvoices} // ✅ SEKARANG SESUAI DENGAN INTERFACE
+                user={user} // ✅ SEKARANG SESUAI DENGAN INTERFACE
+              />
+            )}
+          </ScrollView>
 
-          {currentStep === 4 && (
-            <PhotoUploadStep
-              photos={photos}
-              onPhotosChange={setPhotos}
-              saveType={saveType}
-              onSaveTypeChange={setSaveType}
-              onBack={handleBackStep}
-              loading={loading}
-              selectedCustomer={selectedCustomer} // ✅ SEKARANG SESUAI DENGAN INTERFACE
-              selectedInvoices={selectedInvoices} // ✅ SEKARANG SESUAI DENGAN INTERFACE
-              user={user} // ✅ SEKARANG SESUAI DENGAN INTERFACE
-            />
-          )}
-        </ScrollView>
-
-        {/* ✅ PERBAIKI: Fixed Buttons di luar ScrollView */}
-        {/* <View
+          {/* ✅ PERBAIKI: Fixed Buttons di luar ScrollView */}
+          {/* <View
             style={[
               {
                 position: "absolute",
@@ -1337,69 +1352,70 @@ export default function PPICreate() {
               },
             ]}
           > */}
-        <View style={styles.actionButtons}>
-          <Button
-            mode="outlined"
-            onPress={handleBackStep}
-            style={styles.backButton}
-            contentStyle={styles.buttonContent}
-            disabled={loading||fromRKS}
-            loading={currentStep === 4 && loading}
-          >
-            Kembali
-          </Button>
-          <Button
-            mode="contained"
-            onPress={
-              currentStep === 4
-                ? () => handleSubmit(saveType) // ✅ Panggil handleSubmit dengan saveType
-                : handleNextStep // ✅ Lanjut step biasa
-            }
-            disabled={
-              loading ||
-              (currentStep === 1 && !selectedCustomer) ||
-              (currentStep === 2 &&
-                (paymentMethod === "giro"
-                  ? !selectedBank || !giroNumber || !dueDate
-                  : paymentMethod === "transfer"
-                  ? !selectedBank
-                  : false)) ||
-              (currentStep === 3 &&
-                (selectedInvoices.length === 0 ||
-                  getTotalPaymentAmount() === 0)) // ✅ VALIDASI BARU
-            }
-            loading={currentStep === 4 && loading}
-            style={styles.nextButton}
-            contentStyle={styles.buttonContent}
-          >
-            {currentStep === 4
-              ? "Simpan PPI"
-              : currentStep === 3
-              ? "Lanjut ke Upload Foto"
-              : currentStep === 2
-              ? "Lanjut ke Pilih Faktur"
-              : "Lanjut ke Metode Bayar"}
-          </Button>
+          <View style={styles.actionButtons}>
+            <Button
+              mode="outlined"
+              onPress={handleBackStep}
+              style={styles.backButton}
+              contentStyle={styles.buttonContent}
+              disabled={loading || fromRKS}
+              loading={currentStep === 4 && loading}
+            >
+              Kembali
+            </Button>
+            <Button
+              mode="contained"
+              onPress={
+                currentStep === 4
+                  ? () => handleSubmit(saveType) // ✅ Panggil handleSubmit dengan saveType
+                  : handleNextStep // ✅ Lanjut step biasa
+              }
+              disabled={
+                loading ||
+                (currentStep === 1 && !selectedCustomer) ||
+                (currentStep === 2 &&
+                  (paymentMethod === "giro"
+                    ? !selectedBank || !giroNumber || !dueDate
+                    : paymentMethod === "transfer"
+                    ? !selectedBank
+                    : false)) ||
+                (currentStep === 3 &&
+                  (selectedInvoices.length === 0 ||
+                    getTotalPaymentAmount() === 0)) // ✅ VALIDASI BARU
+              }
+              loading={currentStep === 4 && loading}
+              style={styles.nextButton}
+              contentStyle={styles.buttonContent}
+            >
+              {currentStep === 4
+                ? "Simpan PPI"
+                : currentStep === 3
+                ? "Lanjut ke Upload Foto"
+                : currentStep === 2
+                ? "Lanjut ke Pilih Faktur"
+                : "Lanjut ke Metode Bayar"}
+            </Button>
+          </View>
+          {/* </View> */}
         </View>
-        {/* </View> */}
-      </View>
 
-      {/* Customer Selection Modal */}
-      <CustomerSelectionModal
-        visible={showCustomerModal}
-        onClose={() => setShowCustomerModal(false)}
-        onCustomerSelect={setSelectedCustomer}
-        selectedCustomer={selectedCustomer}
-      />
+        {/* Customer Selection Modal */}
+        <CustomerSelectionModal
+          visible={showCustomerModal}
+          onClose={() => setShowCustomerModal(false)}
+          onCustomerSelect={setSelectedCustomer}
+          selectedCustomer={selectedCustomer}
+        />
 
-      {/* Bank Selection Modal */}
-      <BankSelectionModal
-        visible={showBankModal}
-        onClose={() => setShowBankModal(false)}
-        onBankSelect={handleBankSelect} // ✅ GUNAKAN function dari main component
-        selectedBank={selectedBank}
-      />
-    </SafeAreaView>
+        {/* Bank Selection Modal */}
+        <BankSelectionModal
+          visible={showBankModal}
+          onClose={() => setShowBankModal(false)}
+          onBankSelect={handleBankSelect} // ✅ GUNAKAN function dari main component
+          selectedBank={selectedBank}
+        />
+      </SafeAreaView>
+    </PaperProvider>
   );
 }
 

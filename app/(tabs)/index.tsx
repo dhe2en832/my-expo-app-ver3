@@ -295,7 +295,7 @@ export default function HomeScreen() {
         ];
 
         // ✅ Urutkan aktivitas berdasarkan waktu terbaru
-        allActivities.sort((a, b) => b.time.localeCompare(a.time));
+        // allActivities.sort((a, b) => b.time.localeCompare(a.time));
 
         // ✅ Format icon berdasarkan tipe (frontend rendering)
         const formatted = allActivities.map((item: any) => {

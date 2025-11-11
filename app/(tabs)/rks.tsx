@@ -51,7 +51,11 @@ import {
 } from "../../utils/database";
 import { getLocationWithRetry } from "@/utils/location";
 import * as Notifications from "expo-notifications";
-import { calculateDistance, removeDuplicates } from "@/utils/helpers";
+import {
+  calculateDistance,
+  formatCurrency,
+  removeDuplicates,
+} from "@/utils/helpers";
 
 // --- Components ---
 import EnhancedFAB from "../../components/EnhancedFAB";
@@ -215,7 +219,7 @@ const CustomCameraWithOverlay = ({
           content: {
             title: "❌ Gagal mengambil foto",
             body: "Gagal mengambil foto",
-            sound: "new-notification.mp3",
+            sound: "new_notification.mp3",
           },
           trigger: null,
         });
@@ -639,7 +643,7 @@ export default function RKSPage() {
   };
 
   const highlightRKSItem = (itemId: string) => {
-    console.log("🎯 START Highlighting item:", itemId);
+    // console.log("🎯 START Highlighting item:", itemId);
     setHighlightedItemId(itemId);
 
     setTimeout(() => {
@@ -810,7 +814,7 @@ export default function RKSPage() {
           content: {
             title: "✅ Sync Data",
             body: "Tidak ada data yang perlu disinkronisasi",
-            sound: "new-notification.mp3",
+            sound: "new_notification.mp3",
           },
           trigger: null,
         });
@@ -824,7 +828,7 @@ export default function RKSPage() {
           content: {
             title: "✅ Sync Berhasil",
             body: "data berhasil disinkronisasi", //`${syncRes.data?.syncedCount || 0} data berhasil disinkronisasi`,
-            sound: "new-notification.mp3",
+            sound: "new_notification.mp3",
           },
           trigger: null,
         });
@@ -840,7 +844,7 @@ export default function RKSPage() {
         content: {
           title: "❌ Sync Gagal",
           body: error.message || "Gagal menyinkronisasi data",
-          sound: "new-notification.mp3",
+          sound: "new_notification.mp3",
         },
         trigger: null,
       });
@@ -1106,12 +1110,12 @@ export default function RKSPage() {
           const maxRowRes = await rksAPI.getMaxRowId2(selectedKodeRKS);
           nextRowId = (maxRowRes?.data || 0) + 1;
 
-          console.log(
-            "🟠 Menggunakan RKS unscheduled:",
-            selectedKodeRKS,
-            "RowID:",
-            nextRowId
-          );
+          // console.log(
+          //   "🟠 Menggunakan RKS unscheduled:",
+          //   selectedKodeRKS,
+          //   "RowID:",
+          //   nextRowId
+          // );
         } else {
           console.log("CEK RKS NOO");
 
@@ -1135,7 +1139,7 @@ export default function RKSPage() {
       // Buat RKS item temporary
       const unscheduledItem: RKSItem = {
         id: id, //`unscheduled_${Date.now()}`,
-        kode_rks: selectedKodeRKS,
+        kode_rks: masterKodeRKS ?? selectedKodeRKS,
         kode_cust: customer.kode_cust,
         no_cust: customer.no_cust,
         customerName: customer.nama_cust,
@@ -1145,6 +1149,13 @@ export default function RKSPage() {
         isUnscheduled: "Y",
         namaSales: namaSales,
         rowid: nextRowId,
+        durasi_menit: "",
+        durasi_format: "",
+        checkin_time: "",
+        checkout_time: "",
+        total: 0,
+        sum_netto_mu: 0,
+        sum_bayar_mu: 0,
       };
 
       // Tambahkan ke list RKS
@@ -1177,7 +1188,7 @@ export default function RKSPage() {
         content: {
           title: "❌ Error handleNewCustomerCreated",
           body: "Data customer tidak valid dari server",
-          sound: "new-notification.mp3",
+          sound: "new_notification.mp3",
         },
         trigger: null,
       });
@@ -1249,7 +1260,7 @@ export default function RKSPage() {
       // 🧱 Buat RKS item NOO
       const nooItem: RKSItem = {
         id: id, //`noo_${Date.now()}`,
-        kode_rks: selectedKodeRKS,
+        kode_rks: masterKodeRKS ?? selectedKodeRKS,
         kode_cust: customerData.kode_cust,
         no_cust: customerData.no_cust,
         customerName: customerData.nama_cust,
@@ -1261,6 +1272,13 @@ export default function RKSPage() {
         namaSales: namaSales,
         rowid: nextRowId,
         mobile_created: customerData.mobile_created || "Y",
+        durasi_menit: "",
+        durasi_format: "",
+        checkin_time: "",
+        checkout_time: "",
+        total: 0,
+        sum_netto_mu: 0,
+        sum_bayar_mu: 0,
       };
 
       console.log("🎯 Creating RKS NOO item:", nooItem);
@@ -1336,6 +1354,11 @@ export default function RKSPage() {
         status: "pending",
         is_unscheduled: "N",
         baru: "N",
+        durasi_menit: "",
+        durasi_format: "",
+        total: 0,
+        sum_netto_mu: 0,
+        sum_bayar_mu: 0,
       },
       fasmap: {
         latitude: "-6.2",
@@ -1350,6 +1373,13 @@ export default function RKSPage() {
       createdDate: new Date().toISOString(),
       isSyncing: false,
       lastUpdated: new Date().toISOString(),
+      durasi_menit: "",
+      durasi_format: "",
+      checkin_time: "",
+      checkout_time: "",
+      total: 0,
+      sum_netto_mu: 0,
+      sum_bayar_mu: 0,
     };
     const itemToUse = lastCheckedInItem || dummyItem;
 
@@ -1398,6 +1428,11 @@ export default function RKSPage() {
         status: "pending",
         is_unscheduled: "N",
         baru: "N",
+        durasi_menit: "",
+        durasi_format: "",
+        total: 0,
+        sum_netto_mu: 0,
+        sum_bayar_mu: 0,
       },
       fasmap: {
         latitude: "-6.2",
@@ -1412,6 +1447,13 @@ export default function RKSPage() {
       createdDate: new Date().toISOString(),
       isSyncing: false,
       lastUpdated: new Date().toISOString(),
+      durasi_menit: "",
+      durasi_format: "",
+      checkin_time: "",
+      checkout_time: "",
+      total: 0,
+      sum_netto_mu: 0,
+      sum_bayar_mu: 0,
     };
     const itemToUse = lastCheckedInItem || dummyItem;
 
@@ -1464,6 +1506,11 @@ export default function RKSPage() {
         status: "pending",
         is_unscheduled: "N",
         baru: "N",
+        durasi_menit: "",
+        durasi_format: "",
+        total: 0,
+        sum_netto_mu: 0,
+        sum_bayar_mu: 0,
       },
       fasmap: {
         latitude: "-6.2",
@@ -1478,6 +1525,13 @@ export default function RKSPage() {
       createdDate: new Date().toISOString(),
       isSyncing: false,
       lastUpdated: new Date().toISOString(),
+      durasi_menit: "",
+      durasi_format: "",
+      checkin_time: "",
+      checkout_time: "",
+      total: 0,
+      sum_netto_mu: 0,
+      sum_bayar_mu: 0,
     };
     const itemToUse = lastCheckedInItem || dummyItem;
     Alert.alert(
@@ -1529,6 +1583,11 @@ export default function RKSPage() {
         status: "pending",
         is_unscheduled: "N",
         baru: "N",
+        durasi_menit: "",
+        durasi_format: "",
+        total: 0,
+        sum_netto_mu: 0,
+        sum_bayar_mu: 0,
       },
       fasmap: {
         latitude: "-6.2",
@@ -1543,6 +1602,13 @@ export default function RKSPage() {
       createdDate: new Date().toISOString(),
       isSyncing: false,
       lastUpdated: new Date().toISOString(),
+      durasi_menit: "",
+      durasi_format: "",
+      checkin_time: "",
+      checkout_time: "",
+      total: 0,
+      sum_netto_mu: 0,
+      sum_bayar_mu: 0,
     };
     const itemToUse = lastCheckedInItem || dummyItem;
 
@@ -1595,6 +1661,11 @@ export default function RKSPage() {
         status: "pending",
         is_unscheduled: "N",
         baru: "N",
+        durasi_menit: "",
+        durasi_format: "",
+        total: 0,
+        sum_netto_mu: 0,
+        sum_bayar_mu: 0,
       },
       fasmap: {
         latitude: "-6.2",
@@ -1609,6 +1680,13 @@ export default function RKSPage() {
       createdDate: new Date().toISOString(),
       isSyncing: false,
       lastUpdated: new Date().toISOString(),
+      durasi_menit: "",
+      durasi_format: "",
+      checkin_time: "",
+      checkout_time: "",
+      total: 0,
+      sum_netto_mu: 0,
+      sum_bayar_mu: 0,
     };
     const itemToUse = lastCheckedInItem || dummyItem;
     Alert.alert(
@@ -1690,12 +1768,13 @@ export default function RKSPage() {
       // setNamaSales(salesName);
 
       const listRes = await rksAPI.getRKSListCombined(user.kodeSales);
+      // console.log("listRes ", listRes);
       if (!listRes.success) {
         await Notifications.scheduleNotificationAsync({
           content: {
             title: "❌ Gagal ambil data",
             body: "Gagal ambil data",
-            sound: "new-notification.mp3",
+            sound: "new_notification.mp3",
           },
           trigger: null,
         });
@@ -1766,6 +1845,13 @@ export default function RKSPage() {
             radius: 150,
             namaSales: user.namaSales, // ✅ Gunakan nama sales dari API
             rowid: item.detail_rowid,
+            durasi_menit: item.durasi_menit,
+            durasi_format: item.durasi_format,
+            checkin_time: item.checkin_time,
+            checkout_time: item.checkout_time,
+            total: item.total,
+            sum_netto_mu: item.sum_netto_mu,
+            sum_bayar_mu: item.sum_bayar_mu,
           };
         }
 
@@ -1781,10 +1867,19 @@ export default function RKSPage() {
           customerAddress: item.alamat || "Alamat tidak tersedia",
           scheduledDate,
           status,
+          checkIn: item.checkin_time,
+          checkOut: item.checkout_time,
           fasmap: undefined,
           radius: 150,
           namaSales: user.namaSales, // ✅ Gunakan nama sales dari API
           rowid: item.detail_rowid,
+          durasi_menit: item.durasi_menit,
+          durasi_format: item.durasi_format,
+          checkin_time: item.checkin_time,
+          checkout_time: item.checkout_time,
+          total: item.total,
+          sum_netto_mu: item.sum_netto_mu,
+          sum_bayar_mu: item.sum_bayar_mu,
         };
       });
 
@@ -1943,7 +2038,7 @@ export default function RKSPage() {
           content: {
             title: "📍 Lokasi Tidak Ditemukan",
             body: "Tidak dapat mendapatkan lokasi saat ini. Pastikan GPS aktif, terhubung internet, dan tidak berada dalam gedung.",
-            sound: "new-notification.mp3",
+            sound: "new_notification.mp3",
           },
           trigger: null,
         });
@@ -2113,7 +2208,7 @@ export default function RKSPage() {
           content: {
             title: "❌ Error Check-in",
             body: createRes.error || "Gagal membuat kunjungan",
-            sound: "new-notification.mp3",
+            sound: "new_notification.mp3",
           },
           trigger: null,
         });
@@ -2156,7 +2251,7 @@ export default function RKSPage() {
               ? "tidak terjadwal"
               : "terjadwal"
           } telah dimulai. Akurasi: ${accuracy.toFixed(1)}m`,
-          sound: "new-notification.mp3",
+          sound: "new_notification.mp3",
         },
         trigger: null,
       });
@@ -2170,7 +2265,7 @@ export default function RKSPage() {
         content: {
           title: "❌ Gagal Check-in",
           body: "Gagal melakukan check-in: " + err.message,
-          sound: "new-notification.mp3",
+          sound: "new_notification.mp3",
         },
         trigger: null,
       });
@@ -2210,7 +2305,7 @@ export default function RKSPage() {
           content: {
             title: "❌ Gagal Check-out",
             body: checkoutRes.error || "Gagal melakukan check-out",
-            sound: "new-notification.mp3",
+            sound: "new_notification.mp3",
           },
           trigger: null,
         });
@@ -2247,7 +2342,7 @@ export default function RKSPage() {
         content: {
           title: "✅ Check Out Berhasil",
           body: `Kunjungan selesai. Akurasi: ${accuracy.toFixed(1)}m`,
-          sound: "new-notification.mp3",
+          sound: "new_notification.mp3",
         },
         trigger: null,
       });
@@ -2257,7 +2352,7 @@ export default function RKSPage() {
         content: {
           title: "❌ Gagal Check-out",
           body: "Gagal melakukan check-out: " + err.message,
-          sound: "new-notification.mp3",
+          sound: "new_notification.mp3",
         },
         trigger: null,
       });
@@ -2279,8 +2374,7 @@ export default function RKSPage() {
   };
 
   const renderItem = ({ item }: { item: RKSItem }) => {
-    // console.log("renderItem", renderItem);
-
+    // console.log("renderItem", item);
     const isHighlighted = highlightedItemId === item.id;
     if (isHighlighted) {
       console.log("🎨 RENDERING HIGHLIGHTED ITEM:", item.id);
@@ -2350,18 +2444,76 @@ export default function RKSPage() {
         <Text style={{ color: "#666", marginTop: 6 }}>
           {item.customerAddress}
         </Text>
-        {item.checkIn?.duration != null && (
-          <Text
-            style={{
-              color: "#666",
-              marginTop: 4,
-              fontSize: 13,
-              fontWeight: "600",
-            }}
-          >
-            Durasi: {item.checkIn.duration} menit
-          </Text>
-        )}
+        <Text
+          style={{
+            color: "#0da80ac3",
+            marginTop: 4,
+            fontSize: 13,
+            fontWeight: "600",
+          }}
+        >
+          {/* Check In:{" "} */}
+          Check In: {item.checkin_time || "-"}
+          {/* {typeof item.checkIn === "string"
+            ? item.checkin_time
+            : item.checkIn?.checkin_time || "-"} */}
+        </Text>
+
+        <Text
+          style={{
+            color: "#b90505ff",
+            marginTop: 4,
+            fontSize: 13,
+            fontWeight: "600",
+          }}
+        >
+          Check Out: {item.checkout_time || "-"}
+          {/* {typeof item.checkOut === "string"
+            ? item.checkout_time
+            : item.checkOut?.checkout_time || "-"} */}
+        </Text>
+
+        <Text
+          style={{
+            color: "#000000ff",
+            marginTop: 4,
+            fontSize: 13,
+            fontWeight: "600",
+          }}
+        >
+          Durasi: {item.durasi_format || "-"}
+        </Text>
+        <Text
+          style={{
+            color: "#054db2ff",
+            marginTop: 4,
+            fontSize: 13,
+            fontWeight: "600",
+          }}
+        >
+          Nominal SO: {formatCurrency(item.total) || "-"}
+        </Text>
+        <Text
+          style={{
+            color: "#a77c06ff",
+            marginTop: 4,
+            fontSize: 13,
+            fontWeight: "600",
+          }}
+        >
+          Total PPI: {formatCurrency(item.sum_netto_mu) || "-"}
+        </Text>
+        <Text
+          style={{
+            color: "#a77c06ff",
+            marginTop: 4,
+            fontSize: 13,
+            fontWeight: "600",
+          }}
+        >
+          Total Bayar PPI: {formatCurrency(item.sum_bayar_mu) || "-"}
+        </Text>
+
         {isGettingLocation && (
           <View style={styles.locationLoadingContainer}>
             <ActivityIndicator size="small" color="#667eea" />

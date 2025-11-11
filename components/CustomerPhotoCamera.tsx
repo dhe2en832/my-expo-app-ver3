@@ -41,60 +41,6 @@ const CustomerPhotoCamera: React.FC<CustomerPhotoCameraProps> = ({
   // const [locationSubscription, setLocationSubscription] =
   useState<Location.LocationSubscription | null>(null);
 
-  // Real-time location tracking
-  // useEffect(() => {
-  //   if (visible) {
-  //     setLocationLoading(true);
-  //     let isMounted = true;
-
-  //     const startLocationTracking = async () => {
-  //       try {
-  //         const subscription = await Location.watchPositionAsync(
-  //           {
-  //             accuracy: Location.Accuracy.BestForNavigation,
-  //             timeInterval: 1000,
-  //             distanceInterval: 1,
-  //           },
-  //           (newLocation) => {
-  //             if (isMounted) {
-  //               setLocation(newLocation);
-  //               setLocationLoading(false);
-  //             }
-  //           }
-  //         );
-
-  //         if (isMounted) {
-  //           setLocationSubscription(subscription);
-  //         }
-
-  //         // Get initial location
-  //         const initialLocation = await Location.getCurrentPositionAsync({
-  //           accuracy: Location.Accuracy.BestForNavigation,
-  //         });
-  //         if (isMounted) {
-  //           setLocation(initialLocation);
-  //           setLocationLoading(false);
-  //         }
-  //       } catch (error) {
-  //         console.error("Error starting location tracking:", error);
-  //         if (isMounted) setLocationLoading(false);
-  //       }
-  //     };
-
-  //     startLocationTracking();
-
-  //     return () => {
-  //       isMounted = false;
-  //       if (locationSubscription) {
-  //         locationSubscription.remove();
-  //       }
-  //     };
-  //   }
-  // }, [visible]);
-
-  // HAPUS baris ini:
-  // const [locationSubscription, setLocationSubscription] = useState<Location.LocationSubscription | null>(null);
-
   useEffect(() => {
     if (visible) {
       // ✅ RESET STATE
@@ -186,9 +132,16 @@ const CustomerPhotoCamera: React.FC<CustomerPhotoCameraProps> = ({
           setCapturedPhotos((prev) => [...prev, newPhoto]);
 
           // Auto move to next photo type if available
-          const currentIndex = photoTypes.indexOf(currentPhotoType);
-          if (currentIndex < photoTypes.length - 1) {
-            setCurrentPhotoType(photoTypes[currentIndex + 1]);
+          // const currentIndex = photoTypes.indexOf(currentPhotoType);
+          // if (currentIndex < photoTypes.length - 1) {
+          //   setCurrentPhotoType(photoTypes[currentIndex + 1]);
+          // }
+
+          if (currentPhotoType !== "lainnya") {
+            const currentIndex = photoTypes.indexOf(currentPhotoType);
+            if (currentIndex < photoTypes.length - 1) {
+              setCurrentPhotoType(photoTypes[currentIndex + 1]);
+            }
           }
 
           // ✅ SHOW SUCCESS MESSAGE dengan info ZIP
@@ -242,54 +195,6 @@ const CustomerPhotoCamera: React.FC<CustomerPhotoCameraProps> = ({
     }
   };
 
-  // const takePicture = async () => {
-  //   if (cameraRef && location && !locationLoading && !capturing) {
-  //     setCapturing(true);
-  //     try {
-  //       const photo = await cameraRef.takePictureAsync({
-  //         base64: true,
-  //         quality: 0.8,
-  //         exif: true,
-  //       });
-
-  //       if (photo.base64) {
-  //         const newPhoto: CustomerPhoto = {
-  //           id: `photo_${Date.now()}_${currentPhotoType}`,
-  //           type: currentPhotoType,
-  //           uri: photo.uri,
-  //           base64: photo.base64,
-  //           filename: `${currentPhotoType}_${Date.now()}.jpg`,
-  //           timestamp: new Date().toISOString(),
-  //           location: {
-  //             latitude: location.coords.latitude,
-  //             longitude: location.coords.longitude,
-  //             accuracy: location.coords.accuracy || 999,
-  //           },
-  //           watermarkData: {
-  //             customerName,
-  //             salesName,
-  //             locationText: `📍 ${location.coords.latitude.toFixed(6)}, ${location.coords.longitude.toFixed(6)}`,
-  //             accuracyText: getAccuracyText(location.coords.accuracy || 999),
-  //             checkType: "NOO_CUSTOMER",
-  //           },
-  //         };
-
-  //         setCapturedPhotos(prev => [...prev, newPhoto]);
-
-  //         // Auto move to next photo type if available
-  //         const currentIndex = photoTypes.indexOf(currentPhotoType);
-  //         if (currentIndex < photoTypes.length - 1) {
-  //           setCurrentPhotoType(photoTypes[currentIndex + 1]);
-  //         }
-  //       }
-  //     } catch (error) {
-  //       console.error("Error taking picture:", error);
-  //     } finally {
-  //       setCapturing(false);
-  //     }
-  //   }
-  // };
-
   const getAccuracyText = (accuracy: number) => {
     if (accuracy < 10) return `Akurasi: ${accuracy.toFixed(1)}m (Sangat Baik)`;
     if (accuracy < 25) return `Akurasi: ${accuracy.toFixed(1)}m (Baik)`;
@@ -324,15 +229,7 @@ const CustomerPhotoCamera: React.FC<CustomerPhotoCameraProps> = ({
     setCapturedPhotos((prev) => prev.filter((photo) => photo.id !== photoId));
   };
 
-  // const handleSave = () => {
-  //   onPhotosCapture(capturedPhotos);
-  //   onClose();
-  // };
-
   const handleClose = () => {
-    // if (subscription) {
-    //   subscription.remove();
-    // }
     onClose();
   };
 

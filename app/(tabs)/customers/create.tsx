@@ -84,6 +84,7 @@ export default function CreateCustomer() {
     "toko_depan",
     "toko_samping",
     "ktp",
+    "lainnya",
   ];
   const resetForm = () => {
     setFormData({
@@ -326,7 +327,7 @@ export default function CreateCustomer() {
           content: {
             title: "❌ Error create customer",
             body: errorMessage,
-            sound: "new-notification.mp3",
+            sound: "new_notification.mp3",
           },
           trigger: null,
         });

@@ -77,6 +77,8 @@ interface SalesOrderForm {
   diskon_header_percent: number;
   uang_muka: number;
   items: CartItem[];
+  kode_rks: string;
+  id_rks: string;
 }
 
 interface SalesOrderFormProps {
@@ -112,6 +114,7 @@ export default function SalesOrderForm({
     is_unscheduled?: string;
     baru?: string;
     fromRKS?: string;
+    rowid?: string;
   }>();
 
   const [loading, setLoading] = useState(
@@ -144,6 +147,8 @@ export default function SalesOrderForm({
     diskon_header_percent: 0,
     uang_muka: 0,
     items: [],
+    kode_rks: "",
+    id_rks: "",
   });
   const [existingOrder, setExistingOrder] = useState<any>(null);
 
@@ -194,6 +199,8 @@ export default function SalesOrderForm({
       diskon_header_percent: 0,
       uang_muka: 0,
       items: [],
+      kode_rks: "",
+      id_rks: "",
     });
     setExistingOrder(null);
     setPpnRupiah(0);
@@ -378,6 +385,8 @@ export default function SalesOrderForm({
       diskon_header_percent: parseFloat(header.diskon_header_percent) || 0,
       uang_muka: header.uang_muka || 0,
       items: cartItems,
+      kode_rks: params.kode_rks ?? "",
+      id_rks: params.rowid ?? "",
     });
 
     const subtotalAfterDiscount = calculateSubtotalAfterDiscount();
@@ -533,10 +542,10 @@ export default function SalesOrderForm({
   const handleAddProduct = (product: ProductList) => {
     if (isReadOnly) return;
 
-    if (product.stok <= 0) {
-      Alert.alert("Stok Habis", "Produk ini tidak tersedia di stok");
-      return;
-    }
+    // if (product.stok <= 0) {
+    //   Alert.alert("Stok Habis", "Produk ini tidak tersedia di stok");
+    //   return;
+    // }
 
     const existingItem = form.items.find(
       (item) => item.kode_item === product.kode_item
@@ -768,6 +777,9 @@ export default function SalesOrderForm({
     const afterDiscount = subtotal - totalDiscountDetail - discountHeader;
     const ppnValue = calculatePPN();
     const grandTotal = calculateGrandTotal();
+    console.log("prepareOrderData kode_rks", params.kode_rks);
+    console.log("prepareOrderData rowId", params.rowid);
+
     return {
       header: {
         kode_so: existingOrder?.header.kode_so || null,
@@ -789,6 +801,8 @@ export default function SalesOrderForm({
         status: existingOrder?.header.status || "pending",
         created_by: user?.nama_user,
         keterangan: form.keterangan,
+        kode_rks: params.kode_rks || "",
+        id_rks: params?.rowid || "",
       },
 
       details: form.items.map((item) => {
@@ -1067,10 +1081,15 @@ export default function SalesOrderForm({
         {
           text: "Ya",
           onPress: async () => {
+            const orderData = prepareOrderData();
+            // console.log("orderData xxx", orderData);
+            // throw new Error("CEK");
+
             try {
               setSaving(true);
               setError(null);
               const orderData = prepareOrderData();
+              console.log("orderData handleSubmitOrder ", orderData);
               let res;
               let targetOrderId = orderId;
 
@@ -1274,7 +1293,7 @@ export default function SalesOrderForm({
         {/* Kiri: Label & Stok */}
         <View style={styles.quantityLeft}>
           <Text style={styles.quantityLabel}>Quantity:</Text>
-          <Text style={styles.stockInfo}>Stok: {item.stok}</Text>
+          {/* <Text style={styles.stockInfo}>Stok: {item.stok}</Text> */}
         </View>
 
         {/* Kanan: Input dan Subtotal */}
@@ -1334,9 +1353,11 @@ export default function SalesOrderForm({
   // ✅ Render product item
   const renderProductItem = ({ item }: { item: ProductList }) => (
     <TouchableOpacity
-      style={[styles.productItem, item.stok <= 0 && styles.outOfStockItem]}
-      onPress={() => item.stok > 0 && !isReadOnly && handleAddProduct(item)}
-      disabled={item.stok <= 0 || isReadOnly}
+      // style={[styles.productItem, item.stok <= 0 && styles.outOfStockItem]}
+      style={[styles.productItem]}
+      onPress={() => handleAddProduct(item)}
+      // onPress={() => item.stok > 0 && !isReadOnly && handleAddProduct(item)}
+      // disabled={item.stok <= 0 || isReadOnly}
     >
       <View style={styles.productInfo}>
         <Text style={styles.productName} numberOfLines={2}>
@@ -1358,21 +1379,21 @@ export default function SalesOrderForm({
 
       <View style={styles.productPriceInfo}>
         <Text style={styles.productPrice}>{formatCurrency(item.harga1)}</Text>
-        <Text
+        {/* <Text
           style={[
             styles.productStock,
             item.stok <= 0 ? styles.outOfStockText : styles.inStockText,
           ]}
         >
           Stok: {item.stok}
-        </Text>
+        </Text> */}
         {item.berat > 0 && (
           <Text style={styles.productWeight}>Berat: {item.berat}kg</Text>
         )}
-        {item.stok <= 0 && (
+        {/* {item.stok <= 0 && (
           <Text style={styles.outOfStockLabel}>Stok Habis</Text>
         )}
-        {isReadOnly && <Text style={styles.readOnlyLabel}>View Only</Text>}
+        {isReadOnly && <Text style={styles.readOnlyLabel}>View Only</Text>} */}
       </View>
     </TouchableOpacity>
   );

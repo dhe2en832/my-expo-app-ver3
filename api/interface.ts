@@ -26,6 +26,46 @@ export interface RKSItem {
   // ✅ TAMBAHAN untuk tracking
   isSyncing?: boolean; // Untuk loading state
   lastUpdated?: string; // Timestamp terakhir update
+  durasi_menit: string | null;
+  durasi_format: string | null;
+  checkin_time: string | null;
+  checkout_time: string | null;
+  total: number;
+  sum_netto_mu: number;
+  sum_bayar_mu: number;
+}
+
+export interface MobileRKS {
+  id: string; // UUID atau auto-increment dari server
+  kode_rks: string;
+  kode_cust: string;
+  userid: string;
+  kode_sales: string;
+  nama_sales: string; // ✅ Tambahan field nama_sales
+  checkin_time: string; // ISO string
+  checkout_time?: string;
+  latitude_in: string;
+  longitude_in: string;
+  latitude_out?: string;
+  longitude_out?: string;
+  accuracy_in: number;
+  accuracy_out?: number;
+  photo_in?: string; // base64 atau path
+  photo_out?: string;
+  duration?: number; // menit
+  status: "pending" | "synced";
+  created_at?: string;
+  updated_at?: string;
+  customer_name?: string;
+  rowid?: number;
+  // ✅ TAMBAHAN untuk unscheduled RKS
+  is_unscheduled?: "Y" | "N";
+  baru?: "Y" | "N";
+  durasi_menit: string;
+  durasi_format: string;
+  total: number;
+  sum_netto_mu: number;
+  sum_bayar_mu: number;
 }
 
 // Tambahkan interface untuk consistent API response
@@ -56,6 +96,13 @@ export interface RKSList {
   ket: string;
   ket1: string;
   ket2: string;
+  durasi_menit: string;
+  durasi_format: string;
+  checkin_time: string;
+  checkout_time: string;
+  total: number;
+  sum_netto_mu: number;
+  sum_bayar_mu: number;
 }
 
 export interface RKSHeader {
@@ -151,34 +198,6 @@ export interface FasMap {
   longitude: string;
   created_at?: string;
   updated_at?: string;
-}
-
-export interface MobileRKS {
-  id: string; // UUID atau auto-increment dari server
-  kode_rks: string;
-  kode_cust: string;
-  userid: string;
-  kode_sales: string;
-  nama_sales: string; // ✅ Tambahan field nama_sales
-  checkin_time: string; // ISO string
-  checkout_time?: string;
-  latitude_in: string;
-  longitude_in: string;
-  latitude_out?: string;
-  longitude_out?: string;
-  accuracy_in: number;
-  accuracy_out?: number;
-  photo_in?: string; // base64 atau path
-  photo_out?: string;
-  duration?: number; // menit
-  status: "pending" | "synced";
-  created_at?: string;
-  updated_at?: string;
-  customer_name?: string;
-  rowid?: number;
-  // ✅ TAMBAHAN untuk unscheduled RKS
-  is_unscheduled?: "Y" | "N";
-  baru?: "Y" | "N";
 }
 
 // Payload untuk check-in
@@ -708,6 +727,8 @@ export interface SalesOrderHeader {
   rejected_by?: string;
   rejected_at?: string;
   rejection_notes?: string;
+  kode_rks?: string;
+  id_rks?: string;
 }
 
 export interface SalesOrderItem {
@@ -1116,6 +1137,8 @@ export interface PPIMasterDetailPayments {
     bayar_mu: number;
     discount: number;
     sisa_setelah_bayar: number;
+    kode_rks: string;
+    id_rks: string;
   }[];
   payments: {
     metode_bayar: "cash" | "transfer" | "giro";
@@ -1160,6 +1183,8 @@ export interface PPICreateRequest {
     // owing: number;
     bayar_mu: number;
     discount: number;
+    kode_rks: string;
+    id_rks: string;
   }[];
   payments?: {
     metode_bayar: "cash" | "transfer" | "giro";
@@ -1312,6 +1337,7 @@ export interface PPIPhoto {
 export interface KompetitorList {
   kode_kompetitor: string;
   tanggal_input: string;
+  nama_kompetitor: string;
   kode_rks?: string | null;
   id_rks?: string | null;
   kode_cust?: string | null;
@@ -1326,6 +1352,7 @@ export interface KompetitorList {
 // Data detail produk (child)
 export interface KompetitorDetailItem {
   id: number;
+  nama_kompetitor: string;
   nama_produk: string;
   merek_produk?: string;
   harga?: number;
@@ -1369,6 +1396,7 @@ export interface KompetitorRequest {
     catatan?: string | null;
   };
   details: {
+    nama_kompetitor: string;
     nama_produk: string;
     merek_produk?: string | null;
     harga?: number;
@@ -1431,6 +1459,7 @@ export interface KompetitorCreateRequest {
   details: {
     // id: string;
     kode_kompetitor: string;
+    nama_kompetitor: string;
     nama_produk: string;
     merek_produk: string;
     harga: number;

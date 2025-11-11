@@ -146,11 +146,6 @@ export default function CustomerList() {
     [user?.kodeSales]
   );
 
-  // ✅ Initial load
-  // useEffect(() => {
-  //   fetchCustomers();
-  // }, [fetchCustomers]);
-
   useFocusEffect(
     useCallback(() => {
       fetchCustomers(); // Refresh setiap kali focus
@@ -254,7 +249,9 @@ export default function CustomerList() {
 
         <View style={styles.customerDetail}>
           <Text style={styles.customerNo}>No: {item.no_cust}</Text>
-          <Text style={styles.customerDate}>{formatDate(item.created_at)}</Text>
+          <Text style={styles.customerDate}>
+            {item.created_at ? formatDate(item.created_at) : ""}
+          </Text>
         </View>
 
         {item.hp ? (
@@ -292,7 +289,8 @@ export default function CustomerList() {
 
         <View style={styles.customerFooter}>
           <Text style={styles.customerCode}>
-            {item.kode_cust} • {item.kode_relasi}
+            {/* {item.kode_cust} • {item.kode_relasi} */}
+            {item.no_cust}
           </Text>
           <MaterialIcons name="chevron-right" size={20} color="#999" />
         </View>

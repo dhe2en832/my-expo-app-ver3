@@ -320,7 +320,7 @@ export default function CatatanCreate() {
                         </Text>
                       </View>
                     ) : null}
-
+                    {/*
                     {customerInfo.kode_cust ? (
                       <View style={styles.infoItem}>
                         <Text style={styles.infoLabel}>Kode Customer</Text>
@@ -328,7 +328,7 @@ export default function CatatanCreate() {
                           {customerInfo.kode_cust}
                         </Text>
                       </View>
-                    ) : null}
+                    ) : null} */}
                   </View>
                 </Card.Content>
               </Card>

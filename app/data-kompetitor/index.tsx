@@ -379,6 +379,12 @@ const DataKompetitorList = () => {
                 </Text>
               </View>
               <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Nama Kompetitor:</Text>
+                <Text style={styles.detailValue}>
+                  {item.nama_kompetitor || "-"}
+                </Text>
+              </View>
+              <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>Total Produk:</Text>
                 <Text style={styles.detailValue}>{item.total_produk || 0}</Text>
               </View>
