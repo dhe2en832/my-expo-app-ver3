@@ -922,6 +922,32 @@ export interface TerminList {
   tgl_update: string;
 }
 
+export interface Perusahaan {
+  kode: string;
+  nama_prsh: string;
+  nama_divisi: string;
+  alamat1: string;
+  alamat2: string;
+  alamat3: string;
+  kodepos: string;
+  negara: string;
+  telp: string;
+  fax: string;
+  periode: string;
+  no_seri: string;
+  npwp: string;
+  no_pkp: string;
+  tgl_pkp: string;
+  jenis_usaha: string;
+  klu_spt: string;
+  jabatan: string;
+  kode_mu: string;
+  website: string;
+  email: string;
+  no_seri_pajak: string;
+  cnt_pajak: string;
+}
+
 export interface StockItem {
   kode_item: string;
   no_item: string;

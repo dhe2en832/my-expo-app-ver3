@@ -69,6 +69,7 @@ import {
   KompetitorRequest,
   KompetitorCreateResponse,
   CatatanData,
+  Perusahaan,
 } from "./interface";
 import apiClient from "./axiosConfig";
 import { Alert } from "react-native";
@@ -1928,6 +1929,24 @@ export const dataUmumAPI = {
       return {
         success: false,
         message: error.response?.data?.message || "Gagal mengambil akun bank",
+        data: null,
+      };
+    }
+  },
+  getInfoPerusahaan: async (): Promise<APIResponse<Perusahaan>> => {
+    try {
+      const response = await apiClient.get(`/umum/perusahaan`);
+      return {
+        success: response.data.success,
+        message: response.data.message,
+        data: response.data.data,
+      };
+    } catch (error: any) {
+      console.error("Data Perusahaan API Error:", error);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message || "Gagal mengambil Data Perusahaan",
         data: null,
       };
     }

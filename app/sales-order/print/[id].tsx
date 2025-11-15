@@ -1,5 +1,5 @@
 // app/sales-order/print/[id].tsx
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -10,38 +10,29 @@ import {
   TouchableOpacity,
   Modal,
   FlatList,
-  Linking,
   Platform,
+  SafeAreaView,
 } from "react-native";
-import { Stack, useRouter, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
-import { salesOrderAPI } from "@/api/services";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { captureRef } from "react-native-view-shot";
+import { dataUmumAPI, salesOrderAPI } from "@/api/services";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import Constants from "expo-constants";
-import {
-  SalesOrderDetailResponse,
-  SalesOrderHeader,
-  SalesOrderItem,
-} from "@/api/interface";
+import { Perusahaan } from "@/api/interface";
 
-// ✅ Environment Configuration
+// ================== Environment Configuration ==================
 const getBuildEnvironment = () => {
   const manifest = Constants.expoConfig;
-  const extra = manifest?.extra || {};
-
-  const isProduction = extra.IS_PRODUCTION === "true";
-  const bluetoothEnabled = extra.BLUETOOTH_ENABLED === "true";
+  const extra = (manifest && manifest.extra) || {};
+  const isProduction = String(extra.IS_PRODUCTION) === "true";
+  const bluetoothEnabled = String(extra.BLUETOOTH_ENABLED) === "true";
   const appEnv = extra.APP_ENV || "development";
   const easProjectId = extra.eas?.projectId;
-
   const isEASBuild = !!easProjectId;
   const isRealBluetoothAvailable =
     isProduction && bluetoothEnabled && isEASBuild && Platform.OS === "android";
-
   return {
     isProduction,
     bluetoothEnabled,
@@ -61,20 +52,35 @@ const {
   buildProfile,
 } = getBuildEnvironment();
 
-// ✅ Conditional Thermal Printer Import
-let ThermalPrinter: any = null;
-if (isRealBluetoothAvailable) {
-  try {
-    ThermalPrinter = require("react-native-thermal-receipt-printer");
-    console.log("🔵 Thermal printer loaded - EAS Production Build");
-  } catch (error) {
-    console.warn("🟡 Thermal printer library not available");
-  }
+// ================== Try import bluetooth-escpos library (hybrid) ==================
+let BluetoothManager: any = null;
+let BluetoothEscposPrinter: any = null;
+let bluetoothLibAvailable = false;
+try {
+  const lib = require("@ccdilan/react-native-bluetooth-escpos-printer");
+  BluetoothManager =
+    lib?.BluetoothManager || lib?.default?.BluetoothManager || lib;
+  BluetoothEscposPrinter =
+    lib?.BluetoothEscposPrinter || lib?.default?.BluetoothEscposPrinter || lib;
+  bluetoothLibAvailable = !!BluetoothManager && !!BluetoothEscposPrinter;
+  console.log("🔵 bluetooth-escpos library loaded", { bluetoothLibAvailable });
+} catch (err) {
+  console.warn(
+    "🟡 bluetooth-escpos library not available - simulation mode",
+    err
+  );
+  BluetoothManager = null;
+  BluetoothEscposPrinter = null;
+  bluetoothLibAvailable = false;
 }
 
-// ✅ Interface untuk Sales Order Data dengan FIELD BARU
+const isBluetoothSupported =
+  bluetoothLibAvailable &&
+  Platform.OS === "android" &&
+  isRealBluetoothAvailable;
+
+// ================== Interfaces ==================
 interface SalesOrderData {
-  // Basic Info
   kode_so: string;
   no_so: string;
   tgl_so: string;
@@ -87,11 +93,10 @@ interface SalesOrderData {
   hp?: string;
   keterangan: string;
   status: string;
-
-  // ✅ FIELD BARU: Payment & Tax Information
   kode_termin?: string;
-  kode_kirim?: string;
+  nama_termin?: string;
   cara_kirim?: "KG" | "KP" | "AG" | "AP";
+  cara_kirim_deskripsi?: string;
   ppn_percent: number;
   ppn_value: number;
   diskon_header: number;
@@ -99,30 +104,17 @@ interface SalesOrderData {
   uang_muka: number;
   subtotal: number;
   total: number;
-  nilai_pajak: number;
-  is_unscheduled: "Y" | "N";
   synced: "Y" | "N";
   sumber_data: "MOBILE" | "ERP";
-
-  // Items dengan FIELD BARU
   items: Array<{
-    kode_item: string;
     no_item: string;
     nama_item: string;
-    diskripsi?: string;
     quantity: number;
     harga: number;
     subtotal: number;
-    diskon_percent: number;
     diskon_value: number;
-    total: number;
     satuan?: string;
-    berat: number;
-    franco: "Y" | "N";
-    rowid: number;
   }>;
-
-  // Company Info
   perusahaan: {
     nama: string;
     alamat: string;
@@ -131,7 +123,6 @@ interface SalesOrderData {
     email: string;
   };
 
-  // ✅ SUMMARY CALCULATIONS
   summary?: {
     subtotal: number;
     diskon_detail: number;
@@ -142,7 +133,6 @@ interface SalesOrderData {
   };
 }
 
-// ✅ Interface untuk Bluetooth Device
 interface BluetoothDevice {
   id: string;
   name: string;
@@ -150,20 +140,16 @@ interface BluetoothDevice {
   type: string;
 }
 
+// ================== Component ==================
 export default function PrintSalesOrder() {
-  const router = useRouter();
   const params = useLocalSearchParams();
-
-  const orderId = params.id as string;
-  const nomorSO = params.nomor_so as string;
-  const namaCustomer = params.nama_customer as string;
+  const orderId = (params.id as string) || "";
+  const namaCustomer = (params.nama_customer as string) || "";
 
   const [loading, setLoading] = useState(true);
   const [printing, setPrinting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [orderData, setOrderData] = useState<SalesOrderData | null>(null);
-
-  // ✅ State untuk Bluetooth
   const [bluetoothDevices, setBluetoothDevices] = useState<BluetoothDevice[]>(
     []
   );
@@ -172,139 +158,66 @@ export default function PrintSalesOrder() {
   const [scanning, setScanning] = useState(false);
   const [showBluetoothModal, setShowBluetoothModal] = useState(false);
   const [connecting, setConnecting] = useState(false);
-
+  const [showPreview, setShowPreview] = useState(false);
   const printRef = useRef<View>(null);
+  const [infoPerusahaan, setInfoPerusahaan] = useState<Perusahaan[]>([]);
 
-  // ✅ Bluetooth Device Scanning (sama seperti sebelumnya)
-  const scanBluetoothDevices = async () => {
-    if (!isRealBluetoothAvailable) {
-      setScanning(true);
-      setTimeout(() => {
-        setBluetoothDevices([
-          {
-            id: "1",
-            name: "Printer Thermal 58mm",
-            type: "printer",
-            mac: "00:11:22:33:44:55",
-          },
-          {
-            id: "2",
-            name: "BT Printer X1",
-            type: "printer",
-            mac: "66:77:88:99:AA:BB",
-          },
-        ]);
-        setScanning(false);
-      }, 2000);
-      return;
-    }
+  const caraKirimMap: Record<"KG" | "KP" | "AG" | "AP", string> = {
+    KG: "Dikirim Gudang",
+    KP: "Dikirim Langsung (Pabrik)",
+    AG: "Ambil Sendiri (Gudang)",
+    AP: "Ambil Sendiri (Pabrik)",
+  };
 
-    if (!ThermalPrinter) {
-      Alert.alert("Error", "Library printer tidak tersedia");
-      return;
-    }
-
+  const loadDataPerusahaan = async () => {
     try {
-      setScanning(true);
-      const devices = await ThermalPrinter.getDeviceList();
-      const formattedDevices: BluetoothDevice[] = devices.map(
-        (device: any) => ({
-          id: device.MAC,
-          name: device.name,
-          mac: device.MAC,
-          type: "printer",
-        })
-      );
-      setBluetoothDevices(formattedDevices);
-    } catch (error: any) {
-      console.error("❌ Scan error:", error);
-      Alert.alert("Scan Gagal", "Tidak dapat memindai perangkat Bluetooth");
-    } finally {
-      setScanning(false);
+      const res = await dataUmumAPI.getInfoPerusahaan();
+      // console.log("res info ", res.data);
+      if (res.success && Array.isArray(res.data)) {
+        setInfoPerusahaan(res.data);
+        return res.data;
+      }
+      return [];
+    } catch (err: any) {
+      console.error("Error loading info perusahaan:", err);
     }
   };
 
-  // ✅ Render Bluetooth Device Item (sama seperti sebelumnya)
-  const renderBluetoothDevice = ({ item }: { item: BluetoothDevice }) => {
-    const isConnected = connectedDevice?.id === item.id;
-
-    const connectToDevice = async () => {
-      if (!isRealBluetoothAvailable || !ThermalPrinter) {
-        setConnectedDevice(item);
-        setShowBluetoothModal(false);
-        Alert.alert(
-          "Simulation Mode",
-          `Terhubung ke ${item.name} (Simulation)`
-        );
-        return;
-      }
-
-      try {
-        setConnecting(true);
-        await ThermalPrinter.connectDevice(item.mac!);
-        setConnectedDevice(item);
-        setShowBluetoothModal(false);
-        Alert.alert("Berhasil", `Terhubung ke ${item.name}`);
-      } catch (error: any) {
-        console.error("❌ Connection failed:", error);
-        Alert.alert("Gagal", `Tidak dapat terhubung ke ${item.name}`);
-      } finally {
-        setConnecting(false);
-      }
-    };
-
-    return (
-      <TouchableOpacity
-        style={styles.deviceItem}
-        onPress={connectToDevice}
-        disabled={connecting}
-      >
-        <MaterialIcons
-          name={isConnected ? "bluetooth-connected" : "bluetooth"}
-          size={24}
-          color={isConnected ? "#007bff" : "#666"}
-        />
-        <View style={styles.deviceInfo}>
-          <Text style={styles.deviceName}>{item.name}</Text>
-          <Text style={styles.deviceType}>
-            {item.type} • {item.mac}
-          </Text>
-        </View>
-        {connecting ? (
-          <ActivityIndicator size="small" color="#007bff" />
-        ) : (
-          <MaterialIcons name="chevron-right" size={20} color="#666" />
-        )}
-      </TouchableOpacity>
-    );
-  };
-
-  // ✅ Disconnect Bluetooth (sama seperti sebelumnya)
-  const disconnectBluetooth = async () => {
-    if (connectedDevice && isRealBluetoothAvailable && ThermalPrinter) {
-      try {
-        await ThermalPrinter.disconnect();
-      } catch (error) {
-        console.error("Disconnect error:", error);
-      }
+  useEffect(() => {
+    console.log("Build flags", {
+      isProduction,
+      bluetoothEnabled,
+      isEASBuild,
+      isRealBluetoothAvailable,
+      bluetoothLibAvailable,
+      isBluetoothSupported,
+    });
+    if (BluetoothManager && BluetoothManager.isBluetoothEnabled) {
+      BluetoothManager.isBluetoothEnabled()
+        .then((enabled: any) => console.log("Bluetooth Enabled ->", enabled))
+        .catch((e: any) => console.warn("isBluetoothEnabled err", e));
     }
-    setConnectedDevice(null);
-  };
+  }, []);
 
-  // ✅ Load sales order data dari API - DIPERBARUI untuk field baru
+  // ================== Load Sales Order ==================
+  useEffect(() => {
+    if (orderId) {
+      loadSalesOrderData();
+    }
+  }, [orderId]);
+
   const loadSalesOrderData = async () => {
     try {
       setLoading(true);
       setError(null);
-
-      console.log("📦 Loading sales order data for:", orderId);
-
-      // ✅ GUNAKAN getSoDetailCombined untuk data yang lengkap
+      await loadDataPerusahaan();
       const res = await salesOrderAPI.getSoDetailCombined(orderId);
-
       if (res.success && res.data) {
-        console.log("✅ Sales order data loaded successfully");
-        const formattedData = mapApiDataToPrintFormat(res.data);
+        let formattedData = mapApiDataToPrintFormat(res.data);
+        if (formattedData.cara_kirim) {
+          formattedData.cara_kirim_deskripsi =
+            caraKirimMap[formattedData.cara_kirim];
+        }
         setOrderData(formattedData);
       } else {
         throw new Error(res.message || "Gagal memuat data sales order");
@@ -317,46 +230,53 @@ export default function PrintSalesOrder() {
     }
   };
 
-  // ✅ Map API data ke format print - DIPERBARUI dengan field baru
   const mapApiDataToPrintFormat = (apiData: any): SalesOrderData => {
     const header = apiData.header || {};
     const items = apiData.items || [];
-    const summary = apiData.summary;
-
-    // ✅ Hitung summary jika tidak tersedia dari API
-    const calculatedSubtotal = items.reduce((total: number, item: any) => {
-      return total + (item.harga || 0) * (item.qty_std || item.quantity || 0);
-    }, 0);
-
-    const calculatedDiscountDetail = items.reduce(
-      (total: number, item: any) => {
-        return total + (item.diskon_value || 0);
-      },
+    const summary = apiData.summary || {};
+    const calculatedSubtotal = items.reduce(
+      (total: number, item: any) =>
+        total +
+        (item.harga || 0) * (item.qty || item.qty_std || item.quantity || 0),
       0
     );
-
+    const calculatedDiscountDetail = items.reduce(
+      (total: number, item: any) => total + (item.diskon_value || 0),
+      0
+    );
     const totalAfterDetailDiscount =
       calculatedSubtotal - calculatedDiscountDetail;
-
     const discountHeader =
       header.diskon_header ||
       (header.diskon_header_percent
         ? totalAfterDetailDiscount * (header.diskon_header_percent / 100)
         : 0);
-
     const subtotalAfterDiscount = totalAfterDetailDiscount - discountHeader;
-
     const ppnValue =
       header.ppn_value ||
       (header.ppn_percent
         ? subtotalAfterDiscount * (header.ppn_percent / 100)
         : 0);
-
     const calculatedTotal =
       subtotalAfterDiscount + ppnValue - (header.uang_muka || 0);
-
+    const perusahaanInfo = infoPerusahaan?.[0] || {};
+    // console.log("perusahaanInfo ", perusahaanInfo);
+    const perusahaan = {
+      nama: perusahaanInfo.nama_prsh?.trim()
+        ? perusahaanInfo.nama_prsh
+        : perusahaanInfo.nama_divisi?.trim()
+        ? perusahaanInfo.nama_divisi
+        : "-",
+      alamat:
+        perusahaanInfo.alamat1?.trim() ||
+        perusahaanInfo.alamat2?.trim() ||
+        perusahaanInfo.alamat3?.trim() ||
+        "-",
+      kota: "-",
+      telepon: perusahaanInfo.telp?.trim() || "-",
+      email: perusahaanInfo.email?.trim() || "-",
+    };
     return {
-      // Basic Info
       kode_so: header.kode_so || orderId,
       no_so: header.no_so || header.kode_so || orderId,
       tgl_so: header.tgl_so || new Date().toISOString().split("T")[0],
@@ -369,11 +289,10 @@ export default function PrintSalesOrder() {
       hp: header.hp,
       keterangan: header.keterangan || "",
       status: header.status || "",
-
-      // ✅ FIELD BARU: Payment & Tax Information
       kode_termin: header.kode_termin,
-      kode_kirim: header.kode_kirim,
+      nama_termin: header.nama_termin,
       cara_kirim: header.cara_kirim,
+      cara_kirim_deskripsi: header.cara_kirim_deskripsi,
       ppn_percent: header.ppn_percent || 0,
       ppn_value: ppnValue,
       diskon_header: discountHeader,
@@ -381,84 +300,263 @@ export default function PrintSalesOrder() {
       uang_muka: header.uang_muka || 0,
       subtotal: header.subtotal || calculatedSubtotal,
       total: header.total || calculatedTotal,
-      nilai_pajak: header.nilai_pajak || 0,
-      is_unscheduled: header.is_unscheduled || "N",
       synced: header.synced || "N",
       sumber_data: header.sumber_data || "MOBILE",
-
-      // Items dengan FIELD BARU
       items: items.map((item: any) => ({
-        kode_item: item.kode_item,
         no_item: item.no_item || "",
         nama_item: item.nama_item,
-        diskripsi: item.diskripsi,
-        quantity: item.qty_std || item.quantity || 0,
+        quantity: item.qty || item.qty_std || item.quantity || 0,
         harga: item.harga || 0,
-        subtotal: (item.harga || 0) * (item.qty_std || item.quantity || 0),
-        diskon_percent: item.diskon_percent || 0,
+        subtotal:
+          (item.harga || 0) * (item.qty || item.qty_std || item.quantity || 0),
         diskon_value: item.diskon_value || 0,
-        total:
-          item.total ||
-          (item.harga || 0) * (item.qty_std || item.quantity || 0) -
-            (item.diskon_value || 0),
         satuan: item.satuan || "pcs",
-        berat: item.berat || 0,
-        franco: item.franco || "N",
-        rowid: item.rowid || 0,
       })),
-
-      // Company Info
-      perusahaan: {
-        nama: "PT. BANGUN JAYA ABADI",
-        alamat: "Jl. Industri No. 45, Kawasan SIER",
-        kota: "Surabaya",
-        telepon: "(031) 593-1234",
-        email: "info@bangunjaya.com",
-      },
-
-      // ✅ SUMMARY CALCULATIONS
-      summary: summary || {
-        subtotal: calculatedSubtotal,
-        diskon_detail: calculatedDiscountDetail,
-        diskon_header: discountHeader,
-        ppn: ppnValue,
-        uang_muka: header.uang_muka || 0,
-        total: calculatedTotal,
-      },
+      perusahaan,
     };
   };
 
-  // ✅ Load data pada component mount
-  useEffect(() => {
-    if (orderId) {
-      loadSalesOrderData();
+  // ================== Generate Print Text (48 chars, full numbers, wrap text) ==================
+  const generatePrintText = (): string => {
+    if (!orderData) return "";
+    const PRINT_WIDTH = 32;
+    const MAX_CHAR_PER_LINE = 32;
+
+    const wrapText = (
+      text: string,
+      width: number = MAX_CHAR_PER_LINE
+    ): string[] => {
+      if (!text?.trim()) return [""];
+      const words = text.trim().split(" ");
+      const lines: string[] = [];
+      let currentLine = "";
+
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+
+        if (testLine.length <= width) {
+          currentLine = testLine;
+        } else {
+          if (currentLine) lines.push(currentLine);
+          currentLine = word.length > width ? word.substring(0, width) : word;
+        }
+      }
+
+      if (currentLine) lines.push(currentLine);
+      return lines;
+    };
+
+    const centerText = (text: string): string => {
+      if (!text) return "";
+      const cleanText = text.trim();
+      if (cleanText.length >= PRINT_WIDTH) return cleanText;
+
+      const padding = Math.floor((PRINT_WIDTH - cleanText.length) / 2);
+      return " ".repeat(Math.max(0, padding)) + cleanText;
+    };
+
+    const formatLine = (left: string, right: string = ""): string => {
+      const availableWidth = PRINT_WIDTH - left.length;
+      if (right.length >= availableWidth) {
+        return left + right.substring(0, availableWidth);
+      }
+      return left + " ".repeat(availableWidth - right.length) + right;
+    };
+
+    const formatCurrency = (amount: number): string => {
+      const value = Math.round(amount || 0);
+      return `${value.toLocaleString("id-ID")}`;
+    };
+
+    const formatDateShort = (dateString: string): string => {
+      try {
+        const date = new Date(dateString);
+        return date.toLocaleDateString("id-ID");
+      } catch {
+        return dateString;
+      }
+    };
+
+    const lines: string[] = [];
+
+    // HEADER
+    lines.push("=".repeat(PRINT_WIDTH));
+
+    // Wrap untuk header yang panjang
+    const wrappedNamaPerusahaan = wrapText(
+      orderData.perusahaan.nama.toUpperCase(),
+      PRINT_WIDTH
+    );
+    wrappedNamaPerusahaan.forEach((line) => lines.push(centerText(line)));
+
+    const wrappedAlamat = wrapText(orderData.perusahaan.alamat, PRINT_WIDTH);
+    wrappedAlamat.forEach((line) => lines.push(centerText(line)));
+
+    lines.push(
+      centerText(
+        `${orderData.perusahaan.kota} - Telp: ${orderData.perusahaan.telepon}`
+      )
+    );
+    lines.push("");
+    lines.push(centerText("SALES ORDER"));
+    lines.push("=".repeat(PRINT_WIDTH));
+
+    // KEPADA
+    lines.push("KEPADA:");
+    wrapText(orderData.nama_cust, PRINT_WIDTH).forEach((line) =>
+      lines.push(line)
+    );
+    wrapText(orderData.alamat, PRINT_WIDTH).forEach((line) => lines.push(line));
+
+    if (orderData.kota_kirim) {
+      wrapText(orderData.kota_kirim, PRINT_WIDTH).forEach((line) =>
+        lines.push(line)
+      );
     }
-  }, [orderId]);
 
-  // ✅ Utility functions
-  const centerText = (text: string, width: number): string => {
-    if (text.length >= width) return text;
-    const padding = width - text.length;
-    const leftPadding = Math.floor(padding / 2);
-    return " ".repeat(leftPadding) + text;
-  };
-
-  const formatCurrencyCompact = (amount: number): string => {
-    if (amount >= 1000000) {
-      return `Rp${(amount / 1000000).toFixed(1)}JT`;
-    } else if (amount >= 1000) {
-      return `Rp${(amount / 1000).toFixed(0)}K`;
+    if (orderData.hp) {
+      lines.push(`HP: ${orderData.hp}`);
     }
-    return `Rp${amount}`;
-  };
+    lines.push("");
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("id-ID", {
+    // INFO ORDER
+    lines.push("INFO ORDER:");
+    lines.push("-".repeat(PRINT_WIDTH));
+    lines.push(formatLine("No SO", orderData.no_so));
+    lines.push(formatLine("Tgl", formatDateShort(orderData.tgl_so)));
+    lines.push(formatLine("Sales", orderData.nama_sales));
+    lines.push(formatLine("Status", orderData.status.toUpperCase()));
+
+    if (orderData.kode_termin) {
+      lines.push(formatLine("Termin", orderData.nama_termin));
+    }
+
+    if (orderData.cara_kirim_deskripsi) {
+      lines.push("Kirim:");
+      wrapText(orderData.cara_kirim_deskripsi, PRINT_WIDTH).forEach((line) =>
+        lines.push(line)
+      );
+    }
+    lines.push("");
+
+    // KETERANGAN
+    if (orderData.keterangan && orderData.keterangan.trim() !== "") {
+      lines.push("KET:");
+      lines.push("-".repeat(PRINT_WIDTH));
+      wrapText(orderData.keterangan, PRINT_WIDTH).forEach((line) =>
+        lines.push(line)
+      );
+      lines.push("");
+    }
+
+    // TABEL ITEM - DENGAN FORMAT YANG BENAR
+    lines.push("ITEM:");
+    lines.push("-".repeat(PRINT_WIDTH));
+
+    orderData.items.forEach((item, index) => {
+      const no = `${index + 1}.`;
+
+      // Kode item + nama
+      const itemLine = `${no} ${item.no_item}`;
+      lines.push(itemLine);
+
+      // Nama item di baris berikutnya jika panjang
+      const wrappedName = wrapText(item.nama_item, PRINT_WIDTH - 2);
+      wrappedName.forEach((line) => lines.push(`  ${line}`));
+
+      // FORMAT DETAIL YANG BENAR: "Qty @ Harga = Subtotal"
+      const qtyStr = `${item.quantity}`;
+      const satuan = `${item.satuan}`;
+      const hargaStr = formatCurrency(item.harga);
+      const subtotalStr = formatCurrency(item.subtotal);
+
+      // Format: "  2 @ 500.000 = 1.000.000"
+      const detailLine = `  ${qtyStr}${satuan} @ ${hargaStr} = ${subtotalStr}`;
+
+      // Cek jika line terlalu panjang, buat format alternatif
+      if (detailLine.length <= PRINT_WIDTH) {
+        lines.push(detailLine);
+      } else {
+        // Fallback: "  2 = 1.000.000"
+        lines.push(`  ${qtyStr} = ${subtotalStr}`);
+      }
+
+      // Diskon item (jika ada)
+      if (item.diskon_value > 0) {
+        lines.push(`  Disc: -${formatCurrency(item.diskon_value)}`);
+      }
+
+      // Spasi antar item
+      if (index < orderData.items.length - 1) {
+        lines.push("");
+      }
+    });
+
+    lines.push("-".repeat(PRINT_WIDTH));
+    lines.push("");
+
+    // RINCIAN
+    lines.push("RINCIAN:");
+    lines.push("-".repeat(PRINT_WIDTH));
+
+    const diskonDetail =
+      orderData.summary?.diskon_detail ??
+      orderData.items.reduce((sum, item) => sum + (item.diskon_value || 0), 0);
+
+    lines.push(formatLine("Subtotal", formatCurrency(orderData.subtotal)));
+
+    if (diskonDetail > 0) {
+      lines.push(formatLine("Disc Item", `-${formatCurrency(diskonDetail)}`));
+    }
+
+    if (orderData.diskon_header > 0) {
+      lines.push(
+        formatLine("Disc Hdr", `-${formatCurrency(orderData.diskon_header)}`)
+      );
+    }
+
+    if (orderData.ppn_value > 0) {
+      lines.push(
+        formatLine(
+          `PPN${orderData.ppn_percent}%`,
+          `+${formatCurrency(orderData.ppn_value)}`
+        )
+      );
+    }
+
+    if (orderData.uang_muka > 0) {
+      lines.push(
+        formatLine("Uang Muka", `-${formatCurrency(orderData.uang_muka)}`)
+      );
+    }
+
+    lines.push("-".repeat(PRINT_WIDTH));
+    lines.push(centerText(`TOTAL: ${formatCurrency(orderData.total)}`));
+    lines.push("-".repeat(PRINT_WIDTH));
+    lines.push("");
+
+    // FOOTER
+    lines.push(centerText("HORMAT KAMI"));
+    lines.push("");
+    lines.push(centerText(orderData.perusahaan.nama));
+    lines.push("");
+    lines.push(centerText("CUSTOMER"));
+    lines.push("");
+    lines.push("-".repeat(PRINT_WIDTH));
+    lines.push(centerText(`Print: ${new Date().toLocaleString("id-ID")}`));
+    lines.push(centerText(orderData.synced === "Y" ? "SYNCED" : "PENDING"));
+    lines.push("");
+    lines.push("=".repeat(PRINT_WIDTH));
+
+    return lines.join("\n");
+  };
+  // ================== Utilities ==================
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("id-ID", {
       style: "currency",
       currency: "IDR",
       minimumFractionDigits: 0,
     }).format(amount);
-  };
 
   const formatDateShort = (dateString: string): string => {
     try {
@@ -473,206 +571,215 @@ export default function PrintSalesOrder() {
     }
   };
 
-  // ✅ Generate print text - DIPERBARUI dengan field baru
-  const generatePrintText = (): string => {
-    if (!orderData) return "";
-
-    const lines: string[] = [];
-
-    // Company Header
-    lines.push(centerText(orderData.perusahaan.nama, 32));
-    lines.push(centerText(orderData.perusahaan.alamat, 32));
-    lines.push(
-      centerText(
-        `${orderData.perusahaan.kota} - Telp: ${orderData.perusahaan.telepon}`,
-        32
-      )
+  // ================== Print Preview Modal ==================
+  const PrintPreviewModal = () => {
+    const text = generatePrintText();
+    return (
+      <Modal visible={showPreview} animationType="slide">
+        <SafeAreaView style={styles.previewContainer}>
+          <View style={styles.previewHeader}>
+            <Text style={styles.previewTitle}>Print Preview SO</Text>
+            <TouchableOpacity
+              onPress={() => setShowPreview(false)}
+              style={{ padding: 8 }}
+            >
+              <MaterialIcons name="close" size={20} color="#333" />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.previewBody}>
+            <Text style={styles.monoText}>{text}</Text>
+          </ScrollView>
+          <View style={styles.previewActions}>
+            <TouchableOpacity
+              style={[
+                styles.btn,
+                { backgroundColor: "#007bff", marginRight: 8 },
+              ]}
+              onPress={() => {
+                setShowPreview(false);
+                printViaBluetooth();
+              }}
+            >
+              <Text style={styles.btnText}>Print</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, { backgroundColor: "#6f42c1" }]}
+              onPress={() => setShowPreview(false)}
+            >
+              <Text style={styles.btnText}>Tutup</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
     );
-    lines.push("");
-
-    // Document Title
-    lines.push(centerText("SALES ORDER", 32));
-    lines.push("=".repeat(32));
-
-    // Customer Information
-    lines.push("KEPADA:");
-    lines.push(orderData.nama_cust);
-    lines.push(orderData.alamat);
-    if (orderData.kota_kirim) lines.push(orderData.kota_kirim);
-    if (orderData.hp) lines.push(`Telp: ${orderData.hp}`);
-    lines.push("");
-
-    // Order Information dengan FIELD BARU
-    lines.push("INFO ORDER:");
-    lines.push(`No SO  : ${orderData.kode_so}`);
-    lines.push(`Tanggal: ${formatDateShort(orderData.tgl_so)}`);
-    lines.push(`Sales  : ${orderData.nama_sales}`);
-    lines.push(`Status : ${orderData.status.toUpperCase()}`);
-
-    // ✅ TAMBAHKAN FIELD BARU
-    if (orderData.kode_termin) lines.push(`Termin : ${orderData.kode_termin}`);
-    if (orderData.cara_kirim) lines.push(`Kirim  : ${orderData.cara_kirim}`);
-    lines.push("");
-
-    // Keterangan jika ada
-    if (orderData.keterangan) {
-      lines.push("KETERANGAN:");
-      lines.push(orderData.keterangan);
-      lines.push("");
-    }
-
-    // Table Header
-    lines.push("-".repeat(42));
-    lines.push("NO  ITEM              QTY   HARGA    SUBTOTAL");
-    lines.push("-".repeat(42));
-
-    // Table Rows
-    orderData.items.forEach((item, index) => {
-      const no = (index + 1).toString().padEnd(3);
-      const itemName =
-        item.nama_item.length > 14
-          ? item.nama_item.substring(0, 14) + ".."
-          : item.nama_item.padEnd(16);
-      const qty = `${item.quantity}${
-        item.satuan?.substring(0, 2) || ""
-      }`.padEnd(5);
-      const harga = formatCurrencyCompact(item.harga).padEnd(8);
-      const subtotal = formatCurrencyCompact(item.subtotal);
-
-      lines.push(`${no}${itemName}${qty}${harga}${subtotal}`);
-
-      // ✅ TAMBAHKAN DISKON ITEM JIKA ADA
-      if (item.diskon_value > 0) {
-        const diskonText = `    Diskon: -${formatCurrencyCompact(
-          item.diskon_value
-        )}`;
-        lines.push(diskonText.padEnd(42));
-      }
-    });
-
-    lines.push("-".repeat(42));
-
-    // ✅ SUMMARY DENGAN FIELD BARU
-    lines.push("");
-    lines.push("RINCIAN:");
-    lines.push(
-      `Subtotal         : ${formatCurrencyCompact(orderData.subtotal)}`
-    );
-
-    const diskonDetail = orderData.summary?.diskon_detail ?? 0;
-    if (diskonDetail > 0) {
-      lines.push(`Diskon Detail    : -${formatCurrencyCompact(diskonDetail)}`);
-    }
-
-    if (orderData.diskon_header > 0) {
-      lines.push(
-        `Diskon Header    : -${formatCurrencyCompact(orderData.diskon_header)}`
-      );
-    }
-
-    if (orderData.ppn_value > 0) {
-      lines.push(
-        `PPN (${orderData.ppn_percent}%)     : +${formatCurrencyCompact(
-          orderData.ppn_value
-        )}`
-      );
-    }
-
-    if (orderData.uang_muka > 0) {
-      lines.push(
-        `Uang Muka        : -${formatCurrencyCompact(orderData.uang_muka)}`
-      );
-    }
-
-    lines.push("-".repeat(20));
-    lines.push(
-      centerText(`TOTAL: ${formatCurrencyCompact(orderData.total)}`, 32)
-    );
-    lines.push("");
-
-    // Footer & Signature
-    lines.push(centerText("HORMAT KAMI", 32));
-    lines.push("");
-    lines.push("");
-    lines.push(centerText(orderData.perusahaan.nama, 32));
-    lines.push("");
-    lines.push(centerText("CUSTOMER", 32));
-    lines.push("");
-    lines.push("");
-    lines.push("-".repeat(32));
-
-    // Print info dengan sync status
-    lines.push(
-      centerText(`Printed: ${new Date().toLocaleDateString("id-ID")}`, 32)
-    );
-    lines.push(
-      centerText(
-        `Status: ${orderData.synced === "Y" ? "SYNCED" : "PENDING SYNC"}`,
-        32
-      )
-    );
-    lines.push("");
-    lines.push("".padEnd(32, "="));
-
-    return lines.join("\n");
   };
 
-  // ✅ Print functions (tetap sama seperti sebelumnya)
-  const printWithSimulation = async () => {
+  // ================== Export TXT ==================
+  const exportTextFile = async () => {
     if (!orderData) {
-      throw new Error("Data order tidak tersedia");
+      Alert.alert("Error", "Data order tidak tersedia");
+      return;
     }
-
-    const printText = generatePrintText();
+    const text = generatePrintText();
     const filename = `SO-${orderData.kode_so}.txt`;
-
+    const fileUri = `${(FileSystem as any).documentDirectory}${filename}`;
     try {
-      const dir = (FileSystem as any).documentDirectory;
-      const fileUri = `${dir}${filename}`;
-
-      await FileSystem.writeAsStringAsync(fileUri, printText, {
-        encoding: "base64",
+      await FileSystem.writeAsStringAsync(fileUri, text, {
+        encoding: "utf8",
       });
-
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri, {
           mimeType: "text/plain",
           dialogTitle: `Print SO - ${orderData.kode_so}`,
           UTI: "public.plain-text",
         });
-
-        Alert.alert(
-          "File Siap Dicetak",
-          `File ${filename} telah dibagikan. Buka dengan aplikasi printer thermal.`,
-          [{ text: "OK" }]
-        );
-      } else {
-        Alert.alert(
-          "Text untuk Print",
-          `Copy text berikut ke aplikasi printer:\n\n${printText.substring(
-            0,
-            200
-          )}...`,
-          [
-            { text: "OK" },
-            {
-              text: "Copy Text",
-              onPress: async () => {
-                try {
-                  const { default: Clipboard } = await import("expo-clipboard");
-                  await Clipboard.setStringAsync(printText);
-                  Alert.alert("Berhasil", "Text telah disalin ke clipboard");
-                } catch (error) {
-                  Alert.alert("Info", "Text siap untuk dicopy manual");
-                }
-              },
-            },
-          ]
-        );
       }
+    } catch (e: any) {
+      console.error("Export TXT failed:", e);
+      Alert.alert("Gagal", "Gagal mengekspor file TXT");
+    }
+  };
+
+  // ================== Bluetooth Scan ==================
+  const scanBluetoothDevices = async () => {
+    if (!isBluetoothSupported) {
+      setScanning(true);
+      setTimeout(() => {
+        setBluetoothDevices([
+          {
+            id: "1",
+            name: "Printer Thermal 58mm (Sim)",
+            type: "printer",
+            mac: "00:11:22:33:44:55",
+          },
+          {
+            id: "2",
+            name: "BT Printer X1 (Sim)",
+            type: "printer",
+            mac: "66:77:88:99:AA:BB",
+          },
+        ]);
+        setScanning(false);
+      }, 800);
+      return;
+    }
+    if (!BluetoothManager) {
+      Alert.alert("Error", "Library bluetooth tidak tersedia");
+      return;
+    }
+    try {
+      setScanning(true);
+      const raw = await BluetoothManager.scanDevices();
+      let parsed: any = typeof raw === "string" ? JSON.parse(raw) : raw;
+      const all = [...(parsed.found || []), ...(parsed.paired || [])];
+      const formatted: BluetoothDevice[] = (all || []).map((d: any) => ({
+        id: d.address || d.MAC || d.mac || `${d.name}-${Math.random()}`,
+        mac: d.address || d.MAC || d.mac,
+        name: d.name || d.deviceName || "Unknown Printer",
+        type: "printer",
+      }));
+      setBluetoothDevices(formatted);
     } catch (error: any) {
-      console.error("Simulation print error:", error);
-      throw new Error("Gagal membuat file untuk print: " + error.message);
+      console.error("❌ Scan error:", error);
+      Alert.alert("Scan Gagal", "Tidak dapat memindai perangkat Bluetooth");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  // ================== Connect ==================
+  const connectToDevice = async (item: BluetoothDevice) => {
+    if (!isBluetoothSupported || !BluetoothManager) {
+      setConnectedDevice(item);
+      setShowBluetoothModal(false);
+      Alert.alert("Simulation Mode", `Terhubung ke ${item.name} (Simulated)`);
+      return;
+    }
+    try {
+      setConnecting(true);
+      await BluetoothManager.connect(item.mac);
+      if (BluetoothEscposPrinter && BluetoothEscposPrinter.printerInit) {
+        await BluetoothEscposPrinter.printerInit();
+      }
+      setConnectedDevice(item);
+      setShowBluetoothModal(false);
+      Alert.alert("Berhasil", `Terhubung ke ${item.name}`);
+    } catch (error: any) {
+      console.error("❌ Connection failed:", error);
+      Alert.alert("Gagal", `Tidak dapat terhubung ke ${item.name}`);
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  // ================== Disconnect ==================
+  const disconnectBluetooth = async () => {
+    if (connectedDevice && isBluetoothSupported && BluetoothManager) {
+      try {
+        await BluetoothManager.disconnect();
+      } catch (error) {
+        console.error("Disconnect error:", error);
+      }
+    }
+    setConnectedDevice(null);
+  };
+
+  // ================== Print via Bluetooth ==================
+  const printWithRealBluetooth = async () => {
+    if (!BluetoothEscposPrinter || !BluetoothManager || !orderData) {
+      throw new Error("Library printer thermal tidak tersedia");
+    }
+    try {
+      if (!connectedDevice) {
+        await scanBluetoothDevices();
+        if (bluetoothDevices.length === 0) {
+          const raw = await BluetoothManager.scanDevices();
+          let parsed: any = typeof raw === "string" ? JSON.parse(raw) : raw;
+          const all = [...(parsed.paired || []), ...(parsed.found || [])];
+          if (all.length > 0) {
+            const first = all[0];
+            const mac = first.address || first.MAC || first.mac;
+            if (mac) {
+              await BluetoothManager.connect(mac);
+              setConnectedDevice({
+                id: mac,
+                name: first.name || "Printer",
+                mac,
+                type: "printer",
+              });
+            }
+          }
+        }
+      }
+      if (BluetoothEscposPrinter.printerInit) {
+        await BluetoothEscposPrinter.printerInit();
+      }
+      const printText = generatePrintText();
+      try {
+        await BluetoothEscposPrinter.printText(printText + "\n", {
+          encoding: "UTF-8",
+          codepage: 0,
+        });
+      } catch (e) {
+        await BluetoothEscposPrinter.printText(printText + "\n", {
+          encoding: "GBK",
+          codepage: 0,
+        });
+      }
+      try {
+        await BluetoothEscposPrinter.cut();
+      } catch (e) {
+        await BluetoothEscposPrinter.printAndFeed(3);
+      }
+      try {
+        await BluetoothManager.disconnect();
+      } catch (e) {
+        console.warn("Disconnect after print failed", e);
+      }
+      Alert.alert("Berhasil", "Sales Order berhasil dicetak!");
+    } catch (error: any) {
+      console.error("❌ Real Bluetooth failed:", error);
+      throw error;
     }
   };
 
@@ -681,14 +788,20 @@ export default function PrintSalesOrder() {
       Alert.alert("Error", "Data order tidak tersedia");
       return;
     }
-
     try {
       setPrinting(true);
-
-      if (isRealBluetoothAvailable) {
+      if (isBluetoothSupported && BluetoothEscposPrinter && BluetoothManager) {
         await printWithRealBluetooth();
       } else {
-        await printWithSimulation();
+        Alert.alert(
+          "Simulation",
+          "Mode simulation aktif — hasil print akan diexport sebagai file atau bisa dilihat di Preview.",
+          [
+            { text: "Lihat Preview", onPress: () => setShowPreview(true) },
+            { text: "Export TXT", onPress: exportTextFile },
+            { text: "OK" },
+          ]
+        );
       }
     } catch (error: any) {
       console.error("❌ Print error:", error);
@@ -697,10 +810,7 @@ export default function PrintSalesOrder() {
         error.message || "Terjadi kesalahan saat mencetak",
         [
           { text: "OK" },
-          {
-            text: "Coba Export File",
-            onPress: () => printWithSimulation(),
-          },
+          { text: "Coba Export File", onPress: () => exportTextFile() },
         ]
       );
     } finally {
@@ -708,61 +818,13 @@ export default function PrintSalesOrder() {
     }
   };
 
-  const printWithRealBluetooth = async () => {
-    if (!ThermalPrinter || !orderData) {
-      throw new Error("Library printer thermal tidak tersedia");
-    }
-
-    try {
-      await ThermalPrinter.init();
-      const devices = await ThermalPrinter.getDeviceList();
-
-      if (!devices || devices.length === 0) {
-        throw new Error("Tidak ada printer Bluetooth yang terpair");
-      }
-
-      const targetDevice = devices[0];
-      await ThermalPrinter.connectDevice(targetDevice.MAC);
-
-      setConnectedDevice({
-        id: targetDevice.MAC,
-        name: targetDevice.name,
-        mac: targetDevice.MAC,
-        type: "printer",
-      });
-
-      // Gunakan text biasa untuk thermal printer
-      const printText = generatePrintText();
-      await ThermalPrinter.printText(printText, {
-        encoding: "UTF-8",
-        codepage: 0,
-      });
-
-      await ThermalPrinter.cutPaper();
-      await ThermalPrinter.disconnect();
-
-      Alert.alert(
-        "Berhasil",
-        `Sales Order berhasil dicetak ke ${targetDevice.name}!`
-      );
-    } catch (error: any) {
-      console.error("❌ Real Bluetooth failed:", error);
-      Alert.alert("Bluetooth Tidak Tersedia", "Menggunakan mode export file.", [
-        { text: "OK" },
-        { text: "Export File", onPress: () => printWithSimulation() },
-      ]);
-    }
-  };
-
-  // ✅ PDF Print dengan field baru
+  // ================== PDF Print ==================
   const handlePrintPDF = async () => {
     if (!orderData) return;
-
     try {
       setPrinting(true);
       const html = generatePDFHTML();
       const { uri } = await Print.printToFileAsync({ html });
-
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, {
           mimeType: "application/pdf",
@@ -770,21 +832,17 @@ export default function PrintSalesOrder() {
         });
       }
     } catch (error: any) {
-      Alert.alert("Error", "Gagal membuat PDF: " + error.message);
+      Alert.alert("Error", "Gagal membuat PDF: " + (error.message || error));
     } finally {
       setPrinting(false);
     }
   };
 
-  // ✅ Generate PDF HTML dengan field baru
   const generatePDFHTML = () => {
     if (!orderData) return "";
     const diskonDetail =
       orderData.summary?.diskon_detail ??
-      orderData.items.reduce(
-        (total, item) => total + (item.diskon_value || 0),
-        0
-      );
+      orderData.items.reduce((sum, item) => sum + (item.diskon_value || 0), 0);
     return `
       <!DOCTYPE html>
       <html>
@@ -802,10 +860,6 @@ export default function PrintSalesOrder() {
           .summary { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
           .summary-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
           .total { text-align: right; font-weight: bold; margin-top: 20px; font-size: 16px; }
-          .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-          .status-pending { background: #fff3cd; color: #856404; }
-          .status-approved { background: #d4edda; color: #155724; }
-          .status-synced { background: #d1ecf1; color: #0c5460; }
         </style>
       </head>
       <body>
@@ -817,7 +871,6 @@ export default function PrintSalesOrder() {
     }</div>
           <div class="document-title">SALES ORDER - ${orderData.kode_so}</div>
         </div>
-
         <div class="info-section">
           <div>
             <strong>Kepada:</strong><br>
@@ -830,61 +883,43 @@ export default function PrintSalesOrder() {
             <strong>Info Order:</strong><br>
             Tanggal: ${formatDateShort(orderData.tgl_so)}<br>
             Sales: ${orderData.nama_sales}<br>
-            Status: <span class="status-badge status-${
-              orderData.status
-            }">${orderData.status.toUpperCase()}</span><br>
+            Status: ${orderData.status}<br>
             ${
               orderData.kode_termin
-                ? `Termin: ${orderData.kode_termin}<br>`
+                ? `Termin: ${orderData.nama_termin}<br>`
                 : ""
             }
             ${
-              orderData.cara_kirim
-                ? `Pengiriman: ${orderData.cara_kirim}<br>`
+              orderData.cara_kirim_deskripsi
+                ? `Pengiriman: ${orderData.cara_kirim_deskripsi}<br>`
                 : ""
             }
-            Sync: <span class="status-badge ${
-              orderData.synced === "Y" ? "status-synced" : "status-pending"
-            }">${orderData.synced === "Y" ? "SYNCED" : "PENDING"}</span>
+            Sync: ${orderData.synced === "Y" ? "SYNCED" : "PENDING"}
           </div>
         </div>
-
         ${
           orderData.keterangan
-            ? `
-        <div style="margin-bottom: 20px;">
-          <strong>Keterangan:</strong><br>
-          ${orderData.keterangan}
-        </div>
-        `
+            ? `<div style="margin-bottom:20px;"><strong>Keterangan:</strong><br>${orderData.keterangan}</div>`
             : ""
         }
-
         <table class="table">
           <thead>
             <tr>
-              <th>No</th>
-              <th>Kode Item</th>
-              <th>Nama Item</th>
-              <th>Qty</th>
-              <th>Harga</th>
-              <th>Diskon</th>
-              <th>Subtotal</th>
+              <th>No</th><th>Item</th><th>Qty</th><th>Harga</th><th>Diskon</th><th>Subtotal</th>
             </tr>
           </thead>
           <tbody>
             ${orderData.items
               .map(
-                (item, index) => `
+                (item, i) => `
               <tr>
-                <td>${index + 1}</td>
-                <td>${item.kode_item}</td>
+                <td>${i + 1}</td>
                 <td>${item.nama_item}</td>
-                <td>${item.quantity} ${item.satuan}</td>
+                <td>${item.quantity}</td>
                 <td>${formatCurrency(item.harga)}</td>
                 <td>${
                   item.diskon_value > 0
-                    ? `-${formatCurrency(item.diskon_value)}`
+                    ? "-" + formatCurrency(item.diskon_value)
                     : "-"
                 }</td>
                 <td>${formatCurrency(item.subtotal)}</td>
@@ -894,124 +929,44 @@ export default function PrintSalesOrder() {
               .join("")}
           </tbody>
         </table>
-
         <div class="summary">
-          <div class="summary-row">
-            <span>Subtotal:</span>
-            <span>${formatCurrency(orderData.subtotal)}</span>
-          </div>
-           ${
-             diskonDetail > 0
-               ? `
-        <div class="summary-row">
-          <span>Diskon Detail:</span>
-          <span>-${formatCurrency(diskonDetail)}</span>
-        </div>
-        `
-               : ""
-           }
+          <div class="summary-row"><span>Subtotal</span><span>${formatCurrency(
+            orderData.subtotal
+          )}</span></div>
+          ${
+            diskonDetail > 0
+              ? `<div class="summary-row"><span>Diskon Detail</span><span>-${formatCurrency(
+                  diskonDetail
+                )}</span></div>`
+              : ""
+          }
           ${
             orderData.diskon_header > 0
-              ? `
-          <div class="summary-row">
-            <span>Diskon Header:</span>
-            <span>-${formatCurrency(orderData.diskon_header)}</span>
-          </div>
-          `
+              ? `<div class="summary-row"><span>Diskon Header</span><span>-${formatCurrency(
+                  orderData.diskon_header
+                )}</span></div>`
               : ""
           }
           ${
             orderData.ppn_value > 0
-              ? `
-          <div class="summary-row">
-            <span>PPN (${orderData.ppn_percent}%):</span>
-            <span>+${formatCurrency(orderData.ppn_value)}</span>
-          </div>
-          `
+              ? `<div class="summary-row"><span>PPN</span><span>+${formatCurrency(
+                  orderData.ppn_value
+                )}</span></div>`
               : ""
           }
-          ${
-            orderData.uang_muka > 0
-              ? `
-          <div class="summary-row">
-            <span>Uang Muka:</span>
-            <span>-${formatCurrency(orderData.uang_muka)}</span>
-          </div>
-          `
-              : ""
-          }
-          <div class="summary-row" style="border-top: 1px solid #ddd; padding-top: 10px; font-weight: bold;">
-            <span>TOTAL:</span>
-            <span>${formatCurrency(orderData.total)}</span>
-          </div>
+          <div class="summary-row" style="border-top:1px solid #ddd; padding-top:8px; font-weight:bold;"><span>TOTAL</span><span>${formatCurrency(
+            orderData.total
+          )}</span></div>
         </div>
-
-        <div style="text-align: center; margin-top: 40px;">
-          <div style="display: inline-block; margin: 0 40px;">
-            <div style="border-top: 1px solid #333; padding-top: 10px; width: 200px;">
-              <strong>Hormat Kami</strong><br><br><br>
-              ${orderData.perusahaan.nama}
-            </div>
-          </div>
-          <div style="display: inline-block; margin: 0 40px;">
-            <div style="border-top: 1px solid #333; padding-top: 10px; width: 200px;">
-              <strong>Customer</strong><br><br><br>
-              &nbsp;
-            </div>
-          </div>
-        </div>
-
-        <div style="text-align: center; margin-top: 40px; font-size: 12px; color: #666;">
-          Dicetak pada: ${new Date().toLocaleString("id-ID")} |
-          Sumber: ${orderData.sumber_data} |
-          Sync: ${orderData.synced}
-        </div>
+        <div style="text-align:center; font-size:12px; color:#666;">Dicetak pada: ${new Date().toLocaleString(
+          "id-ID"
+        )}</div>
       </body>
       </html>
     `;
   };
 
-  // ✅ UI Components (Build Info, Connection Status, Action Bar) - tetap sama
-  const EASBuildInfo = () => (
-    <View
-      style={[
-        styles.buildInfo,
-        isProduction
-          ? styles.buildProduction
-          : appEnv === "preview"
-          ? styles.buildPreview
-          : styles.buildDevelopment,
-      ]}
-    >
-      <MaterialIcons
-        name={isEASBuild ? "cloud" : "computer"}
-        size={12}
-        color="#fff"
-      />
-      <Text style={styles.buildText}>
-        {isEASBuild ? `EAS ${buildProfile.toUpperCase()}` : "LOCAL DEV"}
-      </Text>
-      <View style={styles.buildBadges}>
-        <View
-          style={[
-            styles.envBadge,
-            isRealBluetoothAvailable
-              ? styles.badgeSuccess
-              : styles.badgeWarning,
-          ]}
-        >
-          <Text style={styles.envBadgeText}>
-            {isRealBluetoothAvailable ? "BLUETOOTH" : "SIMULATION"}
-          </Text>
-        </View>
-        <Text style={styles.envText}>{appEnv.toUpperCase()}</Text>
-      </View>
-    </View>
-  );
-
-  // ... (Render Bluetooth device item dan komponen UI lainnya tetap sama)
-
-  // ✅ Loading State
+  // ================== Render ==================
   if (loading) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
@@ -1020,8 +975,6 @@ export default function PrintSalesOrder() {
       </SafeAreaView>
     );
   }
-
-  // ✅ Error State
   if (error || !orderData) {
     return (
       <SafeAreaView style={styles.container}>
@@ -1054,11 +1007,40 @@ export default function PrintSalesOrder() {
           headerBackTitle: "Kembali",
         }}
       />
+      {/* build info */}
+      <View
+        style={[
+          styles.buildInfo,
+          isProduction
+            ? styles.buildProduction
+            : appEnv === "preview"
+            ? styles.buildPreview
+            : styles.buildDevelopment,
+        ]}
+      >
+        <MaterialIcons
+          name={isEASBuild ? "cloud" : "computer"}
+          size={12}
+          color="#fff"
+        />
+        <Text style={styles.buildText}>
+          {isEASBuild ? `EAS ${buildProfile.toUpperCase()}` : "LOCAL DEV"}
+        </Text>
+        <View style={styles.buildBadges}>
+          <View
+            style={[
+              styles.envBadge,
+              isBluetoothSupported ? styles.badgeSuccess : styles.badgeWarning,
+            ]}
+          >
+            <Text style={styles.envBadgeText}>
+              {isBluetoothSupported ? "BLUETOOTH" : "SIMULATION"}
+            </Text>
+          </View>
+          <Text style={styles.envText}>{appEnv.toUpperCase()}</Text>
+        </View>
+      </View>
 
-      {/* EAS Build Info */}
-      <EASBuildInfo />
-
-      {/* Connection Status */}
       {connectedDevice && (
         <View style={styles.connectionStatus}>
           <MaterialIcons name="bluetooth-connected" size={16} color="#fff" />
@@ -1068,11 +1050,13 @@ export default function PrintSalesOrder() {
         </View>
       )}
 
-      {/* Action Buttons */}
       <View style={styles.actionBar}>
         <TouchableOpacity
           style={[styles.actionButton, styles.bluetoothButton]}
-          onPress={printViaBluetooth}
+          onPress={() => {
+            if (!isBluetoothSupported) setShowPreview(true);
+            else printViaBluetooth();
+          }}
           disabled={printing}
         >
           {printing ? (
@@ -1081,9 +1065,7 @@ export default function PrintSalesOrder() {
             <>
               <MaterialIcons name="print" size={20} color="#fff" />
               <Text style={styles.actionButtonText}>
-                {isRealBluetoothAvailable
-                  ? "Print Bluetooth"
-                  : "Export untuk Print"}
+                {isBluetoothSupported ? "Print Bluetooth" : "Preview / Export"}
               </Text>
             </>
           )}
@@ -1106,7 +1088,7 @@ export default function PrintSalesOrder() {
           >
             <MaterialIcons name="bluetooth" size={20} color="#fff" />
             <Text style={styles.actionButtonText}>
-              {isRealBluetoothAvailable ? "Cari Printer" : "Simulate Printers"}
+              {isBluetoothSupported ? "Cari Printer" : "Simulate Printers"}
             </Text>
           </TouchableOpacity>
         )}
@@ -1121,7 +1103,6 @@ export default function PrintSalesOrder() {
         </TouchableOpacity>
       </View>
 
-      {/* Print Preview - DIPERBARUI dengan field baru */}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.printContainer}
@@ -1141,7 +1122,7 @@ export default function PrintSalesOrder() {
             </View>
           </View>
 
-          {/* Informasi Customer & SO dengan FIELD BARU */}
+          {/* Informasi Customer & SO */}
           <View style={styles.infoSection}>
             <View style={styles.infoBox}>
               <Text style={styles.infoLabel}>Kepada:</Text>
@@ -1156,11 +1137,10 @@ export default function PrintSalesOrder() {
                 <Text style={styles.customerContact}>Telp: {orderData.hp}</Text>
               )}
             </View>
-
             <View style={styles.infoBox}>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>No. SO:</Text>
-                <Text style={styles.infoValue}>{orderData.kode_so}</Text>
+                <Text style={styles.infoValue}>{orderData.no_so}</Text>
               </View>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Tanggal:</Text>
@@ -1172,42 +1152,20 @@ export default function PrintSalesOrder() {
                 <Text style={styles.infoLabel}>Sales:</Text>
                 <Text style={styles.infoValue}>{orderData.nama_sales}</Text>
               </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Status:</Text>
-                <Text style={[styles.infoValue, styles.statusText]}>
-                  {orderData.status.toUpperCase()}
-                </Text>
-              </View>
-              {/* ✅ TAMBAHKAN FIELD BARU */}
               {orderData.kode_termin && (
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Termin:</Text>
-                  <Text style={styles.infoValue}>{orderData.kode_termin}</Text>
+                  <Text style={styles.infoValue}>{orderData.nama_termin}</Text>
                 </View>
               )}
-              {orderData.cara_kirim && (
+              {orderData.cara_kirim_deskripsi && (
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Pengiriman:</Text>
-                  <Text style={styles.infoValue}>{orderData.cara_kirim}</Text>
+                  <Text style={styles.infoValue}>
+                    {orderData.cara_kirim_deskripsi}
+                  </Text>
                 </View>
               )}
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Sumber:</Text>
-                <Text style={styles.infoValue}>{orderData.sumber_data}</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Sync:</Text>
-                <Text
-                  style={[
-                    styles.infoValue,
-                    orderData.synced === "Y"
-                      ? styles.syncedText
-                      : styles.pendingText,
-                  ]}
-                >
-                  {orderData.synced === "Y" ? "SYNCED" : "PENDING"}
-                </Text>
-              </View>
             </View>
           </View>
 
@@ -1219,7 +1177,7 @@ export default function PrintSalesOrder() {
             </View>
           )}
 
-          {/* Tabel Items dengan FIELD BARU */}
+          {/* Tabel Items */}
           <View style={styles.table}>
             <View style={styles.tableHeader}>
               <Text
@@ -1234,7 +1192,7 @@ export default function PrintSalesOrder() {
                   styles.colKode,
                 ]}
               >
-                Kode Item
+                No. Item
               </Text>
               <Text
                 style={[
@@ -1282,20 +1240,19 @@ export default function PrintSalesOrder() {
                 Subtotal
               </Text>
             </View>
-
             {orderData.items.map((item, index) => (
-              <View key={`${item.kode_item}-${index}`} style={styles.tableRow}>
+              <View key={`${item.no_item}-${index}`} style={styles.tableRow}>
                 <Text style={[styles.tableCell, styles.colNo]}>
                   {index + 1}
                 </Text>
                 <Text style={[styles.tableCell, styles.colKode]}>
-                  {item.kode_item}
+                  {item.no_item}
                 </Text>
                 <Text style={[styles.tableCell, styles.colNama]}>
                   {item.nama_item}
                 </Text>
                 <Text style={[styles.tableCell, styles.colQty]}>
-                  {item.quantity} {item.satuan}
+                  {item.quantity}
                 </Text>
                 <Text style={[styles.tableCell, styles.colHarga]}>
                   {formatCurrency(item.harga)}
@@ -1318,20 +1275,18 @@ export default function PrintSalesOrder() {
             ))}
           </View>
 
-          {/* ✅ SUMMARY DENGAN FIELD BARU */}
+          {/* Summary */}
           <View style={styles.summarySection}>
             <Text style={styles.summaryTitle}>Rincian Pembayaran</Text>
-
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Subtotal:</Text>
               <Text style={styles.summaryValue}>
                 {formatCurrency(orderData.subtotal)}
               </Text>
             </View>
-
             {(orderData.summary?.diskon_detail ??
               orderData.items.reduce(
-                (total, item) => total + (item.diskon_value || 0),
+                (sum, item) => sum + (item.diskon_value || 0),
                 0
               )) > 0 && (
               <View style={styles.summaryRow}>
@@ -1341,29 +1296,21 @@ export default function PrintSalesOrder() {
                   {formatCurrency(
                     orderData.summary?.diskon_detail ??
                       orderData.items.reduce(
-                        (total, item) => total + (item.diskon_value || 0),
+                        (sum, item) => sum + (item.diskon_value || 0),
                         0
                       )
                   )}
                 </Text>
               </View>
             )}
-
             {orderData.diskon_header > 0 && (
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>
-                  Diskon Header{" "}
-                  {orderData.diskon_header_percent > 0
-                    ? `(${orderData.diskon_header_percent}%)`
-                    : ""}
-                  :
-                </Text>
+                <Text style={styles.summaryLabel}>Diskon Header:</Text>
                 <Text style={[styles.summaryValue, styles.discountText]}>
                   -{formatCurrency(orderData.diskon_header)}
                 </Text>
               </View>
             )}
-
             {orderData.ppn_value > 0 && (
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>
@@ -1374,7 +1321,6 @@ export default function PrintSalesOrder() {
                 </Text>
               </View>
             )}
-
             {orderData.uang_muka > 0 && (
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Uang Muka:</Text>
@@ -1383,7 +1329,6 @@ export default function PrintSalesOrder() {
                 </Text>
               </View>
             )}
-
             <View style={[styles.summaryRow, styles.totalRow]}>
               <Text style={styles.totalLabel}>TOTAL:</Text>
               <Text style={styles.totalAmount}>
@@ -1392,7 +1337,6 @@ export default function PrintSalesOrder() {
             </View>
           </View>
 
-          {/* Footer */}
           <View style={styles.printFooter}>
             <Text style={styles.printFooterText}>
               Dicetak pada: {new Date().toLocaleString("id-ID")} | Sumber:{" "}
@@ -1402,7 +1346,7 @@ export default function PrintSalesOrder() {
         </View>
       </ScrollView>
 
-      {/* Bluetooth Devices Modal (tetap sama) */}
+      {/* Bluetooth Modal */}
       <Modal
         visible={showBluetoothModal}
         animationType="slide"
@@ -1413,13 +1357,13 @@ export default function PrintSalesOrder() {
           <View style={styles.modalHeader}>
             <View>
               <Text style={styles.modalTitle}>
-                {isRealBluetoothAvailable
+                {isBluetoothSupported
                   ? "Bluetooth Printers"
                   : "Simulated Printers"}
               </Text>
               <Text style={styles.modalSubtitle}>
-                {isRealBluetoothAvailable
-                  ? "Printer yang sudah terpair"
+                {isBluetoothSupported
+                  ? "Printer yang sudah terpair / tersedia"
                   : "Development simulation mode"}
               </Text>
             </View>
@@ -1430,7 +1374,6 @@ export default function PrintSalesOrder() {
               <MaterialIcons name="close" size={24} color="#666" />
             </TouchableOpacity>
           </View>
-
           <View style={styles.modalActions}>
             <TouchableOpacity
               style={styles.scanButton}
@@ -1446,8 +1389,29 @@ export default function PrintSalesOrder() {
                 {scanning ? "Memindai..." : "Scan Ulang"}
               </Text>
             </TouchableOpacity>
+            <View style={{ height: 8 }} />
+            <TouchableOpacity
+              style={[styles.scanButton, { backgroundColor: "#17a2b8" }]}
+              onPress={() => {
+                setBluetoothDevices([
+                  {
+                    id: "sim-1",
+                    name: "Printer Sim 58mm",
+                    mac: "00:11:22:33:44:55",
+                    type: "printer",
+                  },
+                  {
+                    id: "sim-2",
+                    name: "Printer Sim X",
+                    mac: "66:77:88:99:AA:BB",
+                    type: "printer",
+                  },
+                ]);
+              }}
+            >
+              <Text style={styles.scanButtonText}>Force Simulate</Text>
+            </TouchableOpacity>
           </View>
-
           {bluetoothDevices.length === 0 ? (
             <View style={styles.emptyDevices}>
               <MaterialIcons
@@ -1461,7 +1425,7 @@ export default function PrintSalesOrder() {
                   : "Tidak ada printer ditemukan"}
               </Text>
               <Text style={styles.emptyDevicesSubtext}>
-                {isRealBluetoothAvailable
+                {isBluetoothSupported
                   ? "Pastikan printer dalam mode pairing"
                   : "Simulation mode - Printer akan muncul dalam beberapa detik"}
               </Text>
@@ -1469,34 +1433,61 @@ export default function PrintSalesOrder() {
           ) : (
             <FlatList
               data={bluetoothDevices}
-              renderItem={renderBluetoothDevice}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.deviceItem}
+                  onPress={() => connectToDevice(item)}
+                  disabled={connecting}
+                >
+                  <MaterialIcons
+                    name={
+                      connectedDevice?.id === item.id
+                        ? "bluetooth-connected"
+                        : "bluetooth"
+                    }
+                    size={24}
+                    color={connectedDevice?.id === item.id ? "#007bff" : "#666"}
+                  />
+                  <View style={styles.deviceInfo}>
+                    <Text style={styles.deviceName}>{item.name}</Text>
+                    <Text style={styles.deviceType}>
+                      {item.type} • {item.mac}
+                    </Text>
+                  </View>
+                  {connecting ? (
+                    <ActivityIndicator size="small" color="#007bff" />
+                  ) : (
+                    <MaterialIcons
+                      name="chevron-right"
+                      size={20}
+                      color="#666"
+                    />
+                  )}
+                </TouchableOpacity>
+              )}
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.devicesList}
             />
           )}
         </SafeAreaView>
       </Modal>
+
+      {/* Preview Modal */}
+      <PrintPreviewModal />
     </SafeAreaView>
   );
 }
 
-// ✅ Styles - DITAMBAHKAN style untuk field baru
+// ================== Styles ==================
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f5f7fb",
-  },
+  container: { flex: 1, backgroundColor: "#f5f7fb" },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#f5f7fb",
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: "#666",
-  },
+  loadingText: { marginTop: 12, fontSize: 16, color: "#666" },
   errorContainer: {
     flex: 1,
     justifyContent: "center",
@@ -1525,10 +1516,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     gap: 8,
   },
-  retryButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
+  retryButtonText: { color: "#fff", fontWeight: "600" },
   buildInfo: {
     flexDirection: "row",
     alignItems: "center",
@@ -1536,47 +1524,21 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     gap: 8,
   },
-  buildProduction: {
-    backgroundColor: "#28a745",
-  },
-  buildPreview: {
-    backgroundColor: "#6f42c1",
-  },
-  buildDevelopment: {
-    backgroundColor: "#ff9800",
-  },
-  buildText: {
-    color: "#fff",
-    fontWeight: "600",
-    fontSize: 12,
-  },
+  buildProduction: { backgroundColor: "#28a745" },
+  buildPreview: { backgroundColor: "#6f42c1" },
+  buildDevelopment: { backgroundColor: "#ff9800" },
+  buildText: { color: "#fff", fontWeight: "600", fontSize: 12 },
   buildBadges: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     marginLeft: "auto",
   },
-  envBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  badgeSuccess: {
-    backgroundColor: "#155724",
-  },
-  badgeWarning: {
-    backgroundColor: "#856404",
-  },
-  envBadgeText: {
-    color: "#fff",
-    fontSize: 8,
-    fontWeight: "bold",
-  },
-  envText: {
-    color: "#fff",
-    fontSize: 9,
-    opacity: 0.8,
-  },
+  envBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  badgeSuccess: { backgroundColor: "#155724" },
+  badgeWarning: { backgroundColor: "#856404" },
+  envBadgeText: { color: "#fff", fontSize: 8, fontWeight: "bold" },
+  envText: { color: "#fff", fontSize: 9, opacity: 0.8 },
   connectionStatus: {
     flexDirection: "row",
     alignItems: "center",
@@ -1585,11 +1547,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     gap: 8,
   },
-  connectionText: {
-    color: "#fff",
-    fontWeight: "600",
-    flex: 1,
-  },
+  connectionText: { color: "#fff", fontWeight: "600", flex: 1 },
   actionBar: {
     flexDirection: "row",
     padding: 16,
@@ -1607,30 +1565,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     gap: 8,
   },
-  bluetoothButton: {
-    backgroundColor: "#007bff",
-    flex: 1.5,
-  },
-  scanButton: {
-    backgroundColor: "#6f42c1",
-  },
-  pdfButton: {
-    backgroundColor: "#dc3545",
-  },
-  disconnectButton: {
-    backgroundColor: "#dc3545",
-  },
-  actionButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-    fontSize: 12,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  printContainer: {
-    padding: 16,
-  },
+  bluetoothButton: { backgroundColor: "#007bff", flex: 1.5 },
+  scanButton: { backgroundColor: "#6f42c1" },
+  pdfButton: { backgroundColor: "#dc3545" },
+  disconnectButton: { backgroundColor: "#dc3545" },
+  actionButtonText: { color: "#fff", fontWeight: "600", fontSize: 12 },
+  scrollView: { flex: 1 },
+  printContainer: { padding: 16 },
   printContent: {
     backgroundColor: "white",
     padding: 20,
@@ -1648,90 +1589,35 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     marginBottom: 20,
   },
-  companyName: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 4,
-  },
-  companyAddress: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 2,
-  },
-  companyContact: {
-    fontSize: 12,
-    color: "#666",
-    marginBottom: 10,
-  },
-  documentTitle: {
-    marginTop: 10,
-  },
-  documentTitleText: {
-    fontSize: 18,
-    fontWeight: "bold",
-  },
+  companyName: { fontSize: 20, fontWeight: "bold", marginBottom: 4 },
+  companyAddress: { fontSize: 14, color: "#666", marginBottom: 2 },
+  companyContact: { fontSize: 12, color: "#666", marginBottom: 10 },
+  documentTitle: { marginTop: 10 },
+  documentTitleText: { fontSize: 18, fontWeight: "bold" },
   infoSection: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 20,
   },
-  infoBox: {
-    flex: 1,
-  },
-  infoLabel: {
-    fontWeight: "bold",
-    marginBottom: 8,
-    fontSize: 14,
-  },
-  customerName: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-  customerAddress: {
-    fontSize: 12,
-    color: "#666",
-    marginBottom: 2,
-  },
-  customerContact: {
-    fontSize: 12,
-    color: "#666",
-  },
+  infoBox: { flex: 1 },
+  infoLabel: { fontWeight: "bold", marginBottom: 8, fontSize: 14 },
+  customerName: { fontSize: 14, fontWeight: "600", marginBottom: 4 },
+  customerAddress: { fontSize: 12, color: "#666", marginBottom: 2 },
+  customerContact: { fontSize: 12, color: "#666" },
   infoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 4,
   },
-  infoValue: {
-    fontSize: 12,
-  },
-  statusText: {
-    fontWeight: "600",
-    color: "#28a745",
-  },
-  syncedText: {
-    color: "#28a745",
-    fontWeight: "600",
-  },
-  pendingText: {
-    color: "#ff9800",
-    fontWeight: "600",
-  },
+  infoValue: { fontSize: 12 },
   remarksSection: {
     marginBottom: 20,
     padding: 12,
     backgroundColor: "#f8f9fa",
     borderRadius: 6,
   },
-  remarksLabel: {
-    fontWeight: "bold",
-    marginBottom: 4,
-    fontSize: 14,
-  },
-  remarksText: {
-    fontSize: 12,
-    color: "#666",
-  },
+  remarksLabel: { fontWeight: "bold", marginBottom: 4, fontSize: 14 },
+  remarksText: { fontSize: 12, color: "#666" },
   table: {
     borderWidth: 1,
     borderColor: "#ddd",
@@ -1750,43 +1636,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#eee",
   },
-  tableCell: {
-    padding: 8,
-    fontSize: 10,
-  },
-  tableHeaderCell: {
-    fontWeight: "bold",
-  },
-  colNo: {
-    width: "8%",
-    textAlign: "center",
-  },
-  colKode: {
-    width: "12%",
-  },
-  colNama: {
-    width: "25%",
-  },
-  colQty: {
-    width: "10%",
-    textAlign: "center",
-  },
-  colHarga: {
-    width: "15%",
-    textAlign: "right",
-  },
-  colDiskon: {
-    width: "12%",
-    textAlign: "right",
-  },
-  colSubtotal: {
-    width: "18%",
-    textAlign: "right",
-  },
-  discountText: {
-    color: "#F44336",
-  },
-  // ✅ STYLE BARU untuk Summary Section
+  tableCell: { padding: 8, fontSize: 10 },
+  tableHeaderCell: { fontWeight: "bold" },
+  colNo: { width: "8%", textAlign: "center" },
+  colKode: { width: "12%" },
+  colNama: { width: "25%" },
+  colQty: { width: "10%", textAlign: "center" },
+  colHarga: { width: "15%", textAlign: "right" },
+  colDiskon: { width: "12%", textAlign: "right" },
+  colSubtotal: { width: "18%", textAlign: "right" },
+  discountText: { color: "#F44336" },
   summarySection: {
     backgroundColor: "#f8f9fa",
     padding: 16,
@@ -1805,46 +1664,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 6,
   },
-  summaryLabel: {
-    fontSize: 12,
-    color: "#666",
-  },
-  summaryValue: {
-    fontSize: 12,
-    fontWeight: "500",
-  },
+  summaryLabel: { fontSize: 12, color: "#666" },
+  summaryValue: { fontSize: 12, fontWeight: "500" },
   totalRow: {
     borderTopWidth: 1,
     borderTopColor: "#ddd",
     paddingTop: 8,
     marginTop: 4,
   },
-  totalLabel: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: "#333",
-  },
-  totalAmount: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#28a745",
-  },
+  totalLabel: { fontSize: 14, fontWeight: "bold", color: "#333" },
+  totalAmount: { fontSize: 16, fontWeight: "bold", color: "#28a745" },
   printFooter: {
     marginTop: 20,
     paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: "#ddd",
   },
-  printFooterText: {
-    fontSize: 10,
-    color: "#666",
-    textAlign: "center",
-  },
-  // Modal styles (tetap sama)
-  modalContainer: {
-    flex: 1,
-    backgroundColor: "white",
-  },
+  printFooterText: { fontSize: 10, color: "#666", textAlign: "center" },
+  modalContainer: { flex: 1, backgroundColor: "white" },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1853,19 +1690,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#333",
-  },
-  modalSubtitle: {
-    fontSize: 12,
-    color: "#666",
-    marginTop: 2,
-  },
-  closeButton: {
-    padding: 4,
-  },
+  modalTitle: { fontSize: 18, fontWeight: "bold", color: "#333" },
+  modalSubtitle: { fontSize: 12, color: "#666", marginTop: 2 },
+  closeButton: { padding: 4 },
   modalActions: {
     padding: 16,
     borderBottomWidth: 1,
@@ -1883,14 +1710,8 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 8,
   },
-  emptyDevicesSubtext: {
-    fontSize: 14,
-    color: "#999",
-    textAlign: "center",
-  },
-  devicesList: {
-    padding: 16,
-  },
+  emptyDevicesSubtext: { fontSize: 14, color: "#999", textAlign: "center" },
+  devicesList: { padding: 16 },
   deviceItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -1899,22 +1720,46 @@ const styles = StyleSheet.create({
     borderBottomColor: "#f0f0f0",
     gap: 12,
   },
-  deviceInfo: {
-    flex: 1,
-  },
+  deviceInfo: { flex: 1 },
   deviceName: {
     fontSize: 16,
     fontWeight: "600",
     color: "#333",
     marginBottom: 2,
   },
-  deviceType: {
+  deviceType: { fontSize: 12, color: "#666", textTransform: "capitalize" },
+  scanButtonText: { color: "#fff", fontWeight: "600" },
+  previewContainer: { flex: 1, backgroundColor: "#fff" },
+  previewHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  previewTitle: { fontSize: 16, fontWeight: "700" },
+  previewBody: { padding: 16 },
+  monoText: {
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace" }),
     fontSize: 12,
-    color: "#666",
-    textTransform: "capitalize",
+    lineHeight: 18,
+    color: "#111",
   },
-  scanButtonText: {
-    color: "#fff",
-    fontWeight: "600",
+  previewActions: {
+    flexDirection: "row",
+    padding: 12,
+    justifyContent: "flex-end",
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
   },
+  btn: {
+    backgroundColor: "#007bff",
+    padding: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 100,
+  },
+  btnText: { color: "#fff", fontWeight: "600" },
 });

@@ -20,7 +20,8 @@
         "NSCameraUsageDescription": "Aplikasi membutuhkan akses kamera untuk mengambil foto toko saat check-in dan check-out dengan overlay geotagging.",
         "NSLocationWhenInUseUsageDescription": "Aplikasi membutuhkan akses lokasi untuk mencatat koordinat GPS dan menampilkan geotagging di foto.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Aplikasi membutuhkan akses lokasi untuk mencatat koordinat GPS dan menampilkan geotagging di foto."
-      }
+      },
+      "bundleIdentifier": "com.batasku.salesapp"
     },
     "android": {
       "package": "com.batasku.salesapp",
@@ -37,22 +38,17 @@
         "backgroundColor": "#ffffff"
       },
       "permissions": [
-        "CAMERA",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "BLUETOOTH",
-        "BLUETOOTH_ADMIN",
-        "BLUETOOTH_SCAN",
-        "BLUETOOTH_CONNECT",
         "android.permission.CAMERA",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.INTERNET",
+        "android.permission.RECORD_AUDIO",
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN",
         "android.permission.BLUETOOTH_SCAN",
         "android.permission.BLUETOOTH_CONNECT",
-        "READ_EXTERNAL_STORAGE",
-        "android.permission.INTERNET"
+        "android.permission.ACCESS_BACKGROUND_LOCATION"
       ]
     },
     "web": {
@@ -64,6 +60,7 @@
       "expo-splash-screen",
       "expo-sqlite",
       "expo-secure-store",
+      "./plugins/withBluetoothNewArchFix",
       "./plugins/withCleartextTraffic",
       [
         "expo-camera",
@@ -97,11 +94,15 @@
     ],
     "extra": {
       "router": {},
-      "eas": {
-        "projectId": "5d2044e0-3004-4f1e-afc9-07ac9aa8c6f5"
-      },
       "IS_PRODUCTION": true,
-      "API_BASE_URL": "http://faspro.ddns.net:3000/api"
-    }
+      "BLUETOOTH_ENABLED": "true",
+      "APP_ENV": "production",
+      "EAS_BUILD_PROFILE": "production",
+      "API_BASE_URL": "http://faspro.ddns.net:3000/api",
+      "eas": {
+        "projectId": "7549e59d-b005-4255-af95-3c76eae712e0"
+      }
+    },
+    "owner": "opitdev"
   }
 }
