@@ -1208,112 +1208,6 @@ export default function PrintSalesOrder() {
     }
   };
 
-  // const printViaBluetooth = async () => {
-  //   if (!orderData) {
-  //     Alert.alert("Error", "Data order tidak tersedia");
-  //     return;
-  //   }
-
-  //   try {
-  //     setPrinting(true);
-
-  //     if (isBluetoothSupported && BluetoothEscposPrinter) {
-  //       // Connect to printer
-  //       if (!connectedDevice) {
-  //         await printWithRealBluetooth();
-  //       }
-
-  //       await BluetoothEscposPrinter.printerInit();
-
-  //       // 1. Print sales order text biasa
-  //       const printText = generatePrintText();
-  //       await BluetoothEscposPrinter.printText(printText + "\n", {});
-
-  //       // 2. Beri jarak
-  //       await BluetoothEscposPrinter.printAndFeed(3);
-
-  //       // 3. Print QR Code - APPROACH PALING SIMPLE
-  //       await BluetoothEscposPrinter.printText("QR CODE VERIFIKASI\n", {});
-  //       await BluetoothEscposPrinter.printText("================\n", {});
-
-  //       const qrData = `SO:${orderData.no_so}|TOTAL:${orderData.total}`;
-
-  //       // Coba print QR code
-  //       try {
-  //         console.log("Mencoba print QR code dengan parameter number...");
-
-  //         // Parameter yang benar berdasarkan dokumentasi library:
-  //         // printQRCode(data, size, correctionLevel)
-  //         // correctionLevel: 0=L, 1=M, 2=Q, 3=H
-  //         await BluetoothEscposPrinter.printQRCode(qrData, 6, 1); // Size 6, Correction M
-  //         console.log("QR Code berhasil dicetak");
-  //       } catch (qrError) {
-  //         try {
-  //           await BluetoothEscposPrinter.printQRCode(qrData, 4, 0); // Size 4, Correction L
-  //           console.log("QR Code berhasil dengan size 4");
-  //         } catch (qrError2) {
-  //           console.log("QR Code method 2 gagal:", qrError2);
-
-  //           // Coba tanpa correction level
-  //           try {
-  //             await BluetoothEscposPrinter.printQRCode(qrData, 6); // Hanya size
-  //             console.log("QR Code berhasil tanpa correction level");
-  //           } catch (qrError3) {
-  //             console.log("QR Code method 3 gagal:", qrError3);
-
-  //             // Fallback ke barcode
-  //             try {
-  //               if (BluetoothEscposPrinter.printBarCode) {
-  //                 await BluetoothEscposPrinter.printBarCode(
-  //                   orderData.no_so,
-  //                   8, // TYPE_CODE128
-  //                   2, // width
-  //                   60, // height
-  //                   2 // text position
-  //                 );
-  //                 console.log("Barcode berhasil dicetak sebagai alternatif");
-  //               } else {
-  //                 throw new Error("printBarCode tidak tersedia");
-  //               }
-  //             } catch (barcodeError) {
-  //               console.log("Barcode juga gagal:", barcodeError);
-  //               // Final fallback: print text saja
-  //               await BluetoothEscposPrinter.printText(`[QR: ${qrData}]\n`, {});
-  //             }
-  //           }
-  //         }
-  //       }
-
-  //       // 4. Print info di bawah QR
-  //       await BluetoothEscposPrinter.printAndFeed(1);
-  //       await BluetoothEscposPrinter.printText("SCAN UNTUK VERIFIKASI\n", {});
-  //       await BluetoothEscposPrinter.printText(`SO: ${orderData.no_so}\n`, {});
-
-  //       // 5. Feed dan cut
-  //       await BluetoothEscposPrinter.printAndFeed(4);
-
-  //       // Cek apakah cut tersedia
-  //       if (BluetoothEscposPrinter.cut) {
-  //         await BluetoothEscposPrinter.cut();
-  //       } else {
-  //         await BluetoothEscposPrinter.printAndFeed(6); // Extra feed jika cut tidak ada
-  //       }
-
-  //       Alert.alert("Berhasil", "Sales Order + QR Code berhasil dicetak!");
-  //     } else {
-  //       // Simulation mode
-  //       setShowPreview(true);
-  //     }
-  //   } catch (error: any) {
-  //     console.error("Print error:", error);
-  //     Alert.alert("Print Gagal", error.message || "Terjadi kesalahan");
-  //   } finally {
-  //     setPrinting(false);
-  //   }
-  // };
-
-  // ================== PDF Print ==================
-
   const printViaBluetooth = async () => {
     if (!orderData) {
       Alert.alert("Error", "Data order tidak tersedia");
@@ -1330,7 +1224,7 @@ export default function PrintSalesOrder() {
         const printText = generatePrintText();
         // const qrData = `SO:${orderData?.no_so}|TOTAL:${orderData?.total}`;
         const qrData = JSON.stringify({
-          t: "PPI",
+          t: "SO",
           n: orderData?.no_so,
           d: orderData?.tgl_so,
           a: orderData?.total,
@@ -1341,73 +1235,27 @@ export default function PrintSalesOrder() {
 
         // 2. Print Barcode Section
         await BluetoothEscposPrinter.printAndFeed(3);
-        await BluetoothEscposPrinter.printText("BARCODE VERIFIKASI\n", {});
+        await BluetoothEscposPrinter.printText("KODE VERIFIKASI\n", {});
         await BluetoothEscposPrinter.printText("==================\n", {});
         // GANTI DENGAN INI UNTUK MENCETAK QR CODE:
         await BluetoothEscposPrinter.printQRCode(
           qrData, // Data yang akan di-encode
-          12, // Ukuran (250 adalah nilai umum untuk ukuran medium)
-          0 // (Beberapa library meminta dua kali nilai ukuran)
+          200, // Ukuran (250 adalah nilai umum untuk ukuran medium)
+          2 // (Beberapa library meminta dua kali nilai ukuran)
         );
 
-        console.log(`QR Data (JSON) yang di-encode: ${qrData}`);
-
-        // await BluetoothEscposPrinter.printText(
-        //   `No. SO: ${orderData.no_so}\n` +
-        //     `Tgl: ${orderData.tgl_so}\n` +
-        //     `Total: ${orderData.total}\n`,
-        //   {}
-        // );
-        // Data untuk barcode
-        const barcodeData = orderData.no_so.replace(/[^a-zA-Z0-9]/g, "");
-
-        // Print barcode dengan 6 PARAMETER
-        if (BluetoothEscposPrinter.printBarCode) {
-          try {
-            await BluetoothEscposPrinter.printBarCode(
-              barcodeData, // 1. data: string
-              8, // 2. type: number (CODE128)
-              3, // 3. width: number
-              80, // 4. height: number
-              0, // 5. textPosition: number
-              2 // 6. ??? (mungkin encoding/codepage) - COBA 0
-            );
-            console.log("✅ Barcode berhasil dicetak dengan 6 parameter");
-          } catch (barcodeError) {
-            console.log(
-              "❌ Barcode dengan 6 param gagal Catch 1:",
-              barcodeError
-            );
-
-            // Coba kombinasi parameter lain
-            try {
-              await BluetoothEscposPrinter.printBarCode(
-                barcodeData,
-                8,
-                2,
-                60,
-                2,
-                1 // Coba parameter berbeda
-              );
-              console.log("✅ Barcode berhasil dengan kombinasi lain");
-            } catch (barcodeError2) {
-              console.log("❌ Barcode masih gagal Catch 2:", barcodeError2);
-              await printTextBarcode(barcodeData);
-            }
-          }
-        } else {
-          await printTextBarcode(barcodeData);
-          console.log("❌ Masuk ke ELSE");
-        }
-
         // 3. Print info
-        await BluetoothEscposPrinter.printAndFeed(1);
+        await BluetoothEscposPrinter.printAndFeed(2);
         await BluetoothEscposPrinter.printText("VERIFIKASI DIGITAL\n", {});
         await BluetoothEscposPrinter.printText(`SO: ${orderData.no_so}\n`, {});
         await BluetoothEscposPrinter.printText("SCAN UNTUK DETAIL\n", {});
 
         // 4. Finish
-        await BluetoothEscposPrinter.printAndFeed(6);
+        if (BluetoothEscposPrinter.cut) {
+          await BluetoothEscposPrinter.cut();
+        } else {
+          await BluetoothEscposPrinter.printAndFeed(6); // Extra feed jika cut tidak ada
+        }
 
         Alert.alert("✅ Berhasil", "Sales Order berhasil dicetak!");
       } else {

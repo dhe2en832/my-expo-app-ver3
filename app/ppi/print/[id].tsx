@@ -452,10 +452,14 @@ export default function PrintPenerimaanPiutang() {
         formatCurrency(ppiData.summary.total_outstanding_faktur)
       )
     );
+    // lines.push(
+    //   formatLine(
+    //     `Total Bayar:
+    //     ${formatCurrency(ppiData.summary.jumlah_bayar)}`
+    //   )
+    // );
     lines.push(
-      formatLine(
-        `Total Bayar:, ${formatCurrency(ppiData.summary.jumlah_bayar)}`
-      )
+      formatLine("Total Bayar", formatCurrency(ppiData.summary.jumlah_bayar))
     );
     lines.push(
       formatLine(
@@ -488,6 +492,18 @@ export default function PrintPenerimaanPiutang() {
       currency: "IDR",
       minimumFractionDigits: 0,
     }).format(amount);
+
+  const formatCurrency2 = (amount: number): string => {
+    const value = Math.round(amount || 0);
+
+    // Menggunakan style 'decimal' agar HANYA angka dan pemisah ribuan yang dihasilkan.
+    // Ini adalah kunci untuk menghindari simbol mata uang.
+    return value.toLocaleString("id-ID", {
+      style: "decimal",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+  };
 
   const formatDateShort = (dateString: string): string => {
     try {
@@ -767,90 +783,6 @@ export default function PrintPenerimaanPiutang() {
     }
   };
 
-  // const printViaBluetooth = async () => {
-  //   if (!ppiData) {
-  //     Alert.alert("Error", "Data PPI tidak tersedia");
-  //     return;
-  //   }
-
-  //   try {
-  //     setPrinting(true);
-
-  //     if (isBluetoothSupported && BluetoothEscposPrinter) {
-  //       // Connect to printer
-  //       if (!connectedDevice) {
-  //         await printWithRealBluetooth();
-  //       }
-
-  //       await BluetoothEscposPrinter.printerInit();
-
-  //       // 1. Print PPI text lengkap
-  //       const printText = generatePrintText();
-  //       await BluetoothEscposPrinter.printText(printText + "\n", {});
-
-  //       // 2. Beri jarak dan print QR Code
-  //       await BluetoothEscposPrinter.printAndFeed(3);
-
-  //       // Print header QR Code
-  //       await BluetoothEscposPrinter.printText("QR CODE VERIFIKASI\n", {});
-  //       await BluetoothEscposPrinter.printText("================\n", {});
-
-  //       const qrData = `PPI:${ppiData.no_ppi}|BAYAR:${ppiData.summary.jumlah_bayar}`;
-
-  //       // Print QR Code - PERBAIKAN PARAMETER
-  //       try {
-  //         console.log("Mencoba print QR code PPI...");
-  //         // Gunakan parameter number, bukan string
-  //         await BluetoothEscposPrinter.printQRCode(qrData, 6, 1); // Size 6, Correction M (1)
-  //         console.log("QR Code PPI berhasil dicetak");
-  //       } catch (qrError) {
-  //         console.log("QR Code PPI gagal:", qrError);
-
-  //         // Fallback: coba tanpa correction level
-  //         try {
-  //           await BluetoothEscposPrinter.printQRCode(qrData, 6); // Hanya size
-  //           console.log("QR Code PPI berhasil tanpa correction");
-  //         } catch (qrError2) {
-  //           console.log("QR Code PPI masih gagal:", qrError2);
-  //           await BluetoothEscposPrinter.printText(`[QR: ${qrData}]\n`, {});
-  //         }
-  //       }
-
-  //       // Print info di bawah QR Code
-  //       await BluetoothEscposPrinter.printAndFeed(1);
-  //       await BluetoothEscposPrinter.printText("VERIFIKASI DIGITAL\n", {});
-  //       await BluetoothEscposPrinter.printText(`PPI: ${ppiData.no_ppi}\n`, {});
-  //       await BluetoothEscposPrinter.printText(
-  //         `Bayar: ${formatCurrency(ppiData.summary.jumlah_bayar)}\n`,
-  //         {}
-  //       );
-  //       await BluetoothEscposPrinter.printText("SCAN UNTUK DETAIL\n", {});
-
-  //       // 3. Feed dan cut
-  //       await BluetoothEscposPrinter.printAndFeed(4);
-  //       if (BluetoothEscposPrinter.cut) {
-  //         await BluetoothEscposPrinter.cut();
-  //       } else {
-  //         await BluetoothEscposPrinter.printAndFeed(6); // Extra feed jika cut tidak ada
-  //       }
-
-  //       Alert.alert(
-  //         "Berhasil",
-  //         "Bukti Penerimaan Piutang berhasil dicetak dengan QR Code!"
-  //       );
-  //     } else {
-  //       setShowPreview(true);
-  //     }
-  //   } catch (error: any) {
-  //     console.error("Print error:", error);
-  //     Alert.alert("Print Gagal", error.message || "Terjadi kesalahan");
-  //   } finally {
-  //     setPrinting(false);
-  //   }
-  // };
-
-  // ================== PDF Print ==================
-
   const printViaBluetooth = async () => {
     if (!ppiData) {
       Alert.alert("Error", "Data PPI tidak tersedia");
@@ -881,51 +813,27 @@ export default function PrintPenerimaanPiutang() {
 
         await BluetoothEscposPrinter.printQRCode(
           qrData, // Data yang akan di-encode
-          12, // Ukuran (250 adalah nilai umum untuk ukuran medium)
-          0, // (Beberapa library meminta dua kali nilai ukuran)
+          200, // Ukuran (250 adalah nilai umum untuk ukuran medium)
+          2 // (Beberapa library meminta dua kali nilai ukuran)
         );
-
-        console.log(`QR Data (JSON) yang di-encode: ${qrData}`);
-
-        // await BluetoothEscposPrinter.printText(
-        //   `No. PPI: ${ppiData.no_ppi}\n` +
-        //     `Tgl: ${ppiData.tanggal_ppi}\n` +
-        //     `Total: ${ppiData.summary.jumlah_bayar}\n`,
-        //   {}
-        // );
-
-        const barcodeData = ppiData.no_ppi;
-
-        // Print barcode dengan 6 parameter
-        if (BluetoothEscposPrinter.printBarCode) {
-          try {
-            await BluetoothEscposPrinter.printBarCode(
-              barcodeData,
-              8,
-              3,
-              80,
-              0,
-              2
-            );
-          } catch {
-            await printTextBarcode(barcodeData);
-            console.error("❌ Msuk CATCH");
-          }
-        } else {
-          await printTextBarcode(barcodeData);
-           console.error("❌ Msuk ESLE");
-        }
 
         // 3. Info
-        await BluetoothEscposPrinter.printAndFeed(1);
+        await BluetoothEscposPrinter.printAndFeed(2);
+        await BluetoothEscposPrinter.printText("VERIFIKASI DIGITAL\n", {});
         await BluetoothEscposPrinter.printText(`PPI: ${ppiData.no_ppi}\n`, {});
         await BluetoothEscposPrinter.printText(
-          `Bayar: ${formatCurrency(ppiData.summary.jumlah_bayar)}\n`,
+          // Tambahkan 'Rp' secara manual di awal string
+          `Bayar: Rp${formatCurrency2(ppiData.summary.jumlah_bayar)}\n`,
           {}
         );
+        await BluetoothEscposPrinter.printText("SCAN UNTUK DETAIL\n", {});
 
         // 4. Finish
-        await BluetoothEscposPrinter.printAndFeed(6);
+        if (BluetoothEscposPrinter.cut) {
+          await BluetoothEscposPrinter.cut();
+        } else {
+          await BluetoothEscposPrinter.printAndFeed(6); // Extra feed jika cut tidak ada
+        }
 
         Alert.alert("✅ Berhasil", "Bukti PPI berhasil dicetak!");
       } else {
