@@ -21,7 +21,14 @@ import * as Sharing from "expo-sharing";
 import * as FileSystem from "expo-file-system/legacy";
 import Constants from "expo-constants";
 import { Perusahaan } from "@/api/interface";
-
+import QRCode from "react-native-qrcode-svg";
+import ViewShot from "react-native-view-shot";
+import {
+  generateQRCodeBase64,
+  prepareQRForPrint,
+  generateQRPatternText,
+} from "../../../utils/qrCodeService";
+// import BluetoothEscposPrinter from "@ccdilan/react-native-bluetooth-escpos-printer";
 // ================== Environment Configuration ==================
 const getBuildEnvironment = () => {
   const manifest = Constants.expoConfig;
@@ -58,6 +65,7 @@ let BluetoothEscposPrinter: any = null;
 let bluetoothLibAvailable = false;
 try {
   const lib = require("@ccdilan/react-native-bluetooth-escpos-printer");
+  console.log("Available methods:", Object.keys(lib));
   BluetoothManager =
     lib?.BluetoothManager || lib?.default?.BluetoothManager || lib;
   BluetoothEscposPrinter =
@@ -161,6 +169,9 @@ export default function PrintSalesOrder() {
   const [showPreview, setShowPreview] = useState(false);
   const printRef = useRef<View>(null);
   const [infoPerusahaan, setInfoPerusahaan] = useState<Perusahaan[]>([]);
+  const [qrCodeData, setQrCodeData] = useState<string>("");
+  const [qrCodeBase64, setQrCodeBase64] = useState<string>("");
+  const viewShotRef = useRef<ViewShot>(null);
 
   const caraKirimMap: Record<"KG" | "KP" | "AG" | "AP", string> = {
     KG: "Dikirim Gudang",
@@ -172,16 +183,24 @@ export default function PrintSalesOrder() {
   const loadDataPerusahaan = async () => {
     try {
       const res = await dataUmumAPI.getInfoPerusahaan();
-      // console.log("res info ", res.data);
-      if (res.success && Array.isArray(res.data)) {
-        setInfoPerusahaan(res.data);
-        return res.data;
-      }
-      return [];
+      console.log("res info ", res.data);
+
+      const data = Array.isArray(res.data) ? res.data : [];
+      setInfoPerusahaan(data);
+
+      return data; // always return array
     } catch (err: any) {
       console.error("Error loading info perusahaan:", err);
+      return infoPerusahaan || []; // gunakan state terakhir
     }
   };
+
+  useEffect(() => {
+    if (orderData) {
+      const qrData = generateQRData(orderData);
+      setQrCodeData(qrData);
+    }
+  }, [orderData]);
 
   useEffect(() => {
     console.log("Build flags", {
@@ -206,14 +225,50 @@ export default function PrintSalesOrder() {
     }
   }, [orderId]);
 
+  const generateQRData = (order: SalesOrderData): string => {
+    const qrObject = {
+      type: "SALES_ORDER",
+      so_number: order.no_so,
+      so_id: order.kode_so,
+      customer: order.nama_cust,
+      date: order.tgl_so,
+      total: order.total,
+      items_count: order.items.length,
+      sales: order.nama_sales,
+      status: order.status,
+      sync: order.synced,
+      timestamp: new Date().toISOString(),
+      company: order.perusahaan.nama,
+    };
+    return JSON.stringify(qrObject);
+  };
+
+  const captureQRCode = async (): Promise<string> => {
+    if (!viewShotRef.current?.capture) {
+      throw new Error("ViewShot not available");
+    }
+
+    try {
+      const uri = await viewShotRef.current.capture();
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      return `data:image/png;base64,${base64}`;
+    } catch (error) {
+      console.error("QR Code capture failed:", error);
+      throw error;
+    }
+  };
+
   const loadSalesOrderData = async () => {
     try {
       setLoading(true);
       setError(null);
-      await loadDataPerusahaan();
+      const perusahaanData = await loadDataPerusahaan();
       const res = await salesOrderAPI.getSoDetailCombined(orderId);
       if (res.success && res.data) {
-        let formattedData = mapApiDataToPrintFormat(res.data);
+        let formattedData = mapApiDataToPrintFormat(res.data, perusahaanData);
+
         if (formattedData.cara_kirim) {
           formattedData.cara_kirim_deskripsi =
             caraKirimMap[formattedData.cara_kirim];
@@ -230,7 +285,10 @@ export default function PrintSalesOrder() {
     }
   };
 
-  const mapApiDataToPrintFormat = (apiData: any): SalesOrderData => {
+  const mapApiDataToPrintFormat = (
+    apiData: any,
+    infoPerusahaan: Perusahaan[] = []
+  ): SalesOrderData => {
     const header = apiData.header || {};
     const items = apiData.items || [];
     const summary = apiData.summary || {};
@@ -276,6 +334,7 @@ export default function PrintSalesOrder() {
       telepon: perusahaanInfo.telp?.trim() || "-",
       email: perusahaanInfo.email?.trim() || "-",
     };
+
     return {
       kode_so: header.kode_so || orderId,
       no_so: header.no_so || header.kode_so || orderId,
@@ -317,6 +376,240 @@ export default function PrintSalesOrder() {
   };
 
   // ================== Generate Print Text (48 chars, full numbers, wrap text) ==================
+  // const generatePrintText = (): string => {
+  //   if (!orderData) return "";
+  //   const PRINT_WIDTH = 32;
+  //   const MAX_CHAR_PER_LINE = 32;
+
+  //   const wrapText = (
+  //     text: string,
+  //     width: number = MAX_CHAR_PER_LINE
+  //   ): string[] => {
+  //     if (!text?.trim()) return [""];
+  //     const words = text.trim().split(" ");
+  //     const lines: string[] = [];
+  //     let currentLine = "";
+
+  //     for (const word of words) {
+  //       const testLine = currentLine ? `${currentLine} ${word}` : word;
+
+  //       if (testLine.length <= width) {
+  //         currentLine = testLine;
+  //       } else {
+  //         if (currentLine) lines.push(currentLine);
+  //         currentLine = word.length > width ? word.substring(0, width) : word;
+  //       }
+  //     }
+
+  //     if (currentLine) lines.push(currentLine);
+  //     return lines;
+  //   };
+
+  //   const centerText = (text: string): string => {
+  //     if (!text) return "";
+  //     const cleanText = text.trim();
+  //     if (cleanText.length >= PRINT_WIDTH) return cleanText;
+
+  //     const padding = Math.floor((PRINT_WIDTH - cleanText.length) / 2);
+  //     return " ".repeat(Math.max(0, padding)) + cleanText;
+  //   };
+
+  //   const formatLine = (left: string, right: string = ""): string => {
+  //     const availableWidth = PRINT_WIDTH - left.length;
+  //     if (right.length >= availableWidth) {
+  //       return left + right.substring(0, availableWidth);
+  //     }
+  //     return left + " ".repeat(availableWidth - right.length) + right;
+  //   };
+
+  //   const formatCurrency = (amount: number): string => {
+  //     const value = Math.round(amount || 0);
+  //     return `${value.toLocaleString("id-ID")}`;
+  //   };
+
+  //   const formatDateShort = (dateString: string): string => {
+  //     try {
+  //       const date = new Date(dateString);
+  //       return date.toLocaleDateString("id-ID");
+  //     } catch {
+  //       return dateString;
+  //     }
+  //   };
+
+  //   const lines: string[] = [];
+
+  //   // HEADER
+  //   lines.push("=".repeat(PRINT_WIDTH));
+
+  //   // Wrap untuk header yang panjang
+  //   const wrappedNamaPerusahaan = wrapText(
+  //     orderData.perusahaan.nama.toUpperCase(),
+  //     PRINT_WIDTH
+  //   );
+  //   wrappedNamaPerusahaan.forEach((line) => lines.push(centerText(line)));
+
+  //   const wrappedAlamat = wrapText(orderData.perusahaan.alamat, PRINT_WIDTH);
+  //   wrappedAlamat.forEach((line) => lines.push(centerText(line)));
+
+  //   lines.push(
+  //     centerText(
+  //       `${orderData.perusahaan.kota} - Telp: ${orderData.perusahaan.telepon}`
+  //     )
+  //   );
+  //   lines.push("");
+  //   lines.push(centerText("SALES ORDER"));
+  //   lines.push("=".repeat(PRINT_WIDTH));
+
+  //   // KEPADA
+  //   lines.push("KEPADA:");
+  //   wrapText(orderData.nama_cust, PRINT_WIDTH).forEach((line) =>
+  //     lines.push(line)
+  //   );
+  //   wrapText(orderData.alamat, PRINT_WIDTH).forEach((line) => lines.push(line));
+
+  //   if (orderData.kota_kirim) {
+  //     wrapText(orderData.kota_kirim, PRINT_WIDTH).forEach((line) =>
+  //       lines.push(line)
+  //     );
+  //   }
+
+  //   if (orderData.hp) {
+  //     lines.push(`HP: ${orderData.hp}`);
+  //   }
+  //   lines.push("");
+
+  //   // INFO ORDER
+  //   lines.push("INFO ORDER:");
+  //   lines.push("-".repeat(PRINT_WIDTH));
+  //   lines.push(formatLine("No SO", orderData.no_so));
+  //   lines.push(formatLine("Tgl", formatDateShort(orderData.tgl_so)));
+  //   lines.push(formatLine("Sales", orderData.nama_sales));
+  //   lines.push(formatLine("Status", orderData.status.toUpperCase()));
+
+  //   if (orderData.kode_termin) {
+  //     lines.push(formatLine("Termin", orderData.nama_termin));
+  //   }
+
+  //   if (orderData.cara_kirim_deskripsi) {
+  //     lines.push("Kirim:");
+  //     wrapText(orderData.cara_kirim_deskripsi, PRINT_WIDTH).forEach((line) =>
+  //       lines.push(line)
+  //     );
+  //   }
+  //   lines.push("");
+
+  //   // KETERANGAN
+  //   if (orderData.keterangan && orderData.keterangan.trim() !== "") {
+  //     lines.push("KET:");
+  //     lines.push("-".repeat(PRINT_WIDTH));
+  //     wrapText(orderData.keterangan, PRINT_WIDTH).forEach((line) =>
+  //       lines.push(line)
+  //     );
+  //     lines.push("");
+  //   }
+
+  //   // TABEL ITEM - DENGAN FORMAT YANG BENAR
+  //   lines.push("ITEM:");
+  //   lines.push("-".repeat(PRINT_WIDTH));
+
+  //   orderData.items.forEach((item, index) => {
+  //     const no = `${index + 1}.`;
+
+  //     // Kode item + nama
+  //     const itemLine = `${no} ${item.no_item}`;
+  //     lines.push(itemLine);
+
+  //     // Nama item di baris berikutnya jika panjang
+  //     const wrappedName = wrapText(item.nama_item, PRINT_WIDTH - 2);
+  //     wrappedName.forEach((line) => lines.push(`  ${line}`));
+
+  //     // FORMAT DETAIL YANG BENAR: "Qty @ Harga = Subtotal"
+  //     const qtyStr = `${item.quantity}`;
+  //     const satuan = `${item.satuan}`;
+  //     const hargaStr = formatCurrency(item.harga);
+  //     const subtotalStr = formatCurrency(item.subtotal);
+
+  //     // Format: "  2 @ 500.000 = 1.000.000"
+  //     const detailLine = `  ${qtyStr}${satuan} @ ${hargaStr} = ${subtotalStr}`;
+
+  //     // Cek jika line terlalu panjang, buat format alternatif
+  //     if (detailLine.length <= PRINT_WIDTH) {
+  //       lines.push(detailLine);
+  //     } else {
+  //       // Fallback: "  2 = 1.000.000"
+  //       lines.push(`  ${qtyStr} = ${subtotalStr}`);
+  //     }
+
+  //     // Diskon item (jika ada)
+  //     if (item.diskon_value > 0) {
+  //       lines.push(`  Disc: -${formatCurrency(item.diskon_value)}`);
+  //     }
+
+  //     // Spasi antar item
+  //     if (index < orderData.items.length - 1) {
+  //       lines.push("");
+  //     }
+  //   });
+
+  //   lines.push("-".repeat(PRINT_WIDTH));
+  //   lines.push("");
+
+  //   // RINCIAN
+  //   lines.push("RINCIAN:");
+  //   lines.push("-".repeat(PRINT_WIDTH));
+
+  //   const diskonDetail =
+  //     orderData.summary?.diskon_detail ??
+  //     orderData.items.reduce((sum, item) => sum + (item.diskon_value || 0), 0);
+
+  //   lines.push(formatLine("Subtotal", formatCurrency(orderData.subtotal)));
+
+  //   if (diskonDetail > 0) {
+  //     lines.push(formatLine("Disc Item", `-${formatCurrency(diskonDetail)}`));
+  //   }
+
+  //   if (orderData.diskon_header > 0) {
+  //     lines.push(
+  //       formatLine("Disc Hdr", `-${formatCurrency(orderData.diskon_header)}`)
+  //     );
+  //   }
+
+  //   if (orderData.ppn_value > 0) {
+  //     lines.push(
+  //       formatLine(
+  //         `PPN${orderData.ppn_percent}%`,
+  //         `+${formatCurrency(orderData.ppn_value)}`
+  //       )
+  //     );
+  //   }
+
+  //   if (orderData.uang_muka > 0) {
+  //     lines.push(
+  //       formatLine("Uang Muka", `-${formatCurrency(orderData.uang_muka)}`)
+  //     );
+  //   }
+
+  //   lines.push("-".repeat(PRINT_WIDTH));
+  //   lines.push(centerText(`TOTAL: ${formatCurrency(orderData.total)}`));
+  //   lines.push("-".repeat(PRINT_WIDTH));
+  //   lines.push("");
+
+  //   // FOOTER
+  //   lines.push(centerText("HORMAT KAMI"));
+  //   lines.push("");
+  //   lines.push(centerText(orderData.perusahaan.nama));
+  //   lines.push("");
+  //   lines.push(centerText("CUSTOMER"));
+  //   lines.push("");
+  //   lines.push("-".repeat(PRINT_WIDTH));
+  //   lines.push(centerText(`Print: ${new Date().toLocaleString("id-ID")}`));
+  //   lines.push(centerText(orderData.synced === "Y" ? "SYNCED" : "PENDING"));
+  //   lines.push("");
+  //   lines.push("=".repeat(PRINT_WIDTH));
+
+  //   return lines.join("\n");
+  // };
+
   const generatePrintText = (): string => {
     if (!orderData) return "";
     const PRINT_WIDTH = 32;
@@ -535,13 +828,7 @@ export default function PrintSalesOrder() {
     lines.push("-".repeat(PRINT_WIDTH));
     lines.push("");
 
-    // FOOTER
-    lines.push(centerText("HORMAT KAMI"));
-    lines.push("");
-    lines.push(centerText(orderData.perusahaan.nama));
-    lines.push("");
-    lines.push(centerText("CUSTOMER"));
-    lines.push("");
+    // FOOTER - HANYA INFO PRINT & STATUS (HILANGKAN HORMAT KAMI)
     lines.push("-".repeat(PRINT_WIDTH));
     lines.push(centerText(`Print: ${new Date().toLocaleString("id-ID")}`));
     lines.push(centerText(orderData.synced === "Y" ? "SYNCED" : "PENDING"));
@@ -550,6 +837,7 @@ export default function PrintSalesOrder() {
 
     return lines.join("\n");
   };
+
   // ================== Utilities ==================
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat("id-ID", {
@@ -572,41 +860,100 @@ export default function PrintSalesOrder() {
   };
 
   // ================== Print Preview Modal ==================
+  // const PrintPreviewModal = () => {
+  //   const text = generatePrintText();
+  //   return (
+  //     <Modal visible={showPreview} animationType="slide">
+  //       <SafeAreaView style={styles.previewContainer}>
+  //         <View style={styles.previewHeader}>
+  //           <Text style={styles.previewTitle}>Print Preview SO</Text>
+  //           <TouchableOpacity
+  //             onPress={() => setShowPreview(false)}
+  //             style={{ padding: 8 }}
+  //           >
+  //             <MaterialIcons name="close" size={20} color="#333" />
+  //           </TouchableOpacity>
+  //         </View>
+  //         <ScrollView contentContainerStyle={styles.previewBody}>
+  //           <Text style={styles.monoText}>{text}</Text>
+  //         </ScrollView>
+  //         <View style={styles.previewActions}>
+  //           <TouchableOpacity
+  //             style={[
+  //               styles.btn,
+  //               { backgroundColor: "#007bff", marginRight: 8 },
+  //             ]}
+  //             onPress={() => {
+  //               setShowPreview(false);
+  //               printViaBluetooth();
+  //             }}
+  //           >
+  //             <Text style={styles.btnText}>Print</Text>
+  //           </TouchableOpacity>
+  //           <TouchableOpacity
+  //             style={[styles.btn, { backgroundColor: "#6f42c1" }]}
+  //             onPress={() => setShowPreview(false)}
+  //           >
+  //             <Text style={styles.btnText}>Tutup</Text>
+  //           </TouchableOpacity>
+  //         </View>
+  //       </SafeAreaView>
+  //     </Modal>
+  //   );
+  // };
+
   const PrintPreviewModal = () => {
-    const text = generatePrintText();
+    const textContent = generatePrintText();
+    const qrData = `SO:${orderData?.no_so}|TOTAL:${orderData?.total}`;
+
     return (
       <Modal visible={showPreview} animationType="slide">
         <SafeAreaView style={styles.previewContainer}>
           <View style={styles.previewHeader}>
-            <Text style={styles.previewTitle}>Print Preview SO</Text>
-            <TouchableOpacity
-              onPress={() => setShowPreview(false)}
-              style={{ padding: 8 }}
-            >
-              <MaterialIcons name="close" size={20} color="#333" />
+            <Text style={styles.previewTitle}>Print Preview</Text>
+            <TouchableOpacity onPress={() => setShowPreview(false)}>
+              <MaterialIcons name="close" size={24} color="#333" />
             </TouchableOpacity>
           </View>
-          <ScrollView contentContainerStyle={styles.previewBody}>
-            <Text style={styles.monoText}>{text}</Text>
+
+          <ScrollView style={styles.previewBody}>
+            <Text style={styles.monoText}>{textContent}</Text>
+
+            <View style={styles.sectionDivider} />
+
+            <Text style={styles.sectionTitle}>QR Code Area:</Text>
+            <Text style={styles.monoText}>
+              QR CODE VERIFIKASI{"\n"}
+              ================{"\n"}
+              [QR CODE WILL APPEAR HERE]{"\n"}
+              {"\n"}
+              SCAN UNTUK VERIFIKASI{"\n"}
+              SO: {orderData?.no_so}
+            </Text>
+
+            <View style={styles.qrPreview}>
+              <Text style={styles.qrPreviewTitle}>
+                Visual QR Code (Reference):
+              </Text>
+              <QRCode
+                value={qrData}
+                size={120}
+                color="black"
+                backgroundColor="white"
+              />
+              <Text style={styles.qrDataText}>{qrData}</Text>
+            </View>
           </ScrollView>
+
           <View style={styles.previewActions}>
             <TouchableOpacity
-              style={[
-                styles.btn,
-                { backgroundColor: "#007bff", marginRight: 8 },
-              ]}
+              style={styles.printButton}
               onPress={() => {
                 setShowPreview(false);
                 printViaBluetooth();
               }}
             >
-              <Text style={styles.btnText}>Print</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.btn, { backgroundColor: "#6f42c1" }]}
-              onPress={() => setShowPreview(false)}
-            >
-              <Text style={styles.btnText}>Tutup</Text>
+              <Text style={styles.printButtonText}>Print dengan QR Code</Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -724,8 +1071,82 @@ export default function PrintSalesOrder() {
     setConnectedDevice(null);
   };
 
+  const printQRCodeBluetooth = async (orderData: SalesOrderData) => {
+    if (!BluetoothEscposPrinter) return;
+
+    try {
+      // Generate QR data
+      const qrData = generateQRData(orderData);
+
+      // Beri jarak sebelum QR code
+      await BluetoothEscposPrinter.printAndFeed(2);
+
+      // Center the QR code
+      await BluetoothEscposPrinter.printText("\n", {});
+
+      // Print QR Code menggunakan ESC/POS commands
+      // Ukuran QR code (1-16, biasanya 3-6 untuk thermal printer)
+      const qrSize = 4;
+
+      // Error correction level: L(7%), M(15%), Q(25%), H(30%)
+      const errorCorrectionLevel = "M";
+
+      // Print QR code menggunakan command ESC/POS
+      await BluetoothEscposPrinter.printQRCode(
+        qrData,
+        qrSize,
+        errorCorrectionLevel
+      );
+
+      // Beri jarak setelah QR code
+      await BluetoothEscposPrinter.printAndFeed(1);
+
+      // Print teks di bawah QR code
+      await BluetoothEscposPrinter.printText(
+        centerTextThermal("VERIFIKASI DIGITAL") + "\n",
+        {}
+      );
+      await BluetoothEscposPrinter.printText(
+        centerTextThermal(`SO: ${orderData.no_so}`) + "\n",
+        {}
+      );
+      await BluetoothEscposPrinter.printText(
+        centerTextThermal("SCAN UNTUK DETAIL") + "\n",
+        {}
+      );
+
+      await BluetoothEscposPrinter.printAndFeed(2);
+    } catch (error) {
+      console.error("❌ QR Code print failed:", error);
+      // Fallback: print text pattern jika QR code gagal
+      await BluetoothEscposPrinter.printAndFeed(1);
+      await BluetoothEscposPrinter.printText(
+        centerTextThermal("VERIFIKASI DIGITAL") + "\n",
+        {}
+      );
+      await BluetoothEscposPrinter.printText(
+        centerTextThermal("(QR CODE GAGAL DICETAK)") + "\n",
+        {}
+      );
+      await BluetoothEscposPrinter.printText(
+        centerTextThermal(`SO: ${orderData.no_so}`) + "\n",
+        {}
+      );
+      await BluetoothEscposPrinter.printAndFeed(1);
+    }
+  };
+
+  // Helper function untuk center text di thermal printer
+  const centerTextThermal = (text: string): string => {
+    const PRINT_WIDTH = 32;
+    if (text.length >= PRINT_WIDTH) return text;
+
+    const padding = Math.floor((PRINT_WIDTH - text.length) / 2);
+    return " ".repeat(Math.max(0, padding)) + text;
+  };
+
   // ================== Print via Bluetooth ==================
-  const printWithRealBluetooth = async () => {
+  const printWithRealBluetooth = async (includeQRCode: boolean = true) => {
     if (!BluetoothEscposPrinter || !BluetoothManager || !orderData) {
       throw new Error("Library printer thermal tidak tersedia");
     }
@@ -760,6 +1181,10 @@ export default function PrintSalesOrder() {
           encoding: "UTF-8",
           codepage: 0,
         });
+
+        if (includeQRCode) {
+          await printQRCodeBluetooth(orderData);
+        }
       } catch (e) {
         await BluetoothEscposPrinter.printText(printText + "\n", {
           encoding: "GBK",
@@ -783,42 +1208,228 @@ export default function PrintSalesOrder() {
     }
   };
 
+  // const printViaBluetooth = async () => {
+  //   if (!orderData) {
+  //     Alert.alert("Error", "Data order tidak tersedia");
+  //     return;
+  //   }
+
+  //   try {
+  //     setPrinting(true);
+
+  //     if (isBluetoothSupported && BluetoothEscposPrinter) {
+  //       // Connect to printer
+  //       if (!connectedDevice) {
+  //         await printWithRealBluetooth();
+  //       }
+
+  //       await BluetoothEscposPrinter.printerInit();
+
+  //       // 1. Print sales order text biasa
+  //       const printText = generatePrintText();
+  //       await BluetoothEscposPrinter.printText(printText + "\n", {});
+
+  //       // 2. Beri jarak
+  //       await BluetoothEscposPrinter.printAndFeed(3);
+
+  //       // 3. Print QR Code - APPROACH PALING SIMPLE
+  //       await BluetoothEscposPrinter.printText("QR CODE VERIFIKASI\n", {});
+  //       await BluetoothEscposPrinter.printText("================\n", {});
+
+  //       const qrData = `SO:${orderData.no_so}|TOTAL:${orderData.total}`;
+
+  //       // Coba print QR code
+  //       try {
+  //         console.log("Mencoba print QR code dengan parameter number...");
+
+  //         // Parameter yang benar berdasarkan dokumentasi library:
+  //         // printQRCode(data, size, correctionLevel)
+  //         // correctionLevel: 0=L, 1=M, 2=Q, 3=H
+  //         await BluetoothEscposPrinter.printQRCode(qrData, 6, 1); // Size 6, Correction M
+  //         console.log("QR Code berhasil dicetak");
+  //       } catch (qrError) {
+  //         try {
+  //           await BluetoothEscposPrinter.printQRCode(qrData, 4, 0); // Size 4, Correction L
+  //           console.log("QR Code berhasil dengan size 4");
+  //         } catch (qrError2) {
+  //           console.log("QR Code method 2 gagal:", qrError2);
+
+  //           // Coba tanpa correction level
+  //           try {
+  //             await BluetoothEscposPrinter.printQRCode(qrData, 6); // Hanya size
+  //             console.log("QR Code berhasil tanpa correction level");
+  //           } catch (qrError3) {
+  //             console.log("QR Code method 3 gagal:", qrError3);
+
+  //             // Fallback ke barcode
+  //             try {
+  //               if (BluetoothEscposPrinter.printBarCode) {
+  //                 await BluetoothEscposPrinter.printBarCode(
+  //                   orderData.no_so,
+  //                   8, // TYPE_CODE128
+  //                   2, // width
+  //                   60, // height
+  //                   2 // text position
+  //                 );
+  //                 console.log("Barcode berhasil dicetak sebagai alternatif");
+  //               } else {
+  //                 throw new Error("printBarCode tidak tersedia");
+  //               }
+  //             } catch (barcodeError) {
+  //               console.log("Barcode juga gagal:", barcodeError);
+  //               // Final fallback: print text saja
+  //               await BluetoothEscposPrinter.printText(`[QR: ${qrData}]\n`, {});
+  //             }
+  //           }
+  //         }
+  //       }
+
+  //       // 4. Print info di bawah QR
+  //       await BluetoothEscposPrinter.printAndFeed(1);
+  //       await BluetoothEscposPrinter.printText("SCAN UNTUK VERIFIKASI\n", {});
+  //       await BluetoothEscposPrinter.printText(`SO: ${orderData.no_so}\n`, {});
+
+  //       // 5. Feed dan cut
+  //       await BluetoothEscposPrinter.printAndFeed(4);
+
+  //       // Cek apakah cut tersedia
+  //       if (BluetoothEscposPrinter.cut) {
+  //         await BluetoothEscposPrinter.cut();
+  //       } else {
+  //         await BluetoothEscposPrinter.printAndFeed(6); // Extra feed jika cut tidak ada
+  //       }
+
+  //       Alert.alert("Berhasil", "Sales Order + QR Code berhasil dicetak!");
+  //     } else {
+  //       // Simulation mode
+  //       setShowPreview(true);
+  //     }
+  //   } catch (error: any) {
+  //     console.error("Print error:", error);
+  //     Alert.alert("Print Gagal", error.message || "Terjadi kesalahan");
+  //   } finally {
+  //     setPrinting(false);
+  //   }
+  // };
+
+  // ================== PDF Print ==================
+
   const printViaBluetooth = async () => {
     if (!orderData) {
       Alert.alert("Error", "Data order tidak tersedia");
       return;
     }
+
     try {
       setPrinting(true);
-      if (isBluetoothSupported && BluetoothEscposPrinter && BluetoothManager) {
-        await printWithRealBluetooth();
-      } else {
-        Alert.alert(
-          "Simulation",
-          "Mode simulation aktif — hasil print akan diexport sebagai file atau bisa dilihat di Preview.",
-          [
-            { text: "Lihat Preview", onPress: () => setShowPreview(true) },
-            { text: "Export TXT", onPress: exportTextFile },
-            { text: "OK" },
-          ]
+
+      if (isBluetoothSupported && BluetoothEscposPrinter) {
+        await BluetoothEscposPrinter.printerInit();
+
+        // 1. Print sales order text
+        const printText = generatePrintText();
+        // const qrData = `SO:${orderData?.no_so}|TOTAL:${orderData?.total}`;
+        const qrData = JSON.stringify({
+          t: "PPI",
+          n: orderData?.no_so,
+          d: orderData?.tgl_so,
+          a: orderData?.total,
+          c: orderData?.nama_cust?.substring(0, 15),
+        });
+
+        await BluetoothEscposPrinter.printText(printText + "\n", {});
+
+        // 2. Print Barcode Section
+        await BluetoothEscposPrinter.printAndFeed(3);
+        await BluetoothEscposPrinter.printText("BARCODE VERIFIKASI\n", {});
+        await BluetoothEscposPrinter.printText("==================\n", {});
+        // GANTI DENGAN INI UNTUK MENCETAK QR CODE:
+        await BluetoothEscposPrinter.printQRCode(
+          qrData, // Data yang akan di-encode
+          12, // Ukuran (250 adalah nilai umum untuk ukuran medium)
+          0 // (Beberapa library meminta dua kali nilai ukuran)
         );
+
+        console.log(`QR Data (JSON) yang di-encode: ${qrData}`);
+
+        // await BluetoothEscposPrinter.printText(
+        //   `No. SO: ${orderData.no_so}\n` +
+        //     `Tgl: ${orderData.tgl_so}\n` +
+        //     `Total: ${orderData.total}\n`,
+        //   {}
+        // );
+        // Data untuk barcode
+        const barcodeData = orderData.no_so.replace(/[^a-zA-Z0-9]/g, "");
+
+        // Print barcode dengan 6 PARAMETER
+        if (BluetoothEscposPrinter.printBarCode) {
+          try {
+            await BluetoothEscposPrinter.printBarCode(
+              barcodeData, // 1. data: string
+              8, // 2. type: number (CODE128)
+              3, // 3. width: number
+              80, // 4. height: number
+              0, // 5. textPosition: number
+              2 // 6. ??? (mungkin encoding/codepage) - COBA 0
+            );
+            console.log("✅ Barcode berhasil dicetak dengan 6 parameter");
+          } catch (barcodeError) {
+            console.log(
+              "❌ Barcode dengan 6 param gagal Catch 1:",
+              barcodeError
+            );
+
+            // Coba kombinasi parameter lain
+            try {
+              await BluetoothEscposPrinter.printBarCode(
+                barcodeData,
+                8,
+                2,
+                60,
+                2,
+                1 // Coba parameter berbeda
+              );
+              console.log("✅ Barcode berhasil dengan kombinasi lain");
+            } catch (barcodeError2) {
+              console.log("❌ Barcode masih gagal Catch 2:", barcodeError2);
+              await printTextBarcode(barcodeData);
+            }
+          }
+        } else {
+          await printTextBarcode(barcodeData);
+          console.log("❌ Masuk ke ELSE");
+        }
+
+        // 3. Print info
+        await BluetoothEscposPrinter.printAndFeed(1);
+        await BluetoothEscposPrinter.printText("VERIFIKASI DIGITAL\n", {});
+        await BluetoothEscposPrinter.printText(`SO: ${orderData.no_so}\n`, {});
+        await BluetoothEscposPrinter.printText("SCAN UNTUK DETAIL\n", {});
+
+        // 4. Finish
+        await BluetoothEscposPrinter.printAndFeed(6);
+
+        Alert.alert("✅ Berhasil", "Sales Order berhasil dicetak!");
+      } else {
+        setShowPreview(true);
       }
     } catch (error: any) {
       console.error("❌ Print error:", error);
-      Alert.alert(
-        "Print Gagal",
-        error.message || "Terjadi kesalahan saat mencetak",
-        [
-          { text: "OK" },
-          { text: "Coba Export File", onPress: () => exportTextFile() },
-        ]
-      );
+      Alert.alert("❌ Print Gagal", "Gagal mencetak");
     } finally {
       setPrinting(false);
     }
   };
 
-  // ================== PDF Print ==================
+  // Helper function untuk print barcode text fallback
+  const printTextBarcode = async (barcodeData: string) => {
+    await BluetoothEscposPrinter.printText("┌──────────────────┐\n", {});
+    await BluetoothEscposPrinter.printText("│  ║║║║║║║║║║║║  │\n", {});
+    await BluetoothEscposPrinter.printText("│  ║║║║║║║║║║║║  │\n", {});
+    await BluetoothEscposPrinter.printText(`│    ${barcodeData}    │\n`, {});
+    await BluetoothEscposPrinter.printText("└──────────────────┘\n", {});
+  };
+
   const handlePrintPDF = async () => {
     if (!orderData) return;
     try {
@@ -838,134 +1449,184 @@ export default function PrintSalesOrder() {
     }
   };
 
+  // const generatePDFHTML = () => {
+  //   if (!orderData) return "";
+  //   const diskonDetail =
+  //     orderData.summary?.diskon_detail ??
+  //     orderData.items.reduce((sum, item) => sum + (item.diskon_value || 0), 0);
+  //   return `
+  //     <!DOCTYPE html>
+  //     <html>
+  //     <head>
+  //       <meta charset="utf-8">
+  //       <title>Sales Order - ${orderData.kode_so}</title>
+  //       <style>
+  //         body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+  //         .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
+  //         .company-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+  //         .document-title { font-size: 18px; font-weight: bold; margin-top: 20px; }
+  //         .info-section { display: flex; justify-content: space-between; margin-bottom: 30px; }
+  //         .table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  //         .table th, .table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+  //         .summary { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+  //         .summary-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+  //         .total { text-align: right; font-weight: bold; margin-top: 20px; font-size: 16px; }
+  //       </style>
+  //     </head>
+  //     <body>
+  //       <div class="header">
+  //         <div class="company-name">${orderData.perusahaan.nama}</div>
+  //         <div>${orderData.perusahaan.alamat}</div>
+  //         <div>${orderData.perusahaan.kota} - Telp: ${
+  //     orderData.perusahaan.telepon
+  //   }</div>
+  //         <div class="document-title">SALES ORDER - ${orderData.kode_so}</div>
+  //       </div>
+  //       <div class="info-section">
+  //         <div>
+  //           <strong>Kepada:</strong><br>
+  //           ${orderData.nama_cust}<br>
+  //           ${orderData.alamat}<br>
+  //           ${orderData.kota_kirim || ""}<br>
+  //           ${orderData.hp ? `Telp: ${orderData.hp}` : ""}
+  //         </div>
+  //         <div>
+  //           <strong>Info Order:</strong><br>
+  //           Tanggal: ${formatDateShort(orderData.tgl_so)}<br>
+  //           Sales: ${orderData.nama_sales}<br>
+  //           Status: ${orderData.status}<br>
+  //           ${
+  //             orderData.kode_termin
+  //               ? `Termin: ${orderData.nama_termin}<br>`
+  //               : ""
+  //           }
+  //           ${
+  //             orderData.cara_kirim_deskripsi
+  //               ? `Pengiriman: ${orderData.cara_kirim_deskripsi}<br>`
+  //               : ""
+  //           }
+  //           Sync: ${orderData.synced === "Y" ? "SYNCED" : "PENDING"}
+  //         </div>
+  //       </div>
+  //       ${
+  //         orderData.keterangan
+  //           ? `<div style="margin-bottom:20px;"><strong>Keterangan:</strong><br>${orderData.keterangan}</div>`
+  //           : ""
+  //       }
+  //       <table class="table">
+  //         <thead>
+  //           <tr>
+  //             <th>No</th><th>Item</th><th>Qty</th><th>Harga</th><th>Diskon</th><th>Subtotal</th>
+  //           </tr>
+  //         </thead>
+  //         <tbody>
+  //           ${orderData.items
+  //             .map(
+  //               (item, i) => `
+  //             <tr>
+  //               <td>${i + 1}</td>
+  //               <td>${item.nama_item}</td>
+  //               <td>${item.quantity}</td>
+  //               <td>${formatCurrency(item.harga)}</td>
+  //               <td>${
+  //                 item.diskon_value > 0
+  //                   ? "-" + formatCurrency(item.diskon_value)
+  //                   : "-"
+  //               }</td>
+  //               <td>${formatCurrency(item.subtotal)}</td>
+  //             </tr>
+  //           `
+  //             )
+  //             .join("")}
+  //         </tbody>
+  //       </table>
+  //       <div class="summary">
+  //         <div class="summary-row"><span>Subtotal</span><span>${formatCurrency(
+  //           orderData.subtotal
+  //         )}</span></div>
+  //         ${
+  //           diskonDetail > 0
+  //             ? `<div class="summary-row"><span>Diskon Detail</span><span>-${formatCurrency(
+  //                 diskonDetail
+  //               )}</span></div>`
+  //             : ""
+  //         }
+  //         ${
+  //           orderData.diskon_header > 0
+  //             ? `<div class="summary-row"><span>Diskon Header</span><span>-${formatCurrency(
+  //                 orderData.diskon_header
+  //               )}</span></div>`
+  //             : ""
+  //         }
+  //         ${
+  //           orderData.ppn_value > 0
+  //             ? `<div class="summary-row"><span>PPN</span><span>+${formatCurrency(
+  //                 orderData.ppn_value
+  //               )}</span></div>`
+  //             : ""
+  //         }
+  //         <div class="summary-row" style="border-top:1px solid #ddd; padding-top:8px; font-weight:bold;"><span>TOTAL</span><span>${formatCurrency(
+  //           orderData.total
+  //         )}</span></div>
+  //       </div>
+  //       <div style="text-align:center; font-size:12px; color:#666;">Dicetak pada: ${new Date().toLocaleString(
+  //         "id-ID"
+  //       )}</div>
+  //     </body>
+  //     </html>
+  //   `;
+  // };
   const generatePDFHTML = () => {
     if (!orderData) return "";
     const diskonDetail =
       orderData.summary?.diskon_detail ??
       orderData.items.reduce((sum, item) => sum + (item.diskon_value || 0), 0);
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Sales Order - ${orderData.kode_so}</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
-          .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
-          .company-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
-          .document-title { font-size: 18px; font-weight: bold; margin-top: 20px; }
-          .info-section { display: flex; justify-content: space-between; margin-bottom: 30px; }
-          .table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-          .table th, .table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-          .summary { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
-          .summary-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
-          .total { text-align: right; font-weight: bold; margin-top: 20px; font-size: 16px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div class="company-name">${orderData.perusahaan.nama}</div>
-          <div>${orderData.perusahaan.alamat}</div>
-          <div>${orderData.perusahaan.kota} - Telp: ${
-      orderData.perusahaan.telepon
-    }</div>
-          <div class="document-title">SALES ORDER - ${orderData.kode_so}</div>
-        </div>
-        <div class="info-section">
-          <div>
-            <strong>Kepada:</strong><br>
-            ${orderData.nama_cust}<br>
-            ${orderData.alamat}<br>
-            ${orderData.kota_kirim || ""}<br>
-            ${orderData.hp ? `Telp: ${orderData.hp}` : ""}
-          </div>
-          <div>
-            <strong>Info Order:</strong><br>
-            Tanggal: ${formatDateShort(orderData.tgl_so)}<br>
-            Sales: ${orderData.nama_sales}<br>
-            Status: ${orderData.status}<br>
-            ${
-              orderData.kode_termin
-                ? `Termin: ${orderData.nama_termin}<br>`
-                : ""
-            }
-            ${
-              orderData.cara_kirim_deskripsi
-                ? `Pengiriman: ${orderData.cara_kirim_deskripsi}<br>`
-                : ""
-            }
-            Sync: ${orderData.synced === "Y" ? "SYNCED" : "PENDING"}
-          </div>
-        </div>
-        ${
-          orderData.keterangan
-            ? `<div style="margin-bottom:20px;"><strong>Keterangan:</strong><br>${orderData.keterangan}</div>`
-            : ""
-        }
-        <table class="table">
-          <thead>
-            <tr>
-              <th>No</th><th>Item</th><th>Qty</th><th>Harga</th><th>Diskon</th><th>Subtotal</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${orderData.items
-              .map(
-                (item, i) => `
-              <tr>
-                <td>${i + 1}</td>
-                <td>${item.nama_item}</td>
-                <td>${item.quantity}</td>
-                <td>${formatCurrency(item.harga)}</td>
-                <td>${
-                  item.diskon_value > 0
-                    ? "-" + formatCurrency(item.diskon_value)
-                    : "-"
-                }</td>
-                <td>${formatCurrency(item.subtotal)}</td>
-              </tr>
-            `
-              )
-              .join("")}
-          </tbody>
-        </table>
-        <div class="summary">
-          <div class="summary-row"><span>Subtotal</span><span>${formatCurrency(
-            orderData.subtotal
-          )}</span></div>
-          ${
-            diskonDetail > 0
-              ? `<div class="summary-row"><span>Diskon Detail</span><span>-${formatCurrency(
-                  diskonDetail
-                )}</span></div>`
-              : ""
-          }
-          ${
-            orderData.diskon_header > 0
-              ? `<div class="summary-row"><span>Diskon Header</span><span>-${formatCurrency(
-                  orderData.diskon_header
-                )}</span></div>`
-              : ""
-          }
-          ${
-            orderData.ppn_value > 0
-              ? `<div class="summary-row"><span>PPN</span><span>+${formatCurrency(
-                  orderData.ppn_value
-                )}</span></div>`
-              : ""
-          }
-          <div class="summary-row" style="border-top:1px solid #ddd; padding-top:8px; font-weight:bold;"><span>TOTAL</span><span>${formatCurrency(
-            orderData.total
-          )}</span></div>
-        </div>
-        <div style="text-align:center; font-size:12px; color:#666;">Dicetak pada: ${new Date().toLocaleString(
-          "id-ID"
-        )}</div>
-      </body>
-      </html>
-    `;
-  };
 
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Sales Order - ${orderData.kode_so}</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+        .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
+        .company-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+        .document-title { font-size: 18px; font-weight: bold; margin-top: 20px; }
+        .info-section { display: flex; justify-content: space-between; margin-bottom: 30px; }
+        .table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        .table th, .table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .summary { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        .summary-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .total { text-align: right; font-weight: bold; margin-top: 20px; font-size: 16px; }
+        .qr-section { text-align: center; margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .qr-title { font-weight: bold; margin-bottom: 10px; }
+      </style>
+    </head>
+    <body>
+      <!-- Existing content... -->
+
+      <!-- Add QR Code Section -->
+      <div class="qr-section">
+        <div class="qr-title">Scan QR Code untuk Verifikasi</div>
+        <div style="margin: 10px 0;">
+          <!-- QR Code will be generated by the PDF printer -->
+          <div style="display: inline-block; padding: 10px; border: 1px solid #ccc; background: white;">
+            [QR Code: ${orderData.no_so}]
+          </div>
+        </div>
+        <div style="font-size: 12px; color: #666;">
+          SO: ${orderData.no_so} | Customer: ${orderData.nama_cust}
+        </div>
+      </div>
+
+      <div style="text-align:center; font-size:12px; color:#666;">
+        Dicetak pada: ${new Date().toLocaleString("id-ID")}
+      </div>
+    </body>
+    </html>
+  `;
+  };
   // ================== Render ==================
   if (loading) {
     return (
@@ -1023,9 +1684,9 @@ export default function PrintSalesOrder() {
           size={12}
           color="#fff"
         />
-        <Text style={styles.buildText}>
+        {/* <Text style={styles.buildText}>
           {isEASBuild ? `EAS ${buildProfile.toUpperCase()}` : "LOCAL DEV"}
-        </Text>
+        </Text> */}
         <View style={styles.buildBadges}>
           <View
             style={[
@@ -1093,14 +1754,14 @@ export default function PrintSalesOrder() {
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity
+        {/* <TouchableOpacity
           style={[styles.actionButton, styles.pdfButton]}
           onPress={handlePrintPDF}
           disabled={printing}
         >
           <MaterialIcons name="picture-as-pdf" size={20} color="#fff" />
           <Text style={styles.actionButtonText}>PDF</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
       </View>
 
       <ScrollView
@@ -1481,6 +2142,119 @@ export default function PrintSalesOrder() {
 // ================== Styles ==================
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f5f7fb" },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: "#e0e0e0",
+    marginVertical: 16,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 8,
+  },
+  qrPreview: {
+    // alignItems: "center",
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: "#f5f5f5",
+    borderRadius: 8,
+  },
+  qrDataText: {
+    fontSize: 10,
+    marginTop: 8,
+    color: "#666",
+  },
+  printButton: {
+    backgroundColor: "#007bff",
+    padding: 16,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  printButtonText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  qrPreviewSection: {
+    marginTop: 20,
+    padding: 16,
+    backgroundColor: "#f8f9fa",
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  qrPreviewDivider: {
+    width: "100%",
+    height: 1,
+    backgroundColor: "#ddd",
+    marginBottom: 16,
+  },
+  qrPreviewTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 12,
+  },
+  qrCodeVisual: {
+    padding: 10,
+    backgroundColor: "white",
+    borderRadius: 8,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  qrPreviewText: {
+    fontSize: 12,
+    color: "#333",
+    marginBottom: 4,
+    fontWeight: "500",
+  },
+  qrPreviewInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+    padding: 8,
+    backgroundColor: "#e3f2fd",
+    borderRadius: 6,
+    gap: 6,
+  },
+  qrPreviewInfoText: {
+    fontSize: 11,
+    color: "#007bff",
+    fontWeight: "500",
+    textAlign: "center",
+  },
+  qrContainer: {
+    alignItems: "center",
+    marginTop: 20,
+    padding: 16,
+    backgroundColor: "#f8f9fa",
+    borderRadius: 8,
+  },
+  qrTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 12,
+    color: "#333",
+  },
+  qrPlaceholder: {
+    fontSize: 12,
+    color: "#666",
+    fontStyle: "italic",
+    padding: 40,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderStyle: "dashed",
+    borderRadius: 4,
+  },
+  qrCaption: {
+    fontSize: 12,
+    color: "#666",
+    marginTop: 8,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
@@ -1605,9 +2379,11 @@ const styles = StyleSheet.create({
   customerAddress: { fontSize: 12, color: "#666", marginBottom: 2 },
   customerContact: { fontSize: 12, color: "#666" },
   infoRow: {
+    flex: 1,
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 4,
+    flexWrap: "wrap",
   },
   infoValue: { fontSize: 12 },
   remarksSection: {

@@ -12,7 +12,7 @@
         "gradleCommand": ":app:assembleDebug"
       },
       "env": {
-        "IS_PRODUCTION": "true",
+        "IS_PRODUCTION": "false",
         "BLUETOOTH_ENABLED": "false",
         "APP_ENV": "development",
         "API_BASE_URL": "http://192.168.1.9:3000/api"
@@ -25,9 +25,10 @@
         "gradleCommand": ":app:assembleDebug"
       },
       "env": {
-        "IS_PRODUCTION": "true",
+        "IS_PRODUCTION": "false",
         "BLUETOOTH_ENABLED": "false",
-        "APP_ENV": "preview"
+        "APP_ENV": "preview",
+        "API_BASE_URL": "http://faspro.ddns.net:3000/api"
       }
     },
     "production": {

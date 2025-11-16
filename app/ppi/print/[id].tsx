@@ -21,6 +21,8 @@ import * as Sharing from "expo-sharing";
 import * as FileSystem from "expo-file-system/legacy";
 import Constants from "expo-constants";
 import { Perusahaan } from "@/api/interface";
+import QRCode from "react-native-qrcode-svg";
+import ViewShot from "react-native-view-shot";
 
 // ================== Environment Configuration ==================
 const getBuildEnvironment = () => {
@@ -155,16 +157,15 @@ export default function PrintPenerimaanPiutang() {
   const loadDataPerusahaan = async () => {
     try {
       const res = await dataUmumAPI.getInfoPerusahaan();
-      // console.log("🔥 API Perusahaan Response:", res);
-      // console.log("🔥 res.data:", res.data);
+      console.log("res info ", res.data);
 
-      if (res.success && res.data) {
-        setInfoPerusahaan(res.data);
-        return res.data;
-      }
-      return [];
+      const data = Array.isArray(res.data) ? res.data : [];
+      setInfoPerusahaan(data);
+
+      return data; // always return array
     } catch (err: any) {
       console.error("Error loading info perusahaan:", err);
+      return infoPerusahaan || []; // gunakan state terakhir
     }
   };
 
@@ -195,10 +196,17 @@ export default function PrintPenerimaanPiutang() {
     try {
       setLoading(true);
       setError(null);
-      await loadDataPerusahaan();
+
+      // 1️⃣ Ambil data perusahaan (return array selalu)
+      const perusahaanData = await loadDataPerusahaan();
+
+      // 2️⃣ Ambil detail PPI
       const res = await ppiAPI.getPPIDetail(ppiId);
+
       if (res.success && res.data) {
-        const formattedData = mapApiDataToPrintFormat(res.data);
+        // 3️⃣ Kirim perusahaanData ke formatter
+        const formattedData = mapApiDataToPrintFormat(res.data, perusahaanData);
+
         setPpiData(formattedData);
       } else {
         throw new Error(res.message || "Gagal memuat data penerimaan piutang");
@@ -211,7 +219,10 @@ export default function PrintPenerimaanPiutang() {
     }
   };
 
-  const mapApiDataToPrintFormat = (apiData: any): PenerimaanPiutangData => {
+  const mapApiDataToPrintFormat = (
+    apiData: any,
+    infoPerusahaan: Perusahaan[] = []
+  ): PenerimaanPiutangData => {
     const header = apiData.header || {};
     const details = apiData.details || [];
     const payments = apiData.payments || [];
@@ -274,7 +285,7 @@ export default function PrintPenerimaanPiutang() {
   // ================== Generate Print Text (48 chars, full numbers, wrap text) ==================
   const generatePrintText = (): string => {
     if (!ppiData) return "";
-    const PRINT_WIDTH = 32; // DIUBAH dari 48 menjadi 32
+    const PRINT_WIDTH = 32;
     const MAX_CHAR_PER_LINE = 32;
 
     const wrapText = (
@@ -320,7 +331,7 @@ export default function PrintPenerimaanPiutang() {
 
     const formatCurrency = (amount: number): string => {
       const value = Math.round(amount || 0);
-      return `${value.toLocaleString("id-ID")}`; // HAPUS "Rp " untuk hemat space
+      return `${value.toLocaleString("id-ID")}`;
     };
 
     const formatDateShort = (dateString: string): string => {
@@ -334,7 +345,7 @@ export default function PrintPenerimaanPiutang() {
 
     const lines: string[] = [];
 
-    // HEADER - Sesuaikan dengan 32 karakter
+    // HEADER
     lines.push("=".repeat(PRINT_WIDTH));
 
     // Wrap alamat untuk center text yang panjang
@@ -356,7 +367,7 @@ export default function PrintPenerimaanPiutang() {
     lines.push(centerText("PENERIMAAN PIUTANG"));
     lines.push("=".repeat(PRINT_WIDTH));
 
-    // KEPADA - Optimasi untuk 32 karakter
+    // KEPADA
     lines.push("KEPADA:");
     wrapText(ppiData.nama_cust, PRINT_WIDTH).forEach((line) =>
       lines.push(line)
@@ -366,7 +377,7 @@ export default function PrintPenerimaanPiutang() {
     );
     lines.push("");
 
-    // INFO PEMBAYARAN - Label lebih pendek
+    // INFO PEMBAYARAN
     lines.push("INFO BAYAR:");
     lines.push("-".repeat(PRINT_WIDTH));
     lines.push(formatLine("No PPI", ppiData.no_ppi));
@@ -380,7 +391,7 @@ export default function PrintPenerimaanPiutang() {
     }
     lines.push("");
 
-    // DETAIL FAKTUR - Format lebih compact
+    // DETAIL FAKTUR
     if (ppiData.details.length > 0) {
       lines.push("DETAIL FAKTUR:");
       lines.push("-".repeat(PRINT_WIDTH));
@@ -403,7 +414,7 @@ export default function PrintPenerimaanPiutang() {
       lines.push("");
     }
 
-    // RINCIAN PEMBAYARAN - Label lebih pendek
+    // RINCIAN PEMBAYARAN
     if (ppiData.payments.length > 0) {
       lines.push("RINCIAN BAYAR:");
       lines.push("-".repeat(PRINT_WIDTH));
@@ -411,7 +422,7 @@ export default function PrintPenerimaanPiutang() {
       ppiData.payments.forEach((payment, index) => {
         lines.push(`${index + 1}. ${getCaraBayarText(payment.metode_bayar)}`);
         lines.push(
-          formatLine("  Jumlah", formatCurrency(payment.jumlah_bayar))
+          formatLine(`  Jumlah:, ${formatCurrency(payment.jumlah_bayar)}`)
         );
         lines.push(formatLine("  Tgl", formatDateShort(payment.tgl_bayar)));
 
@@ -429,7 +440,7 @@ export default function PrintPenerimaanPiutang() {
       lines.push("");
     }
 
-    // SUMMARY - Format compact
+    // SUMMARY
     lines.push("SUMMARY:");
     lines.push("-".repeat(PRINT_WIDTH));
     lines.push(
@@ -442,7 +453,9 @@ export default function PrintPenerimaanPiutang() {
       )
     );
     lines.push(
-      formatLine("Total Bayar", formatCurrency(ppiData.summary.jumlah_bayar))
+      formatLine(
+        `Total Bayar:, ${formatCurrency(ppiData.summary.jumlah_bayar)}`
+      )
     );
     lines.push(
       formatLine(
@@ -452,15 +465,15 @@ export default function PrintPenerimaanPiutang() {
     );
     lines.push("");
 
-    // FOOTER - Label lebih pendek
+    // FOOTER - PERTAHANKAN "BUKTI BAYAR", "DIKELUARKAN", "DITERIMA"
     lines.push(centerText("BUKTI BAYAR"));
     lines.push("");
-    lines.push(centerText("DIKELUARKAN"));
+    lines.push(centerText("DIKELUARKAN OLEH,"));
     lines.push("");
-    lines.push(centerText("DITERIMA"));
+    lines.push(centerText("DITERIMA OLEH,"));
     lines.push("");
     lines.push("-".repeat(PRINT_WIDTH));
-    lines.push(centerText(`Print: ${new Date().toLocaleDateString("id-ID")}`));
+    lines.push(centerText(`Print: ${new Date().toLocaleString("id-ID")}`));
     lines.push(centerText(`Sumber: ${ppiData.sumber_data}`));
     lines.push("");
     lines.push("=".repeat(PRINT_WIDTH));
@@ -501,7 +514,15 @@ export default function PrintPenerimaanPiutang() {
 
   // ================== Print Preview Modal ==================
   const PrintPreviewModal = () => {
-    const text = generatePrintText();
+    const textContent = generatePrintText();
+    const qrData = JSON.stringify({
+      t: "PPI",
+      n: ppiData?.no_ppi,
+      d: ppiData?.tanggal_ppi,
+      a: ppiData?.summary.jumlah_bayar,
+      c: ppiData?.nama_cust?.substring(0, 15),
+    });
+
     return (
       <Modal visible={showPreview} animationType="slide">
         <SafeAreaView style={styles.previewContainer}>
@@ -514,34 +535,69 @@ export default function PrintPenerimaanPiutang() {
               <MaterialIcons name="close" size={20} color="#333" />
             </TouchableOpacity>
           </View>
+
           <ScrollView contentContainerStyle={styles.previewBody}>
-            <Text style={styles.monoText}>{text}</Text>
+            {/* Text Content */}
+            <View style={styles.textSection}>
+              <Text style={styles.sectionTitle}>Thermal Print Text:</Text>
+              <Text style={styles.monoText}>{textContent}</Text>
+            </View>
+
+            {/* QR Code Section */}
+            <View style={styles.qrSection}>
+              <Text style={styles.qrSectionTitle}>QR CODE VERIFIKASI</Text>
+
+              <View style={styles.qrContent}>
+                <View style={styles.qrContainer}>
+                  <QRCode
+                    value={qrData}
+                    size={120}
+                    color="black"
+                    backgroundColor="white"
+                  />
+                </View>
+
+                <View style={styles.qrTextInfo}>
+                  <Text style={styles.verificationTitle}>
+                    VERIFIKASI DIGITAL
+                  </Text>
+                  <Text style={styles.qrInfoText}>PPI: {ppiData?.no_ppi}</Text>
+                  <Text style={styles.qrInfoText}>
+                    {formatDateShort(ppiData?.tanggal_ppi || "")}
+                  </Text>
+                  <Text style={styles.qrInfoText}>
+                    Bayar: Rp{" "}
+                    {formatCurrency(ppiData?.summary.jumlah_bayar || 0)}
+                  </Text>
+                  <Text style={styles.scanText}>SCAN UNTUK DETAIL</Text>
+                </View>
+              </View>
+
+              <View style={styles.qrNote}>
+                <MaterialIcons name="info" size={14} color="#666" />
+                <Text style={styles.qrNoteText}>
+                  QR code akan tercetak setelah text di thermal printer
+                </Text>
+              </View>
+            </View>
           </ScrollView>
+
           <View style={styles.previewActions}>
             <TouchableOpacity
-              style={[
-                styles.btn,
-                { backgroundColor: "#007bff", marginRight: 8 },
-              ]}
+              style={[styles.btn, { backgroundColor: "#007bff" }]}
               onPress={() => {
                 setShowPreview(false);
                 printViaBluetooth();
               }}
             >
-              <Text style={styles.btnText}>Print</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.btn, { backgroundColor: "#6f42c1" }]}
-              onPress={() => setShowPreview(false)}
-            >
-              <Text style={styles.btnText}>Tutup</Text>
+              <MaterialIcons name="print" size={16} color="#fff" />
+              <Text style={styles.btnText}>Print dengan QR Code</Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
       </Modal>
     );
   };
-
   // ================== Export TXT ==================
   const exportTextFile = async () => {
     if (!ppiData) {
@@ -711,42 +767,186 @@ export default function PrintPenerimaanPiutang() {
     }
   };
 
+  // const printViaBluetooth = async () => {
+  //   if (!ppiData) {
+  //     Alert.alert("Error", "Data PPI tidak tersedia");
+  //     return;
+  //   }
+
+  //   try {
+  //     setPrinting(true);
+
+  //     if (isBluetoothSupported && BluetoothEscposPrinter) {
+  //       // Connect to printer
+  //       if (!connectedDevice) {
+  //         await printWithRealBluetooth();
+  //       }
+
+  //       await BluetoothEscposPrinter.printerInit();
+
+  //       // 1. Print PPI text lengkap
+  //       const printText = generatePrintText();
+  //       await BluetoothEscposPrinter.printText(printText + "\n", {});
+
+  //       // 2. Beri jarak dan print QR Code
+  //       await BluetoothEscposPrinter.printAndFeed(3);
+
+  //       // Print header QR Code
+  //       await BluetoothEscposPrinter.printText("QR CODE VERIFIKASI\n", {});
+  //       await BluetoothEscposPrinter.printText("================\n", {});
+
+  //       const qrData = `PPI:${ppiData.no_ppi}|BAYAR:${ppiData.summary.jumlah_bayar}`;
+
+  //       // Print QR Code - PERBAIKAN PARAMETER
+  //       try {
+  //         console.log("Mencoba print QR code PPI...");
+  //         // Gunakan parameter number, bukan string
+  //         await BluetoothEscposPrinter.printQRCode(qrData, 6, 1); // Size 6, Correction M (1)
+  //         console.log("QR Code PPI berhasil dicetak");
+  //       } catch (qrError) {
+  //         console.log("QR Code PPI gagal:", qrError);
+
+  //         // Fallback: coba tanpa correction level
+  //         try {
+  //           await BluetoothEscposPrinter.printQRCode(qrData, 6); // Hanya size
+  //           console.log("QR Code PPI berhasil tanpa correction");
+  //         } catch (qrError2) {
+  //           console.log("QR Code PPI masih gagal:", qrError2);
+  //           await BluetoothEscposPrinter.printText(`[QR: ${qrData}]\n`, {});
+  //         }
+  //       }
+
+  //       // Print info di bawah QR Code
+  //       await BluetoothEscposPrinter.printAndFeed(1);
+  //       await BluetoothEscposPrinter.printText("VERIFIKASI DIGITAL\n", {});
+  //       await BluetoothEscposPrinter.printText(`PPI: ${ppiData.no_ppi}\n`, {});
+  //       await BluetoothEscposPrinter.printText(
+  //         `Bayar: ${formatCurrency(ppiData.summary.jumlah_bayar)}\n`,
+  //         {}
+  //       );
+  //       await BluetoothEscposPrinter.printText("SCAN UNTUK DETAIL\n", {});
+
+  //       // 3. Feed dan cut
+  //       await BluetoothEscposPrinter.printAndFeed(4);
+  //       if (BluetoothEscposPrinter.cut) {
+  //         await BluetoothEscposPrinter.cut();
+  //       } else {
+  //         await BluetoothEscposPrinter.printAndFeed(6); // Extra feed jika cut tidak ada
+  //       }
+
+  //       Alert.alert(
+  //         "Berhasil",
+  //         "Bukti Penerimaan Piutang berhasil dicetak dengan QR Code!"
+  //       );
+  //     } else {
+  //       setShowPreview(true);
+  //     }
+  //   } catch (error: any) {
+  //     console.error("Print error:", error);
+  //     Alert.alert("Print Gagal", error.message || "Terjadi kesalahan");
+  //   } finally {
+  //     setPrinting(false);
+  //   }
+  // };
+
+  // ================== PDF Print ==================
+
   const printViaBluetooth = async () => {
     if (!ppiData) {
-      Alert.alert("Error", "Data penerimaan piutang tidak tersedia");
+      Alert.alert("Error", "Data PPI tidak tersedia");
       return;
     }
+
     try {
       setPrinting(true);
-      if (isBluetoothSupported && BluetoothEscposPrinter && BluetoothManager) {
-        await printWithRealBluetooth();
-      } else {
-        Alert.alert(
-          "Simulation",
-          "Mode simulation aktif — hasil print akan diexport sebagai file atau bisa dilihat di Preview.",
-          [
-            { text: "Lihat Preview", onPress: () => setShowPreview(true) },
-            { text: "Export TXT", onPress: exportTextFile },
-            { text: "OK" },
-          ]
+
+      if (isBluetoothSupported && BluetoothEscposPrinter) {
+        await BluetoothEscposPrinter.printerInit();
+
+        // 1. Print PPI text
+        const printText = generatePrintText();
+        const qrData = JSON.stringify({
+          t: "PPI",
+          n: ppiData?.no_ppi,
+          d: ppiData?.tanggal_ppi,
+          a: ppiData?.summary.jumlah_bayar,
+          c: ppiData?.nama_cust?.substring(0, 15),
+        });
+        await BluetoothEscposPrinter.printText(printText + "\n", {});
+
+        // 2. Barcode Section
+        await BluetoothEscposPrinter.printAndFeed(3);
+        await BluetoothEscposPrinter.printText("KODE VERIFIKASI\n", {});
+        await BluetoothEscposPrinter.printText("================\n", {});
+
+        await BluetoothEscposPrinter.printQRCode(
+          qrData, // Data yang akan di-encode
+          12, // Ukuran (250 adalah nilai umum untuk ukuran medium)
+          0, // (Beberapa library meminta dua kali nilai ukuran)
         );
+
+        console.log(`QR Data (JSON) yang di-encode: ${qrData}`);
+
+        // await BluetoothEscposPrinter.printText(
+        //   `No. PPI: ${ppiData.no_ppi}\n` +
+        //     `Tgl: ${ppiData.tanggal_ppi}\n` +
+        //     `Total: ${ppiData.summary.jumlah_bayar}\n`,
+        //   {}
+        // );
+
+        const barcodeData = ppiData.no_ppi;
+
+        // Print barcode dengan 6 parameter
+        if (BluetoothEscposPrinter.printBarCode) {
+          try {
+            await BluetoothEscposPrinter.printBarCode(
+              barcodeData,
+              8,
+              3,
+              80,
+              0,
+              2
+            );
+          } catch {
+            await printTextBarcode(barcodeData);
+            console.error("❌ Msuk CATCH");
+          }
+        } else {
+          await printTextBarcode(barcodeData);
+           console.error("❌ Msuk ESLE");
+        }
+
+        // 3. Info
+        await BluetoothEscposPrinter.printAndFeed(1);
+        await BluetoothEscposPrinter.printText(`PPI: ${ppiData.no_ppi}\n`, {});
+        await BluetoothEscposPrinter.printText(
+          `Bayar: ${formatCurrency(ppiData.summary.jumlah_bayar)}\n`,
+          {}
+        );
+
+        // 4. Finish
+        await BluetoothEscposPrinter.printAndFeed(6);
+
+        Alert.alert("✅ Berhasil", "Bukti PPI berhasil dicetak!");
+      } else {
+        setShowPreview(true);
       }
     } catch (error: any) {
-      console.error("❌ Print error:", error);
-      Alert.alert(
-        "Print Gagal",
-        error.message || "Terjadi kesalahan saat mencetak",
-        [
-          { text: "OK" },
-          { text: "Coba Export File", onPress: () => exportTextFile() },
-        ]
-      );
+      console.error("❌ Print error PPI:", error);
+      Alert.alert("❌ Print Gagal", "Gagal mencetak PPI");
     } finally {
       setPrinting(false);
     }
   };
+  // Simple barcode text fallback
+  const printTextBarcode = async (barcodeData: string) => {
+    await BluetoothEscposPrinter.printText("┌──────────────────┐\n", {});
+    await BluetoothEscposPrinter.printText("│  ║║║║║║║║║║║║  │\n", {});
+    await BluetoothEscposPrinter.printText("│  ║║║║║║║║║║║║  │\n", {});
+    await BluetoothEscposPrinter.printText(`│    ${barcodeData}    │\n`, {});
+    await BluetoothEscposPrinter.printText("└──────────────────┘\n", {});
+  };
 
-  // ================== PDF Print ==================
   const handlePrintPDF = async () => {
     if (!ppiData) return;
     try {
@@ -975,9 +1175,9 @@ export default function PrintPenerimaanPiutang() {
           size={12}
           color="#fff"
         />
-        <Text style={styles.buildText}>
+        {/* <Text style={styles.buildText}>
           {isEASBuild ? `EAS ${buildProfile.toUpperCase()}` : "LOCAL DEV"}
-        </Text>
+        </Text> */}
         <View style={styles.buildBadges}>
           <View
             style={[
@@ -1045,14 +1245,14 @@ export default function PrintPenerimaanPiutang() {
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity
+        {/* <TouchableOpacity
           style={[styles.actionButton, styles.pdfButton]}
           onPress={handlePrintPDF}
           disabled={printing}
         >
           <MaterialIcons name="picture-as-pdf" size={20} color="#fff" />
           <Text style={styles.actionButtonText}>PDF</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
       </View>
 
       <ScrollView
@@ -1459,10 +1659,75 @@ export default function PrintPenerimaanPiutang() {
 
 // ================== Styles ==================
 const styles = StyleSheet.create({
-  // ... (SAMA PERSIS DENGAN ppiPrintBaru.txt ASLI)
-  // Karena tidak ada perubahan UI, cukup gunakan styles dari file asli
-  // Berikut hanya contoh ringkas — di implementasi asli, salin seluruh styles dari ppiPrintBaru.txt
   container: { flex: 1, backgroundColor: "#f5f7fb" },
+  textSection: {
+    marginBottom: 20,
+  },
+  qrSection: {
+    backgroundColor: "white",
+    padding: 16,
+    borderRadius: 0,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  qrSectionTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#333",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  qrContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  qrContainer: {
+    padding: 8,
+    backgroundColor: "white",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+  qrTextInfo: {
+    flex: 1,
+    marginLeft: 16,
+  },
+  verificationTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 8,
+  },
+  qrInfoText: {
+    fontSize: 12,
+    color: "#333",
+    marginBottom: 4,
+  },
+  scanText: {
+    fontSize: 11,
+    color: "#007bff",
+    fontWeight: "600",
+    marginTop: 8,
+  },
+  qrNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 12,
+    backgroundColor: "#f8f9fa",
+    borderRadius: 6,
+    gap: 8,
+  },
+  qrNoteText: {
+    fontSize: 12,
+    color: "#666",
+    textAlign: "center",
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
@@ -1586,9 +1851,11 @@ const styles = StyleSheet.create({
   customerName: { fontSize: 14, fontWeight: "600", marginBottom: 4 },
   customerContact: { fontSize: 12, color: "#666" },
   infoRow: {
+    flex: 1,
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 4,
+    flexWrap: "wrap",
   },
   infoValue: { fontSize: 12 },
   statusText: { fontWeight: "600", color: "#28a745" },

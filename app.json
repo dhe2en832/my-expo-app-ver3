@@ -13,7 +13,9 @@
       "resizeMode": "cover",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -88,7 +90,9 @@
         {
           "icon": "./assets/alert.png",
           "color": "#ffffff",
-          "sounds": ["./assets/sounds/new_notification.mp3"]
+          "sounds": [
+            "./assets/sounds/new_notification.mp3"
+          ]
         }
       ]
     ],
@@ -100,9 +104,9 @@
       "EAS_BUILD_PROFILE": "production",
       "API_BASE_URL": "http://faspro.ddns.net:3000/api",
       "eas": {
-        "projectId": "7549e59d-b005-4255-af95-3c76eae712e0"
+        "projectId": "a386a35f-4631-481b-9e06-86b3d11c48f2"
       }
     },
-    "owner": "opitdev"
+    "owner": "deepjek"
   }
 }
