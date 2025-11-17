@@ -28,6 +28,71 @@ import {
   prepareQRForPrint,
   generateQRPatternText,
 } from "../../../utils/qrCodeService";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const LAST_CONNECTED_PRINTER_KEY = "lastConnectedPrinterMac";
+
+/**
+ * Menyimpan MAC address printer ke AsyncStorage setelah koneksi berhasil.
+ */
+const saveConnectedDevice = async (mac: string) => {
+  try {
+    await AsyncStorage.setItem(LAST_CONNECTED_PRINTER_KEY, mac);
+  } catch (e) {
+    console.error("Gagal menyimpan MAC printer:", e);
+  }
+};
+
+/**
+ * Mencoba koneksi otomatis ke printer yang terakhir terhubung saat komponen dimuat.
+ * @param isSupported: Nilai isBluetoothSupported
+ * @param setConnectedDevice: Setter state untuk connectedDevice.
+ */
+const attemptAutoConnect = async (
+  isSupported: boolean,
+  setConnectedDevice: React.Dispatch<
+    React.SetStateAction<BluetoothDevice | null>
+  >
+) => {
+  // Keluar jika Bluetooth tidak didukung atau library tidak tersedia
+  if (!isSupported || !BluetoothManager || !BluetoothManager.connect) return;
+
+  try {
+    const lastPrinterMac = await AsyncStorage.getItem(
+      LAST_CONNECTED_PRINTER_KEY
+    );
+
+    if (lastPrinterMac) {
+      console.log(`Mencoba koneksi otomatis ke: ${lastPrinterMac}`);
+
+      // Coba koneksi ke printer terakhir.
+      const isConnected = await BluetoothManager.connect(lastPrinterMac);
+
+      if (isConnected) {
+        // Cari info printer dari daftar paired devices untuk mendapatkan nama
+        const devices = await BluetoothManager.getBondedDevices();
+        const lastDevice = devices.find((d: any) => d.mac === lastPrinterMac);
+
+        if (lastDevice) {
+          setConnectedDevice(lastDevice);
+        } else {
+          // Fallback jika nama tidak ditemukan
+          setConnectedDevice({
+            mac: lastPrinterMac,
+            name: "Printer Otomatis",
+            type: "printer",
+          } as BluetoothDevice);
+        }
+        console.log("✅ Koneksi otomatis berhasil.");
+      } else {
+        console.log("❌ Koneksi otomatis gagal.");
+      }
+    }
+  } catch (e) {
+    console.error("Kesalahan saat mencoba koneksi otomatis:", e);
+  }
+};
+
 // import BluetoothEscposPrinter from "@ccdilan/react-native-bluetooth-escpos-printer";
 // ================== Environment Configuration ==================
 const getBuildEnvironment = () => {
@@ -215,6 +280,10 @@ export default function PrintSalesOrder() {
       BluetoothManager.isBluetoothEnabled()
         .then((enabled: any) => console.log("Bluetooth Enabled ->", enabled))
         .catch((e: any) => console.warn("isBluetoothEnabled err", e));
+    }
+    if (isBluetoothSupported) {
+      // Panggil fungsi untuk mencoba koneksi otomatis
+      attemptAutoConnect(isBluetoothSupported, setConnectedDevice);
     }
   }, []);
 
@@ -1036,6 +1105,11 @@ export default function PrintSalesOrder() {
 
   // ================== Connect ==================
   const connectToDevice = async (item: BluetoothDevice) => {
+    if (!item.mac) {
+      Alert.alert("Error", "MAC Address printer tidak tersedia.");
+      return;
+    }
+
     if (!isBluetoothSupported || !BluetoothManager) {
       setConnectedDevice(item);
       setShowBluetoothModal(false);
@@ -1045,6 +1119,7 @@ export default function PrintSalesOrder() {
     try {
       setConnecting(true);
       await BluetoothManager.connect(item.mac);
+      await saveConnectedDevice(item.mac);
       if (BluetoothEscposPrinter && BluetoothEscposPrinter.printerInit) {
         await BluetoothEscposPrinter.printerInit();
       }
@@ -1060,15 +1135,53 @@ export default function PrintSalesOrder() {
   };
 
   // ================== Disconnect ==================
+  // const disconnectBluetooth = async () => {
+  //   if (connectedDevice && isBluetoothSupported && BluetoothManager) {
+  //     try {
+  //       await BluetoothManager.disconnect();
+  //     } catch (error) {
+  //       console.error("Disconnect error:", error);
+  //     }
+  //   }
+  //   setConnectedDevice(null);
+  // };
   const disconnectBluetooth = async () => {
-    if (connectedDevice && isBluetoothSupported && BluetoothManager) {
-      try {
-        await BluetoothManager.disconnect();
-      } catch (error) {
-        console.error("Disconnect error:", error);
-      }
-    }
-    setConnectedDevice(null);
+    // Tambahkan Alert untuk konfirmasi pemutusan koneksi
+    if (!connectedDevice) return;
+
+    Alert.alert(
+      "Putuskan Koneksi",
+      `Apakah Anda yakin ingin memutus koneksi dari ${connectedDevice.name}?`,
+      [
+        { text: "Batal", style: "cancel" },
+        {
+          text: "Ya, Putuskan",
+          onPress: async () => {
+            if (connectedDevice && isBluetoothSupported && BluetoothManager) {
+              try {
+                // Cek apakah disconnect memerlukan mac address,
+                // jika tidak, panggil tanpa argumen seperti kode Anda:
+                await BluetoothManager.disconnect();
+
+                // Opsional: Hapus MAC address dari penyimpanan
+                // agar koneksi otomatis tidak mencoba menyambung kembali
+                await AsyncStorage.removeItem(LAST_CONNECTED_PRINTER_KEY);
+
+                Alert.alert(
+                  "Berhasil",
+                  `Koneksi ke ${connectedDevice.name} telah diputus.`
+                );
+              } catch (error) {
+                console.error("Disconnect error:", error);
+                Alert.alert("Gagal", "Gagal memutus koneksi printer.");
+              }
+            }
+            setConnectedDevice(null);
+          },
+        },
+      ],
+      { cancelable: true }
+    );
   };
 
   const printQRCodeBluetooth = async (orderData: SalesOrderData) => {
@@ -1566,7 +1679,7 @@ export default function PrintSalesOrder() {
             if (!isBluetoothSupported) setShowPreview(true);
             else printViaBluetooth();
           }}
-          disabled={printing}
+          disabled={printing || (isBluetoothSupported && !connectedDevice)}
         >
           {printing ? (
             <ActivityIndicator size="small" color="#fff" />
@@ -1574,7 +1687,11 @@ export default function PrintSalesOrder() {
             <>
               <MaterialIcons name="print" size={20} color="#fff" />
               <Text style={styles.actionButtonText}>
-                {isBluetoothSupported ? "Print Bluetooth" : "Preview / Export"}
+                {isBluetoothSupported
+                  ? `Print Bluetooth${
+                      connectedDevice ? " ke " + connectedDevice.name : ""
+                    }` // Tampilkan nama printer jika terhubung
+                  : "Preview / Export"}
               </Text>
             </>
           )}
@@ -1587,7 +1704,7 @@ export default function PrintSalesOrder() {
             disabled={printing}
           >
             <MaterialIcons name="bluetooth-disabled" size={20} color="#fff" />
-            <Text style={styles.actionButtonText}>Putus</Text>
+            <Text style={styles.actionButtonText}>Putus Koneksi</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
