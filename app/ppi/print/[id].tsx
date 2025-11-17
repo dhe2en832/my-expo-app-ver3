@@ -165,6 +165,7 @@ interface PenerimaanPiutangData {
     tgl_fj: string;
     netto_mu: number;
     bayar_mu: number;
+    sisa_hutang: number;
     sisa_setelah_bayar: number;
   }>;
   payments: Array<{
@@ -331,6 +332,7 @@ export default function PrintPenerimaanPiutang() {
         tgl_fj: detail.tgl_fj || "",
         netto_mu: detail.netto_mu || 0,
         bayar_mu: detail.bayar_mu || 0,
+        sisa_hutang: detail.sisa_hutang || 0,
         sisa_setelah_bayar: detail.sisa_setelah_bayar || 0,
       })),
       payments: payments.map((payment: any) => ({
@@ -352,6 +354,7 @@ export default function PrintPenerimaanPiutang() {
   // ================== Generate Print Text (48 chars, full numbers, wrap text) ==================
   const generatePrintText = (): string => {
     if (!ppiData) return "";
+    const FONT_SMALL = "\x1B!\x01";
     const PRINT_WIDTH = 32;
     const MAX_CHAR_PER_LINE = 32;
 
@@ -442,8 +445,8 @@ export default function PrintPenerimaanPiutang() {
     wrapText(`Sales: ${ppiData.nama_sales}`, PRINT_WIDTH).forEach((line) =>
       lines.push(line)
     );
-    lines.push("");
-
+    // lines.push("");
+    lines.push("-".repeat(PRINT_WIDTH));
     // INFO PEMBAYARAN
     lines.push("INFO BAYAR:");
     lines.push("-".repeat(PRINT_WIDTH));
@@ -456,7 +459,8 @@ export default function PrintPenerimaanPiutang() {
     if (ppiData.no_giro && ppiData.no_giro !== "-") {
       lines.push(formatLine("Giro", ppiData.no_giro));
     }
-    lines.push("");
+    lines.push("-".repeat(PRINT_WIDTH));
+    // lines.push("");
 
     // DETAIL FAKTUR
     if (ppiData.details.length > 0) {
@@ -466,8 +470,11 @@ export default function PrintPenerimaanPiutang() {
       ppiData.details.forEach((detail, index) => {
         lines.push(`${index + 1}. ${detail.no_fj}`);
         lines.push(formatLine("  Tgl", formatDateShort(detail.tgl_fj)));
-        lines.push(formatLine("  Total", formatCurrency(detail.netto_mu)));
-        lines.push(formatLine("  Bayar", formatCurrency(detail.bayar_mu)));
+        lines.push(formatLine("  Netto", formatCurrency(detail.netto_mu)));
+        lines.push(
+          formatLine("  Outstanding", formatCurrency(detail.sisa_hutang))
+        );
+        lines.push(formatLine("  Dibayar", formatCurrency(detail.bayar_mu)));
         lines.push(
           formatLine("  Sisa", formatCurrency(detail.sisa_setelah_bayar))
         );
@@ -478,7 +485,7 @@ export default function PrintPenerimaanPiutang() {
       });
 
       lines.push("-".repeat(PRINT_WIDTH));
-      lines.push("");
+      // lines.push("");
     }
 
     // RINCIAN PEMBAYARAN
@@ -504,7 +511,7 @@ export default function PrintPenerimaanPiutang() {
       });
 
       lines.push("-".repeat(PRINT_WIDTH));
-      lines.push("");
+      // lines.push("");
     }
 
     // SUMMARY
@@ -534,11 +541,11 @@ export default function PrintPenerimaanPiutang() {
         formatCurrency(ppiData.summary.sisa_outstanding_faktur)
       )
     );
-    lines.push("");
-
+    // lines.push("");
+    lines.push("-".repeat(PRINT_WIDTH));
     // FOOTER - PERTAHANKAN "BUKTI BAYAR", "DIKELUARKAN", "DITERIMA"
     lines.push(centerText("BUKTI BAYAR"));
-    lines.push("");
+    // lines.push("");
     lines.push(centerText("DIKELUARKAN OLEH,"));
     lines.push("");
     lines.push(centerText("DITERIMA OLEH,"));
@@ -546,10 +553,11 @@ export default function PrintPenerimaanPiutang() {
     lines.push("-".repeat(PRINT_WIDTH));
     lines.push(centerText(`Print: ${new Date().toLocaleString("id-ID")}`));
     lines.push(centerText(`Sumber: ${ppiData.sumber_data}`));
-    lines.push("");
+    // lines.push("");
     lines.push("=".repeat(PRINT_WIDTH));
 
-    return lines.join("\n");
+    // return lines.join("\n");
+    return "\x1B!\x01" + lines.join("\n");
   };
 
   // ================== Utilities ==================
@@ -836,65 +844,6 @@ export default function PrintPenerimaanPiutang() {
     );
   };
 
-  // ================== Print via Bluetooth ==================
-  const printWithRealBluetooth = async () => {
-    if (!BluetoothEscposPrinter || !BluetoothManager || !ppiData) {
-      throw new Error("Library printer thermal tidak tersedia");
-    }
-    try {
-      if (!connectedDevice) {
-        await scanBluetoothDevices();
-        if (bluetoothDevices.length === 0) {
-          const raw = await BluetoothManager.scanDevices();
-          let parsed: any = typeof raw === "string" ? JSON.parse(raw) : raw;
-          const all = [...(parsed.paired || []), ...(parsed.found || [])];
-          if (all.length > 0) {
-            const first = all[0];
-            const mac = first.address || first.MAC || first.mac;
-            if (mac) {
-              await BluetoothManager.connect(mac);
-              setConnectedDevice({
-                id: mac,
-                name: first.name || "Printer",
-                mac,
-                type: "printer",
-              });
-            }
-          }
-        }
-      }
-      if (BluetoothEscposPrinter.printerInit) {
-        await BluetoothEscposPrinter.printerInit();
-      }
-      const printText = generatePrintText();
-      try {
-        await BluetoothEscposPrinter.printText(printText + "\n", {
-          encoding: "UTF-8",
-          codepage: 0,
-        });
-      } catch (e) {
-        await BluetoothEscposPrinter.printText(printText + "\n", {
-          encoding: "GBK",
-          codepage: 0,
-        });
-      }
-      try {
-        await BluetoothEscposPrinter.cut();
-      } catch (e) {
-        await BluetoothEscposPrinter.printAndFeed(3);
-      }
-      try {
-        await BluetoothManager.disconnect();
-      } catch (e) {
-        console.warn("Disconnect after print failed", e);
-      }
-      Alert.alert("Berhasil", "Penerimaan Piutang berhasil dicetak!");
-    } catch (error: any) {
-      console.error("❌ Real Bluetooth failed:", error);
-      throw error;
-    }
-  };
-
   const printViaBluetooth = async () => {
     if (!ppiData) {
       Alert.alert("Error", "Data PPI tidak tersedia");
@@ -920,8 +869,8 @@ export default function PrintPenerimaanPiutang() {
 
         // 2. Barcode Section
         await BluetoothEscposPrinter.printAndFeed(3);
-        await BluetoothEscposPrinter.printText("KODE VERIFIKASI\n", {});
-        await BluetoothEscposPrinter.printText("================\n", {});
+        // await BluetoothEscposPrinter.printText("KODE VERIFIKASI\n", {});
+        // await BluetoothEscposPrinter.printText("================\n", {});
 
         await BluetoothEscposPrinter.printQRCode(
           qrData, // Data yang akan di-encode
@@ -932,13 +881,13 @@ export default function PrintPenerimaanPiutang() {
         // 3. Info
         await BluetoothEscposPrinter.printAndFeed(2);
         await BluetoothEscposPrinter.printText("VERIFIKASI DIGITAL\n", {});
-        await BluetoothEscposPrinter.printText(`PPI: ${ppiData.no_ppi}\n`, {});
-        await BluetoothEscposPrinter.printText(
-          // Tambahkan 'Rp' secara manual di awal string
-          `Bayar: Rp${formatCurrency2(ppiData.summary.jumlah_bayar)}\n`,
-          {}
-        );
-        await BluetoothEscposPrinter.printText("SCAN UNTUK DETAIL\n", {});
+        // await BluetoothEscposPrinter.printText(`PPI: ${ppiData.no_ppi}\n`, {});
+        // await BluetoothEscposPrinter.printText(
+        //   // Tambahkan 'Rp' secara manual di awal string
+        //   `Bayar: Rp${formatCurrency2(ppiData.summary.jumlah_bayar)}\n`,
+        //   {}
+        // );
+        // await BluetoothEscposPrinter.printText("SCAN UNTUK DETAIL\n", {});
 
         // 4. Finish
         if (BluetoothEscposPrinter.cut) {
@@ -1048,8 +997,9 @@ export default function PrintPenerimaanPiutang() {
               <tr>
                 <th>No Faktur</th>
                 <th>Tanggal</th>
-                <th>Total</th>
-                <th>Bayar</th>
+                <th>Netto</th>
+                <th>Outstanding</th>
+                <th>Dibayar</th>
                 <th>Sisa</th>
               </tr>
             </thead>
@@ -1061,6 +1011,7 @@ export default function PrintPenerimaanPiutang() {
                   <td>${detail.no_fj}</td>
                   <td>${formatDateShort(detail.tgl_fj)}</td>
                   <td>${formatCurrency(detail.netto_mu)}</td>
+                  <td>${formatCurrency(detail.sisa_hutang)}</td>
                   <td>${formatCurrency(detail.bayar_mu)}</td>
                   <td>${formatCurrency(detail.sisa_setelah_bayar)}</td>
                 </tr>

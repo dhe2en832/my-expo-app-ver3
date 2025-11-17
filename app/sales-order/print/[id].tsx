@@ -779,7 +779,8 @@ export default function PrintSalesOrder() {
     if (orderData.hp) {
       lines.push(`HP: ${orderData.hp}`);
     }
-    lines.push("");
+    lines.push("-".repeat(PRINT_WIDTH));
+    // lines.push("");
 
     // INFO ORDER
     lines.push("INFO ORDER:");
@@ -799,7 +800,8 @@ export default function PrintSalesOrder() {
         lines.push(line)
       );
     }
-    lines.push("");
+    // lines.push("");
+    lines.push("-".repeat(PRINT_WIDTH));
 
     // KETERANGAN
     if (orderData.keterangan && orderData.keterangan.trim() !== "") {
@@ -808,11 +810,11 @@ export default function PrintSalesOrder() {
       wrapText(orderData.keterangan, PRINT_WIDTH).forEach((line) =>
         lines.push(line)
       );
-      lines.push("");
+      // lines.push("");
     }
 
     // TABEL ITEM - DENGAN FORMAT YANG BENAR
-    lines.push("ITEM:");
+    lines.push("DETAIL ITEM:");
     lines.push("-".repeat(PRINT_WIDTH));
 
     orderData.items.forEach((item, index) => {
@@ -855,7 +857,7 @@ export default function PrintSalesOrder() {
     });
 
     lines.push("-".repeat(PRINT_WIDTH));
-    lines.push("");
+    // lines.push("");
 
     // RINCIAN
     lines.push("RINCIAN:");
@@ -894,17 +896,17 @@ export default function PrintSalesOrder() {
 
     lines.push("-".repeat(PRINT_WIDTH));
     lines.push(centerText(`TOTAL: ${formatCurrency(orderData.total)}`));
-    lines.push("-".repeat(PRINT_WIDTH));
-    lines.push("");
-
+    // lines.push("-".repeat(PRINT_WIDTH));
+    // lines.push("");
     // FOOTER - HANYA INFO PRINT & STATUS (HILANGKAN HORMAT KAMI)
     lines.push("-".repeat(PRINT_WIDTH));
     lines.push(centerText(`Print: ${new Date().toLocaleString("id-ID")}`));
     lines.push(centerText(orderData.synced === "Y" ? "SYNCED" : "PENDING"));
-    lines.push("");
+    // lines.push("");
     lines.push("=".repeat(PRINT_WIDTH));
 
-    return lines.join("\n");
+    // return lines.join("\n");
+    return "\x1B!\x01" + lines.join("\n");
   };
 
   // ================== Utilities ==================
@@ -927,49 +929,6 @@ export default function PrintSalesOrder() {
       return dateString;
     }
   };
-
-  // ================== Print Preview Modal ==================
-  // const PrintPreviewModal = () => {
-  //   const text = generatePrintText();
-  //   return (
-  //     <Modal visible={showPreview} animationType="slide">
-  //       <SafeAreaView style={styles.previewContainer}>
-  //         <View style={styles.previewHeader}>
-  //           <Text style={styles.previewTitle}>Print Preview SO</Text>
-  //           <TouchableOpacity
-  //             onPress={() => setShowPreview(false)}
-  //             style={{ padding: 8 }}
-  //           >
-  //             <MaterialIcons name="close" size={20} color="#333" />
-  //           </TouchableOpacity>
-  //         </View>
-  //         <ScrollView contentContainerStyle={styles.previewBody}>
-  //           <Text style={styles.monoText}>{text}</Text>
-  //         </ScrollView>
-  //         <View style={styles.previewActions}>
-  //           <TouchableOpacity
-  //             style={[
-  //               styles.btn,
-  //               { backgroundColor: "#007bff", marginRight: 8 },
-  //             ]}
-  //             onPress={() => {
-  //               setShowPreview(false);
-  //               printViaBluetooth();
-  //             }}
-  //           >
-  //             <Text style={styles.btnText}>Print</Text>
-  //           </TouchableOpacity>
-  //           <TouchableOpacity
-  //             style={[styles.btn, { backgroundColor: "#6f42c1" }]}
-  //             onPress={() => setShowPreview(false)}
-  //           >
-  //             <Text style={styles.btnText}>Tutup</Text>
-  //           </TouchableOpacity>
-  //         </View>
-  //       </SafeAreaView>
-  //     </Modal>
-  //   );
-  // };
 
   const PrintPreviewModal = () => {
     const textContent = generatePrintText();
@@ -1259,68 +1218,6 @@ export default function PrintSalesOrder() {
   };
 
   // ================== Print via Bluetooth ==================
-  const printWithRealBluetooth = async (includeQRCode: boolean = true) => {
-    if (!BluetoothEscposPrinter || !BluetoothManager || !orderData) {
-      throw new Error("Library printer thermal tidak tersedia");
-    }
-    try {
-      if (!connectedDevice) {
-        await scanBluetoothDevices();
-        if (bluetoothDevices.length === 0) {
-          const raw = await BluetoothManager.scanDevices();
-          let parsed: any = typeof raw === "string" ? JSON.parse(raw) : raw;
-          const all = [...(parsed.paired || []), ...(parsed.found || [])];
-          if (all.length > 0) {
-            const first = all[0];
-            const mac = first.address || first.MAC || first.mac;
-            if (mac) {
-              await BluetoothManager.connect(mac);
-              setConnectedDevice({
-                id: mac,
-                name: first.name || "Printer",
-                mac,
-                type: "printer",
-              });
-            }
-          }
-        }
-      }
-      if (BluetoothEscposPrinter.printerInit) {
-        await BluetoothEscposPrinter.printerInit();
-      }
-      const printText = generatePrintText();
-      try {
-        await BluetoothEscposPrinter.printText(printText + "\n", {
-          encoding: "UTF-8",
-          codepage: 0,
-        });
-
-        if (includeQRCode) {
-          await printQRCodeBluetooth(orderData);
-        }
-      } catch (e) {
-        await BluetoothEscposPrinter.printText(printText + "\n", {
-          encoding: "GBK",
-          codepage: 0,
-        });
-      }
-      try {
-        await BluetoothEscposPrinter.cut();
-      } catch (e) {
-        await BluetoothEscposPrinter.printAndFeed(3);
-      }
-      try {
-        await BluetoothManager.disconnect();
-      } catch (e) {
-        console.warn("Disconnect after print failed", e);
-      }
-      Alert.alert("Berhasil", "Sales Order berhasil dicetak!");
-    } catch (error: any) {
-      console.error("❌ Real Bluetooth failed:", error);
-      throw error;
-    }
-  };
-
   const printViaBluetooth = async () => {
     if (!orderData) {
       Alert.alert("Error", "Data order tidak tersedia");
@@ -1348,8 +1245,8 @@ export default function PrintSalesOrder() {
 
         // 2. Print Barcode Section
         await BluetoothEscposPrinter.printAndFeed(3);
-        await BluetoothEscposPrinter.printText("KODE VERIFIKASI\n", {});
-        await BluetoothEscposPrinter.printText("==================\n", {});
+        // await BluetoothEscposPrinter.printText("KODE VERIFIKASI\n", {});
+        // await BluetoothEscposPrinter.printText("==================\n", {});
         // GANTI DENGAN INI UNTUK MENCETAK QR CODE:
         await BluetoothEscposPrinter.printQRCode(
           qrData, // Data yang akan di-encode
@@ -1360,8 +1257,8 @@ export default function PrintSalesOrder() {
         // 3. Print info
         await BluetoothEscposPrinter.printAndFeed(2);
         await BluetoothEscposPrinter.printText("VERIFIKASI DIGITAL\n", {});
-        await BluetoothEscposPrinter.printText(`SO: ${orderData.no_so}\n`, {});
-        await BluetoothEscposPrinter.printText("SCAN UNTUK DETAIL\n", {});
+        // await BluetoothEscposPrinter.printText(`SO: ${orderData.no_so}\n`, {});
+        // await BluetoothEscposPrinter.printText("SCAN UNTUK DETAIL\n", {});
 
         // 4. Finish
         if (BluetoothEscposPrinter.cut) {
