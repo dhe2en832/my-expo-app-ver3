@@ -17,7 +17,7 @@ import {
   useRouter,
   useLocalSearchParams,
   useFocusEffect,
-} from "expo-router"; // ✅ TAMBAH useFocusEffect
+} from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useAuth } from "@/contexts/AuthContext";
 import { salesOrderAPI } from "@/api/services";
@@ -30,6 +30,7 @@ import { SalesOrderListType } from "@/api/interface";
 import { TabBar, TabView, Route } from "react-native-tab-view";
 import DropDownPicker from "react-native-dropdown-picker";
 import * as SecureStore from "expo-secure-store";
+import DateTimePicker from "@react-native-community/datetimepicker";
 
 // --- CUSTOM HOOKS ---
 // Custom hook untuk debounce
@@ -43,6 +44,318 @@ const useDebounce = <T,>(value: T, delay: number): T => {
 
   return debouncedValue;
 };
+
+// --- FILTER COLLAPSE COMPONENT ---
+interface FilterCollapseProps {
+  searchQuery: string;
+  onSearchChange: (text: string) => void;
+  onClearSearch: () => void;
+  dateFilter: {
+    startDate: Date | null;
+    endDate: Date | null;
+  };
+  onDateFilterChange: (startDate: Date | null, endDate: Date | null) => void;
+  onClearDateFilter: () => void;
+  salesFilter: string;
+  salesList: Array<{ label: string; value: string }>;
+  salesDropdownOpen: boolean;
+  setSalesFilter: (value: React.SetStateAction<string>) => void;
+  setSalesDropdownOpen: (value: React.SetStateAction<boolean>) => void;
+  userRole?: string;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
+  onApplyFilter: () => void;
+  onResetFilter: () => void;
+}
+
+const FilterCollapse: React.FC<FilterCollapseProps> = React.memo(
+  ({
+    searchQuery,
+    onSearchChange,
+    onClearSearch,
+    dateFilter,
+    onDateFilterChange,
+    onClearDateFilter,
+    salesFilter,
+    salesList,
+    salesDropdownOpen,
+    setSalesFilter,
+    setSalesDropdownOpen,
+    userRole,
+    isCollapsed,
+    onToggleCollapse,
+    onApplyFilter,
+    onResetFilter,
+  }) => {
+    const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+    const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+    const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
+    const [localDateFilter, setLocalDateFilter] = useState(dateFilter);
+    const [localSalesFilter, setLocalSalesFilter] = useState(salesFilter);
+
+    const formatDate = (date: Date | null) => {
+      if (!date) return "";
+      return date.toLocaleDateString("id-ID", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
+    };
+
+    const onStartDateChange = (event: any, selectedDate?: Date) => {
+      setShowStartDatePicker(false);
+      if (selectedDate) {
+        const newDateFilter = {
+          ...localDateFilter,
+          startDate: selectedDate,
+        };
+        setLocalDateFilter(newDateFilter);
+      }
+    };
+
+    const onEndDateChange = (event: any, selectedDate?: Date) => {
+      setShowEndDatePicker(false);
+      if (selectedDate) {
+        const newDateFilter = {
+          ...localDateFilter,
+          endDate: selectedDate,
+        };
+        setLocalDateFilter(newDateFilter);
+      }
+    };
+
+    const hasActiveFilters =
+      searchQuery || dateFilter.startDate || dateFilter.endDate || salesFilter;
+
+    const handleApplyFilter = () => {
+      // Apply local state to parent state
+      onSearchChange(localSearchQuery);
+      onDateFilterChange(localDateFilter.startDate, localDateFilter.endDate);
+      setSalesFilter(localSalesFilter);
+      onApplyFilter();
+    };
+
+    const handleResetFilter = () => {
+      // Reset local state
+      setLocalSearchQuery("");
+      setLocalDateFilter({ startDate: null, endDate: null });
+      setLocalSalesFilter("");
+
+      // Reset parent state
+      onClearSearch();
+      onClearDateFilter();
+      setSalesFilter("");
+      onResetFilter();
+    };
+
+    // Sync local state with parent state when collapsed
+    useEffect(() => {
+      if (isCollapsed) {
+        setLocalSearchQuery(searchQuery);
+        setLocalDateFilter(dateFilter);
+        setLocalSalesFilter(salesFilter);
+      }
+    }, [isCollapsed, searchQuery, dateFilter, salesFilter]);
+
+    return (
+      // <View style={styles.filterContainer}>
+      <View style={styles.collapsibleFilterContainer}>
+        {/* Filter Header */}
+        <TouchableOpacity
+          style={styles.filterHeader}
+          onPress={onToggleCollapse}
+        >
+          <View style={styles.filterHeaderLeft}>
+            <MaterialIcons name="filter-list" size={20} color="#667eea" />
+            <Text style={styles.filterHeaderText}>Filter & Pencarian</Text>
+            {hasActiveFilters && (
+              <View style={styles.activeFilterBadge}>
+                <Text style={styles.activeFilterBadgeText}>Aktif</Text>
+              </View>
+            )}
+          </View>
+          <MaterialIcons
+            name={isCollapsed ? "keyboard-arrow-down" : "keyboard-arrow-up"}
+            size={24}
+            color="#666"
+          />
+        </TouchableOpacity>
+
+        {/* Filter Content */}
+        {!isCollapsed && (
+          <View style={styles.filterContent}>
+            {/* Search Bar */}
+            <View style={styles.searchSection}>
+              <Text style={styles.sectionLabel}>Pencarian</Text>
+              <View style={styles.searchContainer}>
+                <MaterialIcons name="search" size={20} color="#999" />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Cari nomor SO, customer, atau sales..."
+                  value={localSearchQuery}
+                  onChangeText={setLocalSearchQuery}
+                  clearButtonMode="while-editing"
+                  returnKeyType="search"
+                />
+                {localSearchQuery ? (
+                  <TouchableOpacity onPress={() => setLocalSearchQuery("")}>
+                    <MaterialIcons name="close" size={20} color="#999" />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+
+            {/* Date Filter */}
+            <View style={styles.filterSection}>
+              <Text style={styles.sectionLabel}>Rentang Tanggal</Text>
+              <View style={styles.dateInputsRow}>
+                {/* Start Date */}
+                <View style={styles.dateInputWrapper}>
+                  <Text style={styles.dateLabel}>Dari Tanggal</Text>
+                  <TouchableOpacity
+                    style={styles.dateInput}
+                    onPress={() => setShowStartDatePicker(true)}
+                  >
+                    <Text
+                      style={
+                        localDateFilter.startDate
+                          ? styles.dateText
+                          : styles.placeholderText
+                      }
+                    >
+                      {localDateFilter.startDate
+                        ? formatDate(localDateFilter.startDate)
+                        : "Pilih tanggal"}
+                    </Text>
+                    <MaterialIcons
+                      name="calendar-today"
+                      size={18}
+                      color="#667eea"
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {/* End Date */}
+                <View style={styles.dateInputWrapper}>
+                  <Text style={styles.dateLabel}>Sampai Tanggal</Text>
+                  <TouchableOpacity
+                    style={styles.dateInput}
+                    onPress={() => setShowEndDatePicker(true)}
+                  >
+                    <Text
+                      style={
+                        localDateFilter.endDate
+                          ? styles.dateText
+                          : styles.placeholderText
+                      }
+                    >
+                      {localDateFilter.endDate
+                        ? formatDate(localDateFilter.endDate)
+                        : "Pilih tanggal"}
+                    </Text>
+                    <MaterialIcons
+                      name="calendar-today"
+                      size={18}
+                      color="#667eea"
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Clear Date Button */}
+              {(localDateFilter.startDate || localDateFilter.endDate) && (
+                <TouchableOpacity
+                  style={styles.clearDateButton}
+                  onPress={() =>
+                    setLocalDateFilter({ startDate: null, endDate: null })
+                  }
+                >
+                  <MaterialIcons name="clear" size={14} color="#f44336" />
+                  <Text style={styles.clearDateText}>Hapus Filter Tanggal</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Date Pickers */}
+              {showStartDatePicker && (
+                <DateTimePicker
+                  value={localDateFilter.startDate || new Date()}
+                  mode="date"
+                  display="default"
+                  onChange={onStartDateChange}
+                />
+              )}
+              {showEndDatePicker && (
+                <DateTimePicker
+                  value={localDateFilter.endDate || new Date()}
+                  mode="date"
+                  display="default"
+                  onChange={onEndDateChange}
+                  minimumDate={localDateFilter.startDate || undefined}
+                />
+              )}
+            </View>
+
+            {/* Sales Filter (Supervisor Only) */}
+            {userRole === "Sales Supervisor" && (
+              <View style={styles.filterSection}>
+                <Text style={styles.sectionLabel}>Filter Sales</Text>
+                <View
+                  style={[
+                    styles.dropdownWrapper,
+                    { zIndex: salesDropdownOpen ? 3000 : 2000 },
+                  ]}
+                >
+                  <DropDownPicker
+                    open={salesDropdownOpen}
+                    value={localSalesFilter}
+                    items={salesList}
+                    setOpen={setSalesDropdownOpen}
+                    setValue={setLocalSalesFilter}
+                    placeholder="Pilih Sales..."
+                    searchable
+                    searchPlaceholder="Cari sales..."
+                    style={styles.dropdown}
+                    textStyle={styles.dropdownText}
+                    dropDownContainerStyle={styles.dropdownContainerStyle}
+                    listItemContainerStyle={styles.dropdownItem}
+                    listMode="MODAL"
+                    scrollViewProps={{
+                      nestedScrollEnabled: true,
+                    }}
+                    modalProps={{
+                      animationType: "fade",
+                    }}
+                    autoScroll
+                    closeAfterSelecting={true}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* Action Buttons */}
+            <View style={styles.filterActions}>
+              <TouchableOpacity
+                style={styles.resetButton}
+                onPress={handleResetFilter}
+              >
+                <MaterialIcons name="refresh" size={18} color="#666" />
+                <Text style={styles.resetButtonText}>Reset</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.applyButton}
+                onPress={handleApplyFilter}
+              >
+                <MaterialIcons name="check" size={18} color="#fff" />
+                <Text style={styles.applyButtonText}>Terapkan Filter</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </View>
+    );
+  }
+);
 
 // --- HELPER FUNCTIONS ---
 const getStatusColor = (status: string) => {
@@ -96,7 +409,7 @@ const getStatusText = (status: string) => {
 // --- KOMPONEN UNTUK KONTEN SETIAP TAB (Memoized) ---
 interface SalesOrderListContentProps {
   filter: string; // Key tab
-  baseFilteredOrders: SalesOrderListType[]; // Data yang sudah difilter (search/sales)
+  baseFilteredOrders: SalesOrderListType[]; // Data yang sudah difilter (search/sales/date)
   searchQuery: string;
   onSalesOrderPress: (order: SalesOrderListType) => void;
   onPrintPress: (order: SalesOrderListType) => void;
@@ -344,6 +657,16 @@ export default function SalesOrderList() {
   const [searchQuery, setSearchQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  // Filter state
+  const [dateFilter, setDateFilter] = useState<{
+    startDate: Date | null;
+    endDate: Date | null;
+  }>({
+    startDate: null,
+    endDate: null,
+  });
+  const [isFilterCollapsed, setIsFilterCollapsed] = useState(true);
+
   // Sales filter state
   type SalesDropdownItem = {
     label: string;
@@ -353,9 +676,9 @@ export default function SalesOrderList() {
   const [salesFilter, setSalesFilter] = useState<string>("");
   const [salesDropdownOpen, setSalesDropdownOpen] = useState(false);
 
-  // Tab View state
+  // Tab View state - DEFAULT: today (tab index 1)
   const layout = useWindowDimensions();
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(1); // Default ke tab "Hari Ini" (index 1)
   const routes: Route[] = [
     { key: "all", title: "Semua" },
     { key: "today", title: "Hari Ini" },
@@ -375,6 +698,61 @@ export default function SalesOrderList() {
       filtered = filtered.filter((order) => order.kode_sales === salesFilter);
     }
 
+    // Filter by date range - PERBAIKAN: Handle timezone issue
+    if (dateFilter.startDate || dateFilter.endDate) {
+      filtered = filtered.filter((order) => {
+        try {
+          const orderDate = new Date(order.tgl_so || order.created_at);
+          // Reset time part untuk perbandingan tanggal saja
+          const orderDateOnly = new Date(
+            orderDate.getFullYear(),
+            orderDate.getMonth(),
+            orderDate.getDate()
+          );
+
+          let startDateOnly = null;
+          let endDateOnly = null;
+
+          if (dateFilter.startDate) {
+            startDateOnly = new Date(
+              dateFilter.startDate.getFullYear(),
+              dateFilter.startDate.getMonth(),
+              dateFilter.startDate.getDate()
+            );
+          }
+
+          if (dateFilter.endDate) {
+            endDateOnly = new Date(
+              dateFilter.endDate.getFullYear(),
+              dateFilter.endDate.getMonth(),
+              dateFilter.endDate.getDate()
+            );
+          }
+
+          console.log("Filter Date Debug:", {
+            orderDate: orderDateOnly.toISOString(),
+            startDate: startDateOnly?.toISOString(),
+            endDate: endDateOnly?.toISOString(),
+            orderNo: order.no_so,
+          });
+
+          if (startDateOnly && endDateOnly) {
+            return (
+              orderDateOnly >= startDateOnly && orderDateOnly <= endDateOnly
+            );
+          } else if (startDateOnly) {
+            return orderDateOnly >= startDateOnly;
+          } else if (endDateOnly) {
+            return orderDateOnly <= endDateOnly;
+          }
+          return true;
+        } catch (error) {
+          console.error("Error filtering by date:", error);
+          return true;
+        }
+      });
+    }
+
     // Apply search
     if (!debouncedSearchQuery.trim()) return filtered;
     const query = debouncedSearchQuery.toLowerCase();
@@ -385,7 +763,13 @@ export default function SalesOrderList() {
         order.kode_cust?.toLowerCase().includes(query) ||
         order.nama_sales?.toLowerCase().includes(query)
     );
-  }, [allSalesOrders, debouncedSearchQuery, salesFilter, user?.salesRole]);
+  }, [
+    allSalesOrders,
+    debouncedSearchQuery,
+    salesFilter,
+    user?.salesRole,
+    dateFilter,
+  ]);
 
   // Hitung total untuk stats (berdasarkan baseFilteredOrders)
   const totalFiltered = useMemo(
@@ -467,6 +851,33 @@ export default function SalesOrderList() {
 
   const handleClearSearch = useCallback(() => {
     setSearchQuery("");
+  }, []);
+
+  const handleDateFilterChange = useCallback(
+    (startDate: Date | null, endDate: Date | null) => {
+      console.log("Date filter changed:", { startDate, endDate });
+      setDateFilter({ startDate, endDate });
+    },
+    []
+  );
+
+  const handleClearDateFilter = useCallback(() => {
+    setDateFilter({ startDate: null, endDate: null });
+  }, []);
+
+  const handleToggleFilterCollapse = useCallback(() => {
+    setIsFilterCollapsed(!isFilterCollapsed);
+  }, [isFilterCollapsed]);
+
+  const handleApplyFilter = useCallback(() => {
+    setIsFilterCollapsed(true);
+  }, []);
+
+  const handleResetFilter = useCallback(() => {
+    setSearchQuery("");
+    setDateFilter({ startDate: null, endDate: null });
+    setSalesFilter("");
+    setIsFilterCollapsed(true);
   }, []);
 
   // ✅ UPDATE: API FUNCTIONS UNTUK APPROVAL/REJECT
@@ -558,6 +969,16 @@ export default function SalesOrderList() {
           total: order.total,
         }));
         setAllSalesOrders(orderData);
+
+        // Debug: Log sample data untuk test filter
+        console.log(
+          "Sample order dates:",
+          orderData.slice(0, 3).map((order) => ({
+            no_so: order.no_so,
+            tgl_so: order.tgl_so,
+            created_at: order.created_at,
+          }))
+        );
       } else {
         setAllSalesOrders([]);
         setError(res.message || "Gagal mengambil data sales order");
@@ -675,79 +1096,53 @@ export default function SalesOrderList() {
         }}
       />
 
-      {/* Kontainer Wrapper untuk Pencarian, Dropdown, dan Stats Bar */}
-      <View style={styles.headerContentWrapper}>
-        {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <MaterialIcons name="search" size={20} color="#999" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Cari nomor SO, customer, atau sales..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            clearButtonMode="while-editing"
-            returnKeyType="search"
+      <View style={styles.filterSection}>
+        {/* Filter Collapse Component */}
+        <FilterCollapse
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onClearSearch={handleClearSearch}
+          dateFilter={dateFilter}
+          onDateFilterChange={handleDateFilterChange}
+          onClearDateFilter={handleClearDateFilter}
+          salesFilter={salesFilter}
+          salesList={salesList}
+          salesDropdownOpen={salesDropdownOpen}
+          setSalesFilter={setSalesFilter}
+          setSalesDropdownOpen={setSalesDropdownOpen}
+          userRole={user?.salesRole}
+          isCollapsed={isFilterCollapsed}
+          onToggleCollapse={handleToggleFilterCollapse}
+          onApplyFilter={handleApplyFilter}
+          onResetFilter={handleResetFilter}
+        />
+      </View>
+
+      {/* Stats Bar */}
+      <View style={styles.statsContainer}>
+        <Text style={styles.statsText}>
+          {`Total: ${totalFiltered} sales order`}
+          {(dateFilter.startDate || dateFilter.endDate) && (
+            <Text style={styles.filterInfo}>
+              {` (Filter: ${
+                dateFilter.startDate
+                  ? dateFilter.startDate.toLocaleDateString("id-ID")
+                  : "..."
+              } - ${
+                dateFilter.endDate
+                  ? dateFilter.endDate.toLocaleDateString("id-ID")
+                  : "..."
+              })`}
+            </Text>
+          )}
+        </Text>
+        <TouchableOpacity onPress={onRefresh} disabled={refreshing}>
+          <MaterialIcons
+            name="refresh"
+            size={20}
+            color={refreshing ? "#ccc" : "#667eea"}
           />
-          {searchQuery ? (
-            <TouchableOpacity onPress={handleClearSearch}>
-              <MaterialIcons name="close" size={20} color="#999" />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        {/* Sales Filter Dropdown */}
-        {user?.salesRole === "Sales Supervisor" && (
-          <View
-            style={[
-              styles.dropdownContainer,
-              { zIndex: salesDropdownOpen ? 3000 : 2000 },
-            ]}
-          >
-            <DropDownPicker
-              open={salesDropdownOpen}
-              value={salesFilter}
-              items={salesList}
-              setOpen={setSalesDropdownOpen}
-              setValue={setSalesFilter}
-              placeholder="Pilih Sales..."
-              searchable
-              searchPlaceholder="Cari sales..."
-              style={styles.dropdown}
-              textStyle={styles.dropdownText}
-              dropDownContainerStyle={styles.dropdownContainerStyle}
-              listItemContainerStyle={styles.dropdownItem}
-              // listMode="SCROLLVIEW"
-              listMode="MODAL"
-              scrollViewProps={{
-                nestedScrollEnabled: true,
-                contentContainerStyle: {
-                  paddingVertical: 4,
-                },
-              }}
-              modalProps={{
-                animationType: "fade",
-              }}
-              // ✅ OPSIONAL: Auto scroll ke item yang dipilih
-              autoScroll
-              // ✅ OPSIONAL: Close ketika select item
-              closeAfterSelecting={true}
-            />
-          </View>
-        )}
-
-        {/* Stats Bar */}
-        <View style={styles.statsContainer}>
-          <Text style={styles.statsText}>
-            {`Total: ${totalFiltered} sales order`}
-          </Text>
-          <TouchableOpacity onPress={onRefresh} disabled={refreshing}>
-            <MaterialIcons
-              name="refresh"
-              size={20}
-              color={refreshing ? "#ccc" : "#667eea"}
-            />
-          </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
       </View>
 
       {/* Tab View */}
@@ -802,89 +1197,230 @@ const styles = StyleSheet.create({
     color: "#666",
   },
 
-  // Wrapper untuk Search, Dropdown, dan Stats agar memiliki padding luar yang sama
-  headerContentWrapper: {
+  // Filter Collapse Styles (PPI List Style)
+  filterContainer: {
     backgroundColor: "white",
-    paddingHorizontal: 0, // <--- Perbaikan 1: Hapus padding di wrapper
-    paddingBottom: 8,
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
   },
-
-  // Search Bar Disesuaikan
+  collapsibleFilterContainer: {
+    marginBottom: 8,
+  },
+  filterHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: "white",
+  },
+  filterHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  filterHeaderText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    marginLeft: 8,
+  },
+  activeFilterBadge: {
+    backgroundColor: "#667eea",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  activeFilterBadgeText: {
+    color: "white",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  filterContent: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
+    backgroundColor: "#fafafa",
+  },
+  searchSection: {
+    marginBottom: 20,
+  },
+  filterSection: {
+    marginBottom: 20,
+  },
+  sectionLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 8,
+  },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "white",
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingVertical: 10,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: "#e0e0e0",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-    marginTop: 8,
-    marginHorizontal: 16, // <--- Perbaikan 1: Tambah margin di sini
   },
   searchInput: {
     flex: 1,
     marginLeft: 8,
-    fontSize: 16,
+    fontSize: 14,
     color: "#333",
     padding: 0,
   },
-
-  // Dropdown Disesuaikan
-  dropdownContainer: {
+  dateInputsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  dateInputWrapper: {
+    flex: 1,
+  },
+  dateLabel: {
+    fontSize: 12,
+    color: "#666",
+    marginBottom: 6,
+    fontWeight: "500",
+  },
+  dateInput: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "white",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+  dateText: {
+    fontSize: 14,
+    color: "#333",
+    fontWeight: "500",
+  },
+  placeholderText: {
+    fontSize: 14,
+    color: "#999",
+  },
+  clearDateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
     marginTop: 8,
-    marginHorizontal: 16, // <--- Perbaikan 1: Tambah margin di sini
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    backgroundColor: "#ffebee",
+  },
+  clearDateText: {
+    fontSize: 12,
+    color: "#f44336",
+    marginLeft: 4,
+    fontWeight: "500",
+  },
+  dropdownWrapper: {
     zIndex: 3000,
   },
   dropdown: {
     borderColor: "#e0e0e0",
     backgroundColor: "white",
-    borderRadius: 10,
+    borderRadius: 8,
     height: 44,
     zIndex: 3001,
   },
   dropdownText: {
-    fontSize: 16,
+    fontSize: 14,
     color: "#333",
   },
   dropdownContainerStyle: {
     backgroundColor: "white",
     borderColor: "#e0e0e0",
-    borderRadius: 10,
+    borderRadius: 8,
     borderWidth: 1,
-    maxHeight: 250, // Memastikan scroll berfungsi
-    // minHeight: 100, // ✅ Minimum height untuk memastikan scroll
-    zIndex: 9999, // ✅ Sangat tinggi untuk berada di atas semua elemen
-    elevation: 20, // ✅ Untuk Android
-    // marginTop: 4, // ✅ Beri jarak dari input
-    top: 44, // ✅ Posisikan tepat di bawah input
-    width: "100%", // ✅ Full width
+    maxHeight: 200,
+    zIndex: 9999,
+    elevation: 20,
+    top: 44,
+    width: "100%",
   },
-  // Perbaikan 2: Sesuaikan padding untuk mencegah teks terpotong dan menambah kerapihan horizontal
   dropdownItem: {
-    // paddingVertical: 12,
-    paddingHorizontal: 16, // <--- Tambahkan paddingHorizontal untuk kerapihan
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  filterActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 8,
+  },
+  resetButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    backgroundColor: "white",
+    flex: 1,
+    marginRight: 8,
+    justifyContent: "center",
+  },
+  resetButtonText: {
+    fontSize: 14,
+    color: "#666",
+    fontWeight: "600",
+    marginLeft: 6,
+  },
+  applyButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: "#667eea",
+    flex: 1,
+    marginLeft: 8,
+    justifyContent: "center",
+  },
+  applyButtonText: {
+    fontSize: 14,
+    color: "white",
+    fontWeight: "600",
+    marginLeft: 6,
   },
 
-  // Stats Container Disesuaikan
+  // Stats Container
   statsContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingTop: 12,
+    paddingBottom: 8,
     backgroundColor: "white",
-    paddingHorizontal: 16, // <--- Perbaikan 1: Tambah padding di sini
+    paddingHorizontal: 16,
   },
-
   statsText: {
     fontSize: 14,
     color: "#666",
     fontWeight: "500",
+  },
+  filterInfo: {
+    fontSize: 12,
+    color: "#667eea",
+    fontStyle: "italic",
   },
   tabView: {
     flex: 1,
@@ -899,20 +1435,18 @@ const styles = StyleSheet.create({
     borderBottomColor: "#f0f0f0",
   },
   tabStyle: {
-    height: 48, // ✅ Tinggi yang cukup untuk teks
-    paddingVertical: 8, // ✅ Padding vertikal
-    minHeight: 48, // ✅ Minimum height
+    height: 48,
+    paddingVertical: 8,
+    minHeight: 48,
   },
-
-  // ✅ CONTENT CONTAINER STYLE
   tabContentContainer: {
-    alignItems: "center", // ✅ Pusatkan konten
+    alignItems: "center",
     justifyContent: "center",
   },
   tabLabel: {
     fontWeight: "600",
     textTransform: "capitalize",
-    fontSize: 12, // ✅ Lebih kecil lagi
+    fontSize: 12,
     textAlign: "center",
     includeFontPadding: false,
     padding: 0,

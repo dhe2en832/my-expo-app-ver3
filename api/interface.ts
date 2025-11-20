@@ -1242,6 +1242,7 @@ export interface PPICreateResponse {
 export interface PPISummary {
   totalPiutang: number;
   totalTertagih: number;
+  tertagihFilter: number;
   totalOutstanding: number;
   draftCount: number;
   pendingSyncCount: number;

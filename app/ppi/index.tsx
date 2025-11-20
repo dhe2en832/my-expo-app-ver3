@@ -38,6 +38,7 @@ import { TabBar, TabView, Route } from "react-native-tab-view";
 import DropDownPicker from "react-native-dropdown-picker";
 import { Card, Button } from "react-native-paper";
 import * as SecureStore from "expo-secure-store";
+import DateTimePicker from "@react-native-community/datetimepicker";
 
 // --- CUSTOM HOOKS ---
 const useDebounce = <T,>(value: T, delay: number): T => {
@@ -123,14 +124,26 @@ const formatDate = (dateString: string) => {
   }
 };
 
-// UPDATE PPISummaryDashboard component dengan prop isFiltered
+const formatDateForInput = (date: Date) => {
+  return date.toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
+
+const formatDateForAPI = (date: Date) => {
+  return date.toISOString().split("T")[0]; // Format: YYYY-MM-DD
+};
+
+// UPDATE PPISummaryDashboard component dengan format baru
 const PPISummaryDashboard: React.FC<
   PPISummaryDashboardProps & { isFiltered?: boolean }
 > = ({ summary, loading, isFiltered = false }) => {
   if (loading) {
     return (
       <View style={styles.summaryContainer}>
-        {[1, 2, 3].map((item) => (
+        {[1, 2, 3, 4].map((item) => (
           <Card key={item} style={styles.summaryCard}>
             <Card.Content style={styles.summaryCardContent}>
               <ActivityIndicator size="small" color="#667eea" />
@@ -159,9 +172,19 @@ const PPISummaryDashboard: React.FC<
       <Card style={styles.summaryCard}>
         <Card.Content style={styles.summaryCardContent}>
           <MaterialIcons name="check-circle" size={16} color="#4CAF50" />
-          <Text style={styles.summaryTitle}>Tertagih</Text>
+          <Text style={styles.summaryTitle}>Tertagih (Total)</Text>
           <Text style={[styles.summaryAmount, styles.successText]}>
             {formatCurrency(summary?.totalTertagih || 0)}
+          </Text>
+        </Card.Content>
+      </Card>
+
+      <Card style={styles.summaryCard}>
+        <Card.Content style={styles.summaryCardContent}>
+          <MaterialIcons name="filter-list" size={16} color="#2196F3" />
+          <Text style={styles.summaryTitle}>Tertagih (Filter)</Text>
+          <Text style={[styles.summaryAmount, styles.infoText]}>
+            {formatCurrency(summary?.tertagihFilter || 0)}
           </Text>
         </Card.Content>
       </Card>
@@ -192,7 +215,7 @@ const PPIListContent: React.FC<PPIListContentProps> = React.memo(
   }) => {
     const { user } = useAuth();
 
-    // Filter data berdasarkan tab
+    // Filter data berdasarkan tab - TANPA FILTER TANGGAL
     const filteredPPI = useMemo(() => {
       let filtered = baseFilteredPPI;
 
@@ -217,6 +240,7 @@ const PPIListContent: React.FC<PPIListContentProps> = React.memo(
           }
         });
       }
+
       return filtered;
     }, [baseFilteredPPI, filter]);
 
@@ -358,6 +382,219 @@ const PPIListContent: React.FC<PPIListContentProps> = React.memo(
   }
 );
 
+// Collapsible Filter Component
+const CollapsibleFilter: React.FC<{
+  searchQuery: string;
+  onSearchChange: (text: string) => void;
+  onClearSearch: () => void;
+  salesFilter: string;
+  onSalesFilterChange: (value: any) => void;
+  salesList: any[];
+  salesDropdownOpen: boolean;
+  onSalesDropdownOpen: (open: any) => void;
+  user: any;
+  startDate: Date | null;
+  endDate: Date | null;
+  onStartDateChange: (date: Date | null) => void;
+  onEndDateChange: (date: Date | null) => void;
+  onClearDateFilter: () => void;
+  onApplyFilter: () => void;
+  isFilterActive: boolean;
+}> = ({
+  searchQuery,
+  onSearchChange,
+  onClearSearch,
+  salesFilter,
+  onSalesFilterChange,
+  salesList,
+  salesDropdownOpen,
+  onSalesDropdownOpen,
+  user,
+  startDate,
+  endDate,
+  onStartDateChange,
+  onEndDateChange,
+  onClearDateFilter,
+  onApplyFilter,
+  isFilterActive,
+}) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+
+  const handleStartDateChange = (event: any, selectedDate?: Date) => {
+    setShowStartPicker(false);
+    if (selectedDate) {
+      onStartDateChange(selectedDate);
+    }
+  };
+
+  const handleEndDateChange = (event: any, selectedDate?: Date) => {
+    setShowEndPicker(false);
+    if (selectedDate) {
+      onEndDateChange(selectedDate);
+    }
+  };
+
+  const handleApplyFilter = () => {
+    onApplyFilter();
+    setIsExpanded(false);
+  };
+
+  return (
+    <View style={styles.collapsibleFilterContainer}>
+      {/* Filter Header */}
+      <TouchableOpacity
+        style={styles.filterHeader}
+        onPress={() => setIsExpanded(!isExpanded)}
+      >
+        <View style={styles.filterHeaderLeft}>
+          <MaterialIcons
+            name="filter-list"
+            size={20}
+            color={isFilterActive ? "#667eea" : "#666"}
+          />
+          <Text
+            style={[
+              styles.filterHeaderText,
+              isFilterActive && styles.filterHeaderTextActive,
+            ]}
+          >
+            Filter {isFilterActive && "• Aktif"}
+          </Text>
+        </View>
+        <MaterialIcons
+          name={isExpanded ? "expand-less" : "expand-more"}
+          size={20}
+          color="#666"
+        />
+      </TouchableOpacity>
+
+      {/* Expanded Filter Content */}
+      {isExpanded && (
+        <View style={styles.filterContent}>
+          {/* Search Input */}
+          <View style={styles.searchContainer}>
+            <MaterialIcons name="search" size={20} color="#999" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Cari nomor PPI, customer, atau sales..."
+              value={searchQuery}
+              onChangeText={onSearchChange}
+              clearButtonMode="while-editing"
+              returnKeyType="search"
+            />
+            {searchQuery ? (
+              <TouchableOpacity onPress={onClearSearch}>
+                <MaterialIcons name="close" size={20} color="#999" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {/* Sales Filter */}
+          {user?.salesRole === "Sales Supervisor" && (
+            <View style={styles.dropdownWrapper}>
+              <DropDownPicker
+                open={salesDropdownOpen}
+                value={salesFilter}
+                items={salesList}
+                setOpen={onSalesDropdownOpen}
+                setValue={onSalesFilterChange}
+                placeholder="Pilih Sales..."
+                searchable
+                searchPlaceholder="Cari sales..."
+                style={styles.dropdown}
+                textStyle={styles.dropdownText}
+                dropDownContainerStyle={styles.dropdownContainerStyle}
+                listItemContainerStyle={styles.dropdownItem}
+                listMode="MODAL"
+                scrollViewProps={{
+                  nestedScrollEnabled: true,
+                }}
+                autoScroll
+                closeAfterSelecting={true}
+              />
+            </View>
+          )}
+
+          {/* Date Range Filter */}
+          <View style={styles.dateFilterContainer}>
+            <Text style={styles.dateFilterTitle}>Rentang Tanggal:</Text>
+
+            <View style={styles.dateInputsContainer}>
+              <View style={styles.dateInputWrapper}>
+                <Text style={styles.dateInputLabel}>Dari:</Text>
+                <TouchableOpacity
+                  style={styles.dateInput}
+                  onPress={() => setShowStartPicker(true)}
+                >
+                  <MaterialIcons name="calendar-today" size={16} color="#666" />
+                  <Text style={styles.dateInputText}>
+                    {startDate
+                      ? formatDateForInput(startDate)
+                      : "Pilih tanggal"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.dateInputWrapper}>
+                <Text style={styles.dateInputLabel}>Sampai:</Text>
+                <TouchableOpacity
+                  style={styles.dateInput}
+                  onPress={() => setShowEndPicker(true)}
+                >
+                  <MaterialIcons name="calendar-today" size={16} color="#666" />
+                  <Text style={styles.dateInputText}>
+                    {endDate ? formatDateForInput(endDate) : "Pilih tanggal"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {(startDate || endDate) && (
+              <TouchableOpacity
+                style={styles.clearFilterButton}
+                onPress={onClearDateFilter}
+              >
+                <MaterialIcons name="clear" size={16} color="#f44336" />
+                <Text style={styles.clearFilterText}>Hapus Filter Tanggal</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Apply Filter Button */}
+          <TouchableOpacity
+            style={styles.applyFilterButton}
+            onPress={handleApplyFilter}
+          >
+            <MaterialIcons name="check" size={16} color="#fff" />
+            <Text style={styles.applyFilterText}>Terapkan Filter</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {showStartPicker && (
+        <DateTimePicker
+          value={startDate || new Date()}
+          mode="date"
+          display="default"
+          onChange={handleStartDateChange}
+        />
+      )}
+
+      {showEndPicker && (
+        <DateTimePicker
+          value={endDate || new Date()}
+          mode="date"
+          display="default"
+          onChange={handleEndDateChange}
+          minimumDate={startDate || new Date()}
+        />
+      )}
+    </View>
+  );
+};
+
 // --- MAIN COMPONENT ---
 export default function PPIHome() {
   const router = useRouter();
@@ -382,15 +619,21 @@ export default function PPIHome() {
   const [salesFilter, setSalesFilter] = useState<string>("");
   const [salesDropdownOpen, setSalesDropdownOpen] = useState(false);
 
-  // Tab View state
+  // Date range filter state
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+
+  // State untuk pending filter (tidak langsung diapply)
+  const [pendingStartDate, setPendingStartDate] = useState<Date | null>(null);
+  const [pendingEndDate, setPendingEndDate] = useState<Date | null>(null);
+  const [pendingSearchQuery, setPendingSearchQuery] = useState<string>(""); // Tambahan untuk pending search
+
+  // Tab View state - Default ke tab "today"
   const layout = useWindowDimensions();
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(1); // Default ke tab "today" (index 1)
   const routes: Route[] = [
     { key: "all", title: "Semua" },
     { key: "today", title: "Hari Ini" },
-    // { key: "draft", title: "Draft" },
-    // { key: "pending", title: "Pending" },
-    // { key: "synced", title: "Synced" },
   ];
 
   // --- LOGIKA FILTER UTAMA ---
@@ -426,6 +669,11 @@ export default function PPIHome() {
     [baseFilteredPPI]
   );
 
+  // Check if any filter is active
+  const isFilterActive = useMemo(() => {
+    return !!salesFilter || !!startDate || !!endDate || !!searchQuery;
+  }, [salesFilter, startDate, endDate, searchQuery]);
+
   // --- HANDLERS ---
   const handlePPIPress = useCallback(
     (ppi: PPIListItem) => {
@@ -460,21 +708,140 @@ export default function PPIHome() {
 
   const handleClearSearch = useCallback(() => {
     setSearchQuery("");
+    setPendingSearchQuery("");
   }, []);
 
+  const handleClearDateFilter = useCallback(() => {
+    setStartDate(null);
+    setEndDate(null);
+    setPendingStartDate(null);
+    setPendingEndDate(null);
+  }, []);
+
+  // Handler untuk pending date changes (tidak langsung diapply)
+  const handlePendingStartDateChange = useCallback((date: Date | null) => {
+    setPendingStartDate(date);
+  }, []);
+
+  const handlePendingEndDateChange = useCallback((date: Date | null) => {
+    setPendingEndDate(date);
+  }, []);
+
+  // Handler untuk pending search changes (tidak langsung diapply)
+  const handlePendingSearchChange = useCallback((text: string) => {
+    setPendingSearchQuery(text);
+  }, []);
+
+  // Fix TypeScript errors for DropDownPicker
+  const handleSalesFilterChange = useCallback(
+    (callback: any) => {
+      const value =
+        typeof callback === "function" ? callback(salesFilter) : callback;
+      setSalesFilter(value);
+    },
+    [salesFilter]
+  );
+
+  const handleSalesDropdownOpen = useCallback(
+    (callback: any) => {
+      const value =
+        typeof callback === "function" ? callback(salesDropdownOpen) : callback;
+      setSalesDropdownOpen(value);
+    },
+    [salesDropdownOpen]
+  );
+
   // --- DATA FETCHING ---
-  const loadSummaryData = async (salesCode?: string) => {
+  const loadSummaryData = async (
+    salesCode?: string,
+    startDate?: Date | null,
+    endDate?: Date | null,
+    searchQuery?: string
+  ) => {
     try {
-      // console.log("salesCode ", salesCode);
-      const summaryData = await ppiAPI.getPPISummary(salesCode);
-      setSummary(summaryData);
-      // console.log("summaryData ", summaryData);
+      const params: any = {};
+
+      // SELALU sertakan kode_sales sama seperti di fetchAllPPI
+      if (user?.salesRole !== "Sales Supervisor" && user?.kodeSales) {
+        params.kode_sales = user.kodeSales;
+      } else if (salesCode && user?.salesRole === "Sales Supervisor") {
+        params.kode_sales = salesCode;
+      }
+
+      if (startDate && endDate) {
+        params.start_date = formatDateForAPI(startDate);
+        params.end_date = formatDateForAPI(endDate);
+      }
+
+      // Deteksi otomatis jenis pencarian
+      if (searchQuery && searchQuery.trim()) {
+        const query = searchQuery.trim();
+        const isNoPpiPattern = /^\d+$/.test(query);
+
+        if (isNoPpiPattern) {
+          params.no_ppi = query;
+          console.log("🔍 Summary search - no_ppi:", query);
+        } else {
+          params.nama_customer = query;
+          console.log("🔍 Summary search - nama_customer:", query);
+        }
+      }
+
+      console.log("📊 Loading summary dengan params:", params);
+      const response = await ppiAPI.getPPISummary(params);
+      console.log("✅ Summary API response:", response);
+
+      // PERBAIKAN: Response sudah dalam format PPISummary yang benar
+      // Langsung gunakan response sebagai summary
+      if (response && "totalPiutang" in response) {
+        console.log("🎯 Using direct PPISummary response");
+
+        // Response sudah termasuk tertagihFilter: 500000 dari API
+        // Tidak perlu menghitung ulang dari data lokal
+        const updatedSummary: PPISummary = {
+          totalPiutang: response.totalPiutang || 0,
+          totalTertagih: response.totalTertagih || 0,
+          tertagihFilter: response.tertagihFilter || 0, // Gunakan langsung dari API
+          totalOutstanding: response.totalOutstanding || 0,
+          draftCount: response.draftCount || 0,
+          pendingSyncCount: response.pendingSyncCount || 0,
+          syncedCount: response.syncedCount || 0,
+        };
+
+        console.log("📈 Final summary data:", updatedSummary);
+        setSummary(updatedSummary);
+        return;
+      }
+
+      // Jika struktur response tidak sesuai, gunakan fallback
+      throw new Error("Invalid API response structure");
     } catch (error) {
-      console.error("Error loading summary:", error);
+      console.error("❌ Error loading summary:", error);
       // Fallback: hitung dari data lokal
-      const dataToUse = salesCode
-        ? allPPI.filter((ppi) => ppi.kode_sales === salesCode)
-        : allPPI;
+      console.log("🔄 Using fallback calculation from local data");
+
+      let dataToUse = allPPI;
+
+      if (salesCode) {
+        dataToUse = dataToUse.filter((ppi) => ppi.kode_sales === salesCode);
+      }
+
+      if (startDate && endDate) {
+        dataToUse = dataToUse.filter((ppi) => {
+          const ppiDate = new Date(ppi.tanggal_ppi);
+          return ppiDate >= startDate && ppiDate <= endDate;
+        });
+      }
+
+      // Apply search filter untuk fallback
+      if (searchQuery && searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        dataToUse = dataToUse.filter(
+          (ppi) =>
+            ppi.no_ppi?.toLowerCase().includes(query) ||
+            ppi.nama_cust?.toLowerCase().includes(query)
+        );
+      }
 
       const calculatedSummary: PPISummary = {
         totalPiutang: dataToUse.reduce(
@@ -482,6 +849,11 @@ export default function PPIHome() {
           0
         ),
         totalTertagih: dataToUse
+          .filter((ppi) =>
+            ["synced", "approved"].includes(ppi.status?.toLowerCase())
+          )
+          .reduce((sum, ppi) => sum + (ppi.jumlah_bayar || 0), 0),
+        tertagihFilter: dataToUse
           .filter((ppi) =>
             ["synced", "approved"].includes(ppi.status?.toLowerCase())
           )
@@ -504,6 +876,7 @@ export default function PPIHome() {
         ).length,
       };
 
+      console.log("📊 Fallback summary:", calculatedSummary);
       setSummary(calculatedSummary);
     }
   };
@@ -536,20 +909,53 @@ export default function PPIHome() {
     try {
       setLoading(true);
       setError(null);
-      const res: APIResponse<PPIListItem[]> = await ppiAPI.getPPIList({
+
+      const apiParams: any = {
         limit: 1000,
-      });
+      };
+
+      // Tambahkan filter tanggal jika ada
+      if (startDate && endDate) {
+        apiParams.start_date = formatDateForAPI(startDate);
+        apiParams.end_date = formatDateForAPI(endDate);
+        console.log(
+          "📅 Filter tanggal aktif:",
+          apiParams.start_date,
+          "s/d",
+          apiParams.end_date
+        );
+      }
+
+      // Tambahkan filter sales berdasarkan role
+      if (user?.salesRole !== "Sales Supervisor" && user?.kodeSales) {
+        apiParams.kode_sales = user.kodeSales;
+        console.log("👤 Filter sales (user):", apiParams.kode_sales);
+      } else if (user?.salesRole === "Sales Supervisor" && salesFilter) {
+        apiParams.kode_sales = salesFilter;
+        console.log("👤 Filter sales (supervisor):", apiParams.kode_sales);
+      }
+
+      console.log("📋 Fetching PPI dengan params:", apiParams);
+
+      const res: APIResponse<PPIListItem[]> = await ppiAPI.getPPIList(
+        apiParams
+      );
+
+      console.log("✅ Response PPI:", res.data?.length, "items");
 
       if (res.success && res.data && Array.isArray(res.data)) {
         setAllPPI(res.data);
-        // Setelah data PPI dimuat, hitung summary berdasarkan filter sales saat ini
-        await loadSummaryData(salesFilter);
+        console.log("📊 Data PPI diset:", res.data.length, "items");
+
+        // Setelah data PPI dimuat, hitung summary berdasarkan filter saat ini
+        await loadSummaryData(salesFilter, startDate, endDate, searchQuery);
       } else {
         setAllPPI([]);
         setError(res.message || "Gagal mengambil data PPI");
+        console.log("❌ Error response:", res.message);
       }
     } catch (err: any) {
-      console.error("Error fetching PPI:", err);
+      console.error("❌ Error fetching PPI:", err);
       setError(err.message || "Gagal memuat data PPI");
       setAllPPI([]);
     } finally {
@@ -565,14 +971,51 @@ export default function PPIHome() {
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadAllData();
-  }, [salesFilter]);
+  }, [salesFilter, startDate, endDate, searchQuery]);
+
+  // Handler untuk apply filter (ketika tombol "Terapkan Filter" ditekan)
+  const handleApplyFilter = useCallback(() => {
+    // Apply pending date filters
+    if (pendingStartDate && pendingEndDate) {
+      setStartDate(pendingStartDate);
+      setEndDate(pendingEndDate);
+    }
+
+    // Apply pending search filter
+    if (pendingSearchQuery !== undefined) {
+      setSearchQuery(pendingSearchQuery);
+    }
+
+    // Refresh data dengan filter yang baru
+    loadAllData();
+  }, [
+    salesFilter,
+    startDate,
+    endDate,
+    pendingStartDate,
+    pendingEndDate,
+    searchQuery,
+    pendingSearchQuery,
+  ]);
 
   // --- USE EFFECTS ---
   useFocusEffect(
     useCallback(() => {
       loadAllData();
-    }, [salesFilter])
+    }, [salesFilter, startDate, endDate])
   );
+
+  // Effect untuk reload data ketika filter berubah
+  useEffect(() => {
+    loadAllData();
+  }, [salesFilter, startDate, endDate]);
+
+  // Effect untuk update summary saja ketika search query berubah
+  useEffect(() => {
+    if (allPPI.length > 0) {
+      loadSummaryData(salesFilter, startDate, endDate, searchQuery);
+    }
+  }, [searchQuery]);
 
   useEffect(() => {
     const updateActivity = async () => {
@@ -580,13 +1023,6 @@ export default function PPIHome() {
     };
     updateActivity();
   }, []);
-
-  // Effect untuk update summary ketika sales filter berubah
-  useEffect(() => {
-    if (allPPI.length > 0) {
-      loadSummaryData(salesFilter);
-    }
-  }, [salesFilter, allPPI]);
 
   // Success message
   useEffect(() => {
@@ -656,53 +1092,42 @@ export default function PPIHome() {
           <PPISummaryDashboard
             summary={summary}
             loading={loading}
-            isFiltered={!!salesFilter}
+            isFiltered={
+              !!salesFilter || !!startDate || !!endDate || !!searchQuery
+            }
           />
         </View>
 
-        {/* Search and Filter Section */}
+        {/* Collapsible Filter Section */}
         <View style={styles.filterSection}>
-          <View style={styles.searchContainer}>
-            <MaterialIcons name="search" size={20} color="#999" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Cari nomor PPI, customer, atau sales..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              clearButtonMode="while-editing"
-              returnKeyType="search"
-            />
-            {searchQuery ? (
-              <TouchableOpacity onPress={handleClearSearch}>
-                <MaterialIcons name="close" size={20} color="#999" />
-              </TouchableOpacity>
-            ) : null}
-          </View>
-
-          {user?.salesRole === "Sales Supervisor" && (
-            <View style={styles.dropdownWrapper}>
-              <DropDownPicker
-                open={salesDropdownOpen}
-                value={salesFilter}
-                items={salesList}
-                setOpen={setSalesDropdownOpen}
-                setValue={setSalesFilter}
-                placeholder="Pilih Sales..."
-                searchable
-                searchPlaceholder="Cari sales..."
-                style={styles.dropdown}
-                textStyle={styles.dropdownText}
-                dropDownContainerStyle={styles.dropdownContainerStyle}
-                listItemContainerStyle={styles.dropdownItem}
-                listMode="MODAL"
-                scrollViewProps={{
-                  nestedScrollEnabled: true,
-                }}
-                autoScroll
-                closeAfterSelecting={true}
-              />
-            </View>
-          )}
+          <CollapsibleFilter
+            searchQuery={
+              pendingSearchQuery !== undefined
+                ? pendingSearchQuery
+                : searchQuery
+            }
+            onSearchChange={handlePendingSearchChange}
+            onClearSearch={handleClearSearch}
+            salesFilter={salesFilter}
+            onSalesFilterChange={handleSalesFilterChange}
+            salesList={salesList}
+            salesDropdownOpen={salesDropdownOpen}
+            onSalesDropdownOpen={handleSalesDropdownOpen}
+            user={user}
+            startDate={pendingStartDate || startDate}
+            endDate={pendingEndDate || endDate}
+            onStartDateChange={handlePendingStartDateChange}
+            onEndDateChange={handlePendingEndDateChange}
+            onClearDateFilter={handleClearDateFilter}
+            onApplyFilter={handleApplyFilter}
+            isFilterActive={
+              isFilterActive ||
+              !!pendingStartDate ||
+              !!pendingEndDate ||
+              (pendingSearchQuery !== undefined &&
+                pendingSearchQuery !== searchQuery)
+            }
+          />
 
           <View style={styles.statsContainer}>
             <Text style={styles.statsText}>
@@ -711,6 +1136,16 @@ export default function PPIHome() {
                 ` • Sales: ${
                   salesList.find((s) => s.value === salesFilter)?.label
                 }`}
+              {startDate &&
+                endDate &&
+                ` • ${formatDateForInput(startDate)} - ${formatDateForInput(
+                  endDate
+                )}`}
+              {(pendingStartDate ||
+                pendingEndDate ||
+                (pendingSearchQuery !== undefined &&
+                  pendingSearchQuery !== searchQuery)) &&
+                ` • Filter belum diterapkan`}
             </Text>
             <TouchableOpacity onPress={onRefresh} disabled={refreshing}>
               <MaterialIcons
@@ -821,74 +1256,73 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     flex: 1,
-    marginHorizontal: 4,
+    marginHorizontal: 2,
     elevation: 1,
     minHeight: 70, // Reduced height
   },
   summaryCardContent: {
     alignItems: "center",
     paddingVertical: 8, // Reduced padding
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
   },
   summaryTitle: {
-    fontSize: 11, // Smaller font
+    fontSize: 10, // Smaller font
     textAlign: "center",
     marginTop: 2,
     color: "#666",
   },
   summaryAmount: {
-    fontSize: 12, // Smaller font
+    fontSize: 11, // Smaller font
     fontWeight: "bold",
     textAlign: "center",
     marginTop: 2,
   },
-  // Optimized Status Overview
-  statusOverviewCard: {
-    elevation: 1,
-    backgroundColor: "transparent",
-    shadowOpacity: 0,
-  },
-  statusOverviewTitle: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: "#333",
+  // Collapsible Filter Styles
+  collapsibleFilterContainer: {
     marginBottom: 8,
   },
-  statusOverview: {
+  filterHeader: {
     flexDirection: "row",
-    justifyContent: "space-around",
-  },
-  statusItem: {
+    justifyContent: "space-between",
     alignItems: "center",
-    flex: 1,
+    padding: 12,
+    backgroundColor: "#f8f9fa",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
   },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginBottom: 2,
+  filterHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
   },
-  statusCount: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 1,
-  },
-  statusLabel: {
-    fontSize: 11,
+  filterHeaderText: {
+    fontSize: 14,
+    fontWeight: "600",
     color: "#666",
+    marginLeft: 8,
+  },
+  filterHeaderTextActive: {
+    color: "#667eea",
+  },
+  filterContent: {
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: "#f8f9fa",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    gap: 12,
   },
   // More Compact Search
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f8f9fa",
+    backgroundColor: "white",
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: "#e0e0e0",
-    marginBottom: 8,
   },
   searchInput: {
     flex: 1,
@@ -897,15 +1331,85 @@ const styles = StyleSheet.create({
     color: "#333",
     padding: 0,
   },
+  // Date Filter Styles
+  dateFilterContainer: {
+    padding: 12,
+    backgroundColor: "white",
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+  dateFilterTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 8,
+  },
+  dateInputsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  dateInputWrapper: {
+    flex: 1,
+  },
+  dateInputLabel: {
+    fontSize: 12,
+    color: "#666",
+    marginBottom: 4,
+  },
+  dateInput: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f8f9fa",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+  dateInputText: {
+    fontSize: 12,
+    color: "#333",
+    marginLeft: 6,
+  },
+  clearFilterButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    marginTop: 8,
+    padding: 6,
+  },
+  clearFilterText: {
+    fontSize: 12,
+    color: "#f44336",
+    marginLeft: 4,
+    fontWeight: "500",
+  },
+  applyFilterButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#667eea",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    marginTop: 8,
+  },
+  applyFilterText: {
+    fontSize: 14,
+    color: "#fff",
+    fontWeight: "600",
+    marginLeft: 6,
+  },
   // Compact Dropdown
   dropdownWrapper: {
-    marginBottom: 8,
     zIndex: 3000,
   },
   dropdown: {
     borderColor: "#e0e0e0",
-    backgroundColor: "#f8f9fa",
-    borderRadius: 8,
+    backgroundColor: "white",
+    borderRadius: 6,
     height: 40,
     zIndex: 3001,
   },
@@ -916,7 +1420,7 @@ const styles = StyleSheet.create({
   dropdownContainerStyle: {
     backgroundColor: "white",
     borderColor: "#e0e0e0",
-    borderRadius: 8,
+    borderRadius: 6,
     borderWidth: 1,
     maxHeight: 200,
     zIndex: 9999,
@@ -928,7 +1432,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: 4,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
+    marginTop: 8,
   },
   statsText: {
     fontSize: 12,
@@ -1149,6 +1656,9 @@ const styles = StyleSheet.create({
   },
   warningText: {
     color: "#ffa726",
+  },
+  infoText: {
+    color: "#2196F3",
   },
   printButton: {
     padding: 4,

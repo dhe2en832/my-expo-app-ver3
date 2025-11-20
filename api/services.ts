@@ -1957,11 +1957,42 @@ export const dataUmumAPI = {
 // PPI API Module
 // ===================
 export const ppiAPI = {
-  getPPISummary: async (kodeSales?: string): Promise<PPISummary> => {
+  // Di file api/services.ts - Perbaiki fungsi getPPISummary
+  getPPISummary: async (params?: {
+    kode_sales?: string;
+    start_date?: string;
+    end_date?: string;
+    no_ppi?: string;
+    nama_customer?: string;
+  }): Promise<PPISummary> => {
     try {
-      // Tambahkan query param jika kodeSales diberikan
+      // Siapkan query parameters
+      const queryParams: any = {};
+
+      if (params?.kode_sales) {
+        queryParams.kode_sales = params.kode_sales;
+      }
+
+      if (params?.start_date) {
+        queryParams.start_date = params.start_date;
+      }
+
+      if (params?.end_date) {
+        queryParams.end_date = params.end_date;
+      }
+
+      if (params?.no_ppi) {
+        queryParams.no_ppi = params.no_ppi;
+      }
+
+      if (params?.nama_customer) {
+        queryParams.nama_customer = params.nama_customer;
+      }
+
+      console.log("📊 Fetching PPI Summary with params:", queryParams);
+
       const response = await apiClient.get("/ppi-mobile/summary", {
-        params: kodeSales ? { kode_sales: kodeSales } : {},
+        params: queryParams,
       });
 
       if (!response.data?.success) {
@@ -1971,9 +2002,10 @@ export const ppiAPI = {
       const summary = response.data.data;
 
       return {
-        totalPiutang: summary.totalPiutang ?? 0,
-        totalTertagih: summary.totalTertagih ?? 0,
-        totalOutstanding: summary.totalOutstanding ?? 0,
+        totalPiutang: summary.total_piutang ?? 0,
+        totalTertagih: summary.total_tertagih_all ?? 0,
+        tertagihFilter: summary.total_tertagih_filtered ?? 0,
+        totalOutstanding: summary.outstanding ?? 0,
         draftCount: summary.draftCount ?? 0,
         pendingSyncCount: summary.pendingSyncCount ?? 0,
         syncedCount: summary.syncedCount ?? 0,
