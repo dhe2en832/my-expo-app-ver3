@@ -305,7 +305,7 @@ export default function LoginScreen() {
                 <Text style={styles.footerText}>©batasku-faspro</Text>
               </View>
               <View style={styles.footer}>
-                <Text style={styles.footerText}>Ver:0.0.3 | 2025</Text>
+                <Text style={styles.footerText}>Ver:0.0.4 | 2025</Text>
               </View>
             </View>
           </ScrollView>
