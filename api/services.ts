@@ -78,6 +78,11 @@ import { update } from "lodash";
 import { testNetworkConnection } from "@/utils/networkTest";
 import { testLoginConnection } from "@/utils/tesLoginConnection";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  deleteStorageItem,
+  getStorageItem,
+  setStorageItem,
+} from "@/utils/storage";
 
 // ==================
 // Login API Module
@@ -157,38 +162,16 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 //   },
 // };
 
-// api/services/loginAPI.ts
-
 export const loginAPI = {
   login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
     try {
-      // console.log("🔑 Login credentials:", credentials);
-
-      // ✅ GUNAKAN apiClient, BUKAN axios langsung
-      const response = await apiClient.post<LoginResponse>(
-        "/login",
-        credentials
-      );
-
-      // Alert.alert("✅ Login response:", JSON.stringify(response, null, 2));
-
-      // Alert.alert(
-      //   "✅ Login response.data:",
-      //   JSON.stringify(response.data, null, 2)
-      // );
-
-      // Alert.alert(
-      //   "✅ Login response.data.data:",
-      //   JSON.stringify(response.data.data, null, 2)
-      // );
-
+      console.log("credentials ", credentials);
+      const response = await axios.post<LoginResponse>("/login", credentials);
       if (response.data.success && response.data.data) {
         const { token, user } = response.data.data;
-        await SecureStore.setItemAsync("auth_token", token);
-        await SecureStore.setItemAsync("user_data", JSON.stringify(user));
-        // Saat login sukses
-        await SecureStore.setItemAsync("last_active", Date.now().toString());
-
+        // ✅ Gunakan helper
+        await setStorageItem("auth_token", token);
+        await setStorageItem("user_data", JSON.stringify(user));
         return {
           success: true,
           data: { token, user },
@@ -201,45 +184,18 @@ export const loginAPI = {
         };
       }
     } catch (error: any) {
-      // try {
-      //   await testNetworkConnection();
-      // } finally {
-      //   await testLoginConnection();
-      // }
-
-      // ✅ ERROR HANDLING YANG LEBIH BAIK
       if (error.response) {
-        // Server responded dengan error status
         const message =
           error.response.data?.message || "Terjadi kesalahan pada server";
-        console.log("🚨 Server error:", error.response.status, message);
-        // Alert.alert(
-        //   "🚨 Server error.response :",
-        //   error.response.status,
-        //   message
-        // );
         return { success: false, message };
       } else if (error.request) {
-        // Request dibuat tapi tidak ada response
-        const message = error || "Login API error";
-        console.log("🌐 Network error - No response received");
-        Alert.alert(
-          "🌐 Network error.request :",
-          error.response.status,
-          message
-        );
+        await testNetworkConnection();
+        await testLoginConnection();
         return {
           success: false,
-          message:
-            "Tidak ada koneksi ke server. Periksa koneksi internet dan pastikan server aktif.",
+          message: `Tidak ada koneksi ke server ${error.message}`,
         };
       } else {
-        // Other errors
-        const message =
-          error.request.data?.message || "Network error - No response received";
-        console.log("⚡ Other error:", error.message);
-        Alert.alert("⚡ Other server error :", error.response.status, message);
-
         return {
           success: false,
           message: error.message || "Error tidak dikenal",
@@ -250,7 +206,7 @@ export const loginAPI = {
 
   logout: async (): Promise<void> => {
     try {
-      const token = await SecureStore.getItemAsync("auth_token");
+      const token = await getStorageItem("auth_token");
       if (token) {
         await axios.post(
           "/login/logout",
@@ -263,13 +219,9 @@ export const loginAPI = {
     } catch (error) {
       console.warn("Logout API warning:", error);
     } finally {
-      await SecureStore.deleteItemAsync("auth_token");
-      await SecureStore.deleteItemAsync("user_data");
-      await SecureStore.deleteItemAsync("last_active");
-      await AsyncStorage.removeItem("userToken");
-      await AsyncStorage.removeItem("userData");
-      // setUser(null);
-      // await loginAPI.logout();
+      // ✅ Gunakan helper
+      await deleteStorageItem("auth_token");
+      await deleteStorageItem("user_data");
     }
   },
 
@@ -277,12 +229,13 @@ export const loginAPI = {
     token: string | null;
     user: User | null;
   }> => {
-    const token = await SecureStore.getItemAsync("auth_token");
-    const userData = await SecureStore.getItemAsync("user_data");
+    const token = await getStorageItem("auth_token");
+    const userData = await getStorageItem("user_data");
     const user = userData ? JSON.parse(userData) : null;
     return { token, user };
   },
 };
+
 
 // ===================
 // RKS Master Module

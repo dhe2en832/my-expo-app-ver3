@@ -9,6 +9,11 @@ import { fcmService } from "@/utils/fcmMobileService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { testNetworkConnection } from "@/utils/networkTest";
 import { router } from "expo-router";
+import {
+  deleteStorageItem,
+  getStorageItem,
+  setStorageItem,
+} from "@/utils/storage";
 
 // interface User {
 //   id: string;
@@ -46,9 +51,12 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
         const MAX_INACTIVE_TIME = 5 * 60 * 1000; // 5 menit
 
         const [token, userData, lastActiveStr] = await Promise.all([
-          SecureStore.getItemAsync("auth_token"),
-          SecureStore.getItemAsync("user_data"),
-          SecureStore.getItemAsync("last_active"),
+          // SecureStore.getItemAsync("auth_token"),
+          // SecureStore.getItemAsync("user_data"),
+          // SecureStore.getItemAsync("last_active"),
+          getStorageItem("auth_token"),
+          getStorageItem("user_data"),
+          getStorageItem("last_active"),
         ]);
 
         let sessionValid = false;
@@ -59,7 +67,8 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
           if (!isNaN(lastActive) && now - lastActive <= MAX_INACTIVE_TIME) {
             sessionValid = true;
             // Perbarui timestamp agar session tetap hidup
-            await SecureStore.setItemAsync("last_active", now.toString());
+            // await SecureStore.setItemAsync("last_active", now.toString());
+            await setStorageItem("last_active", now.toString());
           }
         }
 
@@ -81,17 +90,23 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
           setUser(frontendUser);
         } else {
           // Session expired atau tidak valid → clear semua
-          await SecureStore.deleteItemAsync("auth_token");
-          await SecureStore.deleteItemAsync("user_data");
-          await SecureStore.deleteItemAsync("last_active");
+          // await SecureStore.deleteItemAsync("auth_token");
+          // await SecureStore.deleteItemAsync("user_data");
+          // await SecureStore.deleteItemAsync("last_active");
+          await deleteStorageItem("auth_token");
+          await deleteStorageItem("user_data");
+          await deleteStorageItem("last_active");
           setUser(null);
         }
       } catch (error: any) {
         Alert.alert("Error fungsi loadStoredAuth : ", error.message);
         // Clear on error
-        await SecureStore.deleteItemAsync("auth_token");
-        await SecureStore.deleteItemAsync("user_data");
-        await SecureStore.deleteItemAsync("last_active");
+        // await SecureStore.deleteItemAsync("auth_token");
+        // await SecureStore.deleteItemAsync("user_data");
+        // await SecureStore.deleteItemAsync("last_active");
+        await deleteStorageItem("auth_token");
+        await deleteStorageItem("user_data");
+        await deleteStorageItem("last_active");
         setUser(null);
       } finally {
         setIsLoading(false);
@@ -150,9 +165,12 @@ export const [AuthProvider, useAuth] = createContextHook<AuthContextType>(
         console.warn("Error during FCM unregistration:", error);
       } finally {
         // Clear local storage dan state
-        await SecureStore.deleteItemAsync("auth_token");
-        await SecureStore.deleteItemAsync("user_data");
-        await SecureStore.deleteItemAsync("last_active");
+        // await SecureStore.deleteItemAsync("auth_token");
+        // await SecureStore.deleteItemAsync("user_data");
+        // await SecureStore.deleteItemAsync("last_active");
+        await deleteStorageItem("auth_token");
+        await deleteStorageItem("user_data");
+        await deleteStorageItem("last_active");
         await AsyncStorage.removeItem("userToken");
         await AsyncStorage.removeItem("userData");
         setUser(null);

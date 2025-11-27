@@ -31,6 +31,7 @@ import { TabBar, TabView, Route } from "react-native-tab-view";
 import DropDownPicker from "react-native-dropdown-picker";
 import * as SecureStore from "expo-secure-store";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { getStorageItem, setStorageItem } from "@/utils/storage";
 
 // --- CUSTOM HOOKS ---
 // Custom hook untuk debounce
@@ -1008,7 +1009,9 @@ export default function SalesOrderList() {
 
   useEffect(() => {
     const updateActivity = async () => {
-      await SecureStore.setItemAsync("last_active", Date.now().toString());
+      const now = Date.now();
+      // await SecureStore.setItemAsync("last_active", Date.now().toString());
+      await setStorageItem("last_active", now.toString());
     };
     updateActivity();
   }, []);

@@ -3,11 +3,18 @@ import { useEffect, useState } from 'react';
 import { Redirect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import SplashScreen from '@/components/SplashScreen';
+import { Platform } from "react-native";
+import { initDatabase } from "@/utils/database";
 
 export default function Index() {
   const { user, isLoading } = useAuth();
   const [progress, setProgress] = useState(0);
 
+  useEffect(() => {
+    if (Platform.OS !== "web") {
+      initDatabase().catch(console.error);
+    }
+  }, []);
   // Simulasi progress selama auth sedang dicek
   useEffect(() => {
     if (isLoading) {
@@ -22,10 +29,10 @@ export default function Index() {
   useEffect(() => {
     if (!isLoading) {
       setProgress(100);
-    //   const timer = setTimeout(() => {
-    //     // Biarkan splash screen tampil sebentar setelah progress 100%
-    //   }, 800); // Tahan 0.8 detik setelah loading selesai
-    //   return () => clearTimeout(timer);
+      //   const timer = setTimeout(() => {
+      //     // Biarkan splash screen tampil sebentar setelah progress 100%
+      //   }, 800); // Tahan 0.8 detik setelah loading selesai
+      //   return () => clearTimeout(timer);
     }
   }, [isLoading]);
 

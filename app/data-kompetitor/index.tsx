@@ -31,6 +31,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router, Stack } from "expo-router";
 import { Portal } from "react-native-paper";
 import * as SecureStore from "expo-secure-store";
+import { setStorageItem } from "@/utils/storage";
 
 // Types untuk response API
 interface KompetitorAPIResponse {
@@ -83,7 +84,9 @@ const DataKompetitorList = () => {
 
   useEffect(() => {
     const updateActivity = async () => {
-      await SecureStore.setItemAsync("last_active", Date.now().toString());
+      const now = Date.now();
+      // await SecureStore.setItemAsync("last_active", Date.now().toString());
+      await setStorageItem("last_active", now.toString());
     };
     updateActivity();
   }, []);

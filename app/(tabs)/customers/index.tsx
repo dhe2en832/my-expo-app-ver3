@@ -23,6 +23,7 @@ import { customerAPI } from "@/api/services";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CustomerList as CustomerListType } from "@/api/interface";
 import * as SecureStore from "expo-secure-store";
+import { getStorageItem, setStorageItem } from "@/utils/storage";
 
 // ✅ HAPUS interface APIResponse lokal, gunakan yang dari services
 // Interface APIResponse sudah didefinisikan di services.ts
@@ -77,7 +78,9 @@ export default function CustomerList() {
 
   useEffect(() => {
     const updateActivity = async () => {
-      await SecureStore.setItemAsync("last_active", Date.now().toString());
+      const now = Date.now();
+      // await SecureStore.setItemAsync("last_active", Date.now().toString());
+      await setStorageItem("last_active", now.toString());
     };
     updateActivity();
   }, []);

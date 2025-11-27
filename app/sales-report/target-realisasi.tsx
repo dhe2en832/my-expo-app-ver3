@@ -17,6 +17,7 @@ import { Stack } from "expo-router";
 import { salesAPI, salesReportAPI } from "@/api/services";
 import { useAuth } from "@/contexts/AuthContext";
 import * as SecureStore from "expo-secure-store";
+import { setStorageItem } from "@/utils/storage";
 
 // --- TIPE DATA ---
 interface SalesDetail {
@@ -86,7 +87,9 @@ export default function TargetRealisasiScreen() {
 
   useEffect(() => {
     const updateActivity = async () => {
-      await SecureStore.setItemAsync("last_active", Date.now().toString());
+      const now = Date.now();
+      // await SecureStore.setItemAsync("last_active", Date.now().toString());
+      await setStorageItem("last_active", now.toString());
     };
     updateActivity();
   }, []);

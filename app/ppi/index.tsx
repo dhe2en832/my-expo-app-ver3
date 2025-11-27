@@ -39,6 +39,7 @@ import DropDownPicker from "react-native-dropdown-picker";
 import { Card, Button } from "react-native-paper";
 import * as SecureStore from "expo-secure-store";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { setStorageItem } from "@/utils/storage";
 
 // --- CUSTOM HOOKS ---
 const useDebounce = <T,>(value: T, delay: number): T => {
@@ -1019,7 +1020,9 @@ export default function PPIHome() {
 
   useEffect(() => {
     const updateActivity = async () => {
-      await SecureStore.setItemAsync("last_active", Date.now().toString());
+      const now = Date.now();
+      // await SecureStore.setItemAsync("last_active", Date.now().toString());
+      await setStorageItem("last_active", now.toString());
     };
     updateActivity();
   }, []);

@@ -21,6 +21,7 @@ import { dataBarangAPI } from "@/api/services";
 import { Stack } from "expo-router";
 import { formatNumber } from "@/utils/helpers";
 import * as SecureStore from "expo-secure-store";
+import { setStorageItem } from "@/utils/storage";
 
 if (
   Platform.OS === "android" &&
@@ -110,7 +111,9 @@ export default function StockListScreen() {
 
   useEffect(() => {
     const updateActivity = async () => {
-      await SecureStore.setItemAsync("last_active", Date.now().toString());
+      const now = Date.now();
+      // await SecureStore.setItemAsync("last_active", Date.now().toString());
+      await setStorageItem("last_active", now.toString());
     };
     updateActivity();
   }, []);
